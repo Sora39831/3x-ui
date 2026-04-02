@@ -871,21 +871,60 @@ config_after_install() {
     ${xui_folder}/x-ui migrate
 }
 
+get_releases() {
+    local releases_json
+    releases_json=$(curl -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases")
+    if [[ -z "$releases_json" ]]; then
+        echo -e "${yellow}正在尝试通过 IPv4 获取版本...${plain}"
+        releases_json=$(curl -4 -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases")
+        if [[ -z "$releases_json" ]]; then
+            echo -e "${red}获取 x-ui 版本失败，可能是 GitHub API 限制，请稍后重试${plain}"
+            exit 1
+        fi
+    fi
+
+    # Parse first non-prerelease tag_name
+    latest_stable=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":false' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    # Parse first prerelease tag_name
+    latest_prerelease=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":true' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [[ -z "$latest_stable" && -z "$latest_prerelease" ]]; then
+        echo -e "${red}获取 x-ui 版本失败${plain}"
+        exit 1
+    fi
+}
+
+select_version() {
+    if [[ -n "$latest_stable" && -n "$latest_prerelease" ]]; then
+        echo ""
+        echo -e "${green}请选择要安装的版本：${plain}"
+        echo -e "${green}1)${plain} 最新稳定版: ${latest_stable}"
+        echo -e "${green}2)${plain} 最新预发布版: ${latest_prerelease}"
+        read -rp "请输入选择 [1-2]: " version_choice
+        while [[ "$version_choice" != "1" && "$version_choice" != "2" ]]; do
+            read -rp "无效输入，请重新输入 [1-2]: " version_choice
+        done
+        if [[ "$version_choice" == "1" ]]; then
+            tag_version="$latest_stable"
+        else
+            tag_version="$latest_prerelease"
+        fi
+    elif [[ -n "$latest_stable" ]]; then
+        tag_version="$latest_stable"
+    else
+        tag_version="$latest_prerelease"
+    fi
+}
+
 install_x-ui() {
     cd ${xui_folder%/x-ui}/
 
     # 下载资源
     if [ $# == 0 ]; then
-        tag_version=$(curl -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$tag_version" ]]; then
-            echo -e "${yellow}正在尝试通过 IPv4 获取版本...${plain}"
-            tag_version=$(curl -4 -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-            if [[ ! -n "$tag_version" ]]; then
-                echo -e "${red}获取 x-ui 版本失败，可能是 GitHub API 限制，请稍后重试${plain}"
-                exit 1
-            fi
-        fi
-        echo -e "获取到 x-ui 最新版本：${tag_version}，开始安装..."
+        get_releases
+        select_version
+        echo -e "获取到 x-ui 版本：${tag_version}，开始安装..."
         curl -4fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/Sora39831/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 x-ui 失败，请确保服务器可以访问 GitHub${plain}"
