@@ -521,12 +521,13 @@ prompt_and_setup_ssl() {
     echo -e "${green}1.${plain} Let's Encrypt 域名证书（90 天有效期，自动续期）"
     echo -e "${green}2.${plain} Let's Encrypt IP 证书（6 天有效期，自动续期）"
     echo -e "${green}3.${plain} 自定义 SSL 证书（指定已有文件路径）"
-    echo -e "${blue}注意：${plain} 选项 1 和 2 需要开放 80 端口。选项 3 需要手动指定路径。"
+    echo -e "${green}4.${plain} Cloudflare SSL 证书（通配符证书，DNS 验证）"
+    echo -e "${blue}注意：${plain} 选项 1 和 2 需要开放 80 端口。选项 3 需要手动指定路径。选项 4 需要 Cloudflare API 密钥。"
     read -rp "请选择（默认 2 使用 IP）：" ssl_choice
     ssl_choice="${ssl_choice// /}"  # 去除空格
 
-    # 如果输入为空或无效（非 1 或 3），默认为 2（IP 证书）
-    if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" ]]; then
+    # 如果输入为空或无效（非 1、3 或 4），默认为 2（IP 证书）
+    if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" && "$ssl_choice" != "4" ]]; then
         ssl_choice="2"
     fi
 
@@ -630,6 +631,122 @@ prompt_and_setup_ssl() {
 
         systemctl restart x-ui >/dev/null 2>&1 || rc-service x-ui restart >/dev/null 2>&1
         ;;
+    4)
+        # Cloudflare SSL 证书（通配符，DNS 验证）
+        echo -e "${green}使用 Cloudflare SSL 证书...${plain}"
+        echo -e "${yellow}需要以下信息：${plain}"
+        echo -e "  1. Cloudflare 注册邮箱"
+        echo -e "  2. Cloudflare 全局 API 密钥"
+        echo -e "  3. 域名（证书将包含主域名和通配符 *.域名）"
+
+        local cf_domain=""
+        local cf_key=""
+        local cf_email=""
+
+        read -rp "请输入域名：" cf_domain
+        cf_domain="${cf_domain// /}"
+        if [[ -z "$cf_domain" ]]; then
+            echo -e "${red}域名不能为空，跳过 SSL 配置。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        read -rp "请输入 Cloudflare 全局 API 密钥：" cf_key
+        cf_key="${cf_key// /}"
+        if [[ -z "$cf_key" ]]; then
+            echo -e "${red}API 密钥不能为空，跳过 SSL 配置。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        read -rp "请输入 Cloudflare 注册邮箱：" cf_email
+        cf_email="${cf_email// /}"
+        if [[ -z "$cf_email" ]]; then
+            echo -e "${red}邮箱不能为空，跳过 SSL 配置。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        # 确保 acme.sh 已安装
+        if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
+            echo -e "${yellow}未找到 acme.sh，正在安装...${plain}"
+            install_acme
+            if [ $? -ne 0 ]; then
+                echo -e "${red}安装 acme.sh 失败，跳过 SSL 配置。${plain}"
+                SSL_HOST="${server_ip}"
+                return 1
+            fi
+        fi
+
+        # 设置 Let's Encrypt 为默认 CA
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force
+        if [ $? -ne 0 ]; then
+            echo -e "${red}设置默认 CA 失败，跳过 SSL 配置。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        # 导出 Cloudflare 凭证
+        export CF_Key="${cf_key}"
+        export CF_Email="${cf_email}"
+
+        # 使用 Cloudflare DNS 签发证书（通配符 + 主域名）
+        echo -e "${yellow}正在通过 Cloudflare DNS 签发证书...${plain}"
+        ~/.acme.sh/acme.sh --issue --dns dns_cf -d "${cf_domain}" -d "*.${cf_domain}" --log --force
+        if [ $? -ne 0 ]; then
+            echo -e "${red}证书签发失败，请检查 Cloudflare API 密钥和域名是否正确。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        # 安装证书
+        local certPath="/root/cert/${cf_domain}"
+        rm -rf "${certPath}"
+        mkdir -p "${certPath}"
+        if [ $? -ne 0 ]; then
+            echo -e "${red}创建目录失败：${certPath}${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        local reloadCmd="x-ui restart"
+        ~/.acme.sh/acme.sh --installcert -d "${cf_domain}" -d "*.${cf_domain}" \
+            --key-file "${certPath}/privkey.pem" \
+            --fullchain-file "${certPath}/fullchain.pem" --reloadcmd "${reloadCmd}"
+
+        if [ $? -ne 0 ]; then
+            echo -e "${red}证书安装失败。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        # 启用自动续期
+        ~/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1
+
+        chmod 600 "${certPath}/privkey.pem"
+        chmod 644 "${certPath}/fullchain.pem"
+
+        echo -e "${green}✓ Cloudflare SSL 证书签发并安装成功。${plain}"
+
+        # 为面板设置证书
+        local webCertFile="${certPath}/fullchain.pem"
+        local webKeyFile="${certPath}/privkey.pem"
+
+        if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
+            ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile" >/dev/null 2>&1
+            echo -e "${green}✓ 面板证书已设置。${plain}"
+        else
+            echo -e "${red}未找到证书或私钥文件。${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
+
+        SSL_HOST="${cf_domain}"
+        echo -e "${green}✓ Cloudflare SSL 证书配置完成。${plain}"
+        echo -e "${yellow}注意：证书支持自动续期，无需手动管理。${plain}"
+
+        systemctl restart x-ui >/dev/null 2>&1 || rc-service x-ui restart >/dev/null 2>&1
+        ;;
     *)
         echo -e "${red}无效选项。跳过 SSL 配置。${plain}"
         SSL_HOST="${server_ip}"
@@ -638,7 +755,12 @@ prompt_and_setup_ssl() {
 }
 
 config_after_install() {
-    local existing_hasDefaultCredential=$(${xui_folder}/x-ui setting -show true | grep -Eo 'hasDefaultCredential: .+' | awk '{print $2}')
+    # 检测 x-ui 是否已安装：检查数据库文件和二进制文件
+    local is_fresh_install=false
+    if [[ ! -f "${xui_folder}/x-ui.db" ]]; then
+        is_fresh_install=true
+    fi
+
     local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
     local existing_port=$(${xui_folder}/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
     # 通过检查 cert: 行是否存在且之后有内容来正确检测空证书
@@ -662,97 +784,90 @@ config_after_install() {
         fi
     done
 
-    if [[ ${#existing_webBasePath} -lt 4 ]]; then
-        if [[ "$existing_hasDefaultCredential" == "true" ]]; then
-            local config_webBasePath=$(gen_random_string 18)
-            local config_username=$(gen_random_string 10)
-            local config_password=$(gen_random_string 10)
+    if [[ "$is_fresh_install" == "true" ]]; then
+        # 全新安装：用户输入或随机生成凭据
+        echo -e "${yellow}设置面板凭据（输入 rd 或留空将自动生成）：${plain}"
 
-            read -rp "是否要自定义面板端口？（否则将使用随机端口）[y/n]：" config_confirm
-            if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-                read -rp "请设置面板端口：" config_port
-                echo -e "${yellow}您的面板端口为：${config_port}${plain}"
-            else
-                local config_port=$(shuf -i 1024-62000 -n 1)
-                echo -e "${yellow}已生成随机端口：${config_port}${plain}"
-            fi
+        read -rp "请输入用户名：" config_username
+        config_username="${config_username// /}"
+        if [[ -z "$config_username" || "$config_username" == "rd" ]]; then
+            config_username=$(gen_random_string 10)
+            echo -e "${green}已生成随机用户名：${config_username}${plain}"
+        fi
 
-            ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
+        read -rp "请输入密码：" config_password
+        config_password="${config_password// /}"
+        if [[ -z "$config_password" || "$config_password" == "rd" ]]; then
+            config_password=$(gen_random_string 10)
+            echo -e "${green}已生成随机密码：${config_password}${plain}"
+        fi
 
-            echo ""
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${green}        SSL 证书配置（必需）              ${plain}"
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${yellow}出于安全考虑，所有面板都需要配置 SSL 证书。${plain}"
-            echo -e "${yellow}Let's Encrypt 现已支持域名和 IP 地址！${plain}"
-            echo ""
+        read -rp "请输入 Web 路径（不含前导 /）：" config_webBasePath
+        config_webBasePath="${config_webBasePath// /}"
+        config_webBasePath="${config_webBasePath#/}"   # 去除前导斜杠
+        if [[ -z "$config_webBasePath" || "$config_webBasePath" == "rd" ]]; then
+            config_webBasePath=$(gen_random_string 18)
+            echo -e "${green}已生成随机 Web 路径：${config_webBasePath}${plain}"
+        fi
 
-            prompt_and_setup_ssl "${config_port}" "${config_webBasePath}" "${server_ip}"
-
-            # 显示最终凭据和访问信息
-            echo ""
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${green}           面板安装完成！                 ${plain}"
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${green}用户名：    ${config_username}${plain}"
-            echo -e "${green}密码：      ${config_password}${plain}"
-            echo -e "${green}端口：      ${config_port}${plain}"
-            echo -e "${green}Web路径：   ${config_webBasePath}${plain}"
-            echo -e "${green}访问地址：  https://${SSL_HOST}:${config_port}/${config_webBasePath}${plain}"
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${yellow}⚠ 重要：请安全保存这些凭据！${plain}"
-            echo -e "${yellow}⚠ SSL 证书：已启用并配置${plain}"
+        read -rp "是否要自定义面板端口？（否则将使用随机端口）[y/n]：" config_confirm
+        if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
+            read -rp "请设置面板端口：" config_port
+            echo -e "${yellow}您的面板端口为：${config_port}${plain}"
         else
+            local config_port=$(shuf -i 1024-62000 -n 1)
+            echo -e "${yellow}已生成随机端口：${config_port}${plain}"
+        fi
+
+        ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
+
+        echo ""
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e "${green}        SSL 证书配置（必需）              ${plain}"
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e "${yellow}出于安全考虑，所有面板都需要配置 SSL 证书。${plain}"
+        echo -e "${yellow}Let's Encrypt 现已支持域名和 IP 地址！${plain}"
+        echo ""
+
+        prompt_and_setup_ssl "${config_port}" "${config_webBasePath}" "${server_ip}"
+
+        # 显示最终凭据和访问信息
+        echo ""
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e "${green}           面板安装完成！                 ${plain}"
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e "${green}用户名：    ${config_username}${plain}"
+        echo -e "${green}密码：      ${config_password}${plain}"
+        echo -e "${green}端口：      ${config_port}${plain}"
+        echo -e "${green}Web路径：   ${config_webBasePath}${plain}"
+        echo -e "${green}访问地址：  https://${SSL_HOST}:${config_port}/${config_webBasePath}${plain}"
+        echo -e "${green}═══════════════════════════════════════════${plain}"
+        echo -e "${yellow}⚠ 重要：请安全保存这些凭据！${plain}"
+        echo -e "${yellow}⚠ SSL 证书：已启用并配置${plain}"
+    else
+        # 已有安装：保留用户配置，仅处理缺失的 WebBasePath
+        if [[ ${#existing_webBasePath} -lt 4 ]]; then
             local config_webBasePath=$(gen_random_string 18)
             echo -e "${yellow}WebBasePath 缺失或过短，正在生成新的...${plain}"
             ${xui_folder}/x-ui setting -webBasePath "${config_webBasePath}"
             echo -e "${green}新 WebBasePath：${config_webBasePath}${plain}"
-
-            # 如果面板已安装但未配置证书，提示配置 SSL
-            if [[ -z "${existing_cert}" ]]; then
-                echo ""
-                echo -e "${green}═══════════════════════════════════════════${plain}"
-                echo -e "${green}         SSL 证书配置（推荐）             ${plain}"
-                echo -e "${green}═══════════════════════════════════════════${plain}"
-                echo -e "${yellow}Let's Encrypt 现已支持域名和 IP 地址！${plain}"
-                echo ""
-                prompt_and_setup_ssl "${existing_port}" "${config_webBasePath}" "${server_ip}"
-                echo -e "${green}访问地址：  https://${SSL_HOST}:${existing_port}/${config_webBasePath}${plain}"
-            else
-                # 如果已有证书，直接显示访问地址
-                echo -e "${green}访问地址：https://${server_ip}:${existing_port}/${config_webBasePath}${plain}"
-            fi
-        fi
-    else
-        if [[ "$existing_hasDefaultCredential" == "true" ]]; then
-            local config_username=$(gen_random_string 10)
-            local config_password=$(gen_random_string 10)
-
-            echo -e "${yellow}检测到默认凭据，需要安全更新...${plain}"
-            ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}"
-            echo -e "已生成新的随机登录凭据："
-            echo -e "###############################################"
-            echo -e "${green}用户名：${config_username}${plain}"
-            echo -e "${green}密码：  ${config_password}${plain}"
-            echo -e "###############################################"
         else
-            echo -e "${green}用户名、密码和 WebBasePath 已正确设置。${plain}"
+            local config_webBasePath="${existing_webBasePath}"
         fi
 
         # 已有安装：如果未配置证书，提示用户配置 SSL
-        # 通过检查 cert: 行是否存在且之后有内容来正确检测空证书
-        existing_cert=$(${xui_folder}/x-ui setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
-        if [[ -z "$existing_cert" ]]; then
+        if [[ -z "${existing_cert}" ]]; then
             echo ""
             echo -e "${green}═══════════════════════════════════════════${plain}"
             echo -e "${green}         SSL 证书配置（推荐）             ${plain}"
             echo -e "${green}═══════════════════════════════════════════${plain}"
             echo -e "${yellow}Let's Encrypt 现已支持域名和 IP 地址！${plain}"
             echo ""
-            prompt_and_setup_ssl "${existing_port}" "${existing_webBasePath}" "${server_ip}"
-            echo -e "${green}访问地址：  https://${SSL_HOST}:${existing_port}/${existing_webBasePath}${plain}"
+            prompt_and_setup_ssl "${existing_port}" "${config_webBasePath}" "${server_ip}"
+            echo -e "${green}访问地址：  https://${SSL_HOST}:${existing_port}/${config_webBasePath}${plain}"
         else
             echo -e "${green}SSL 证书已配置，无需操作。${plain}"
+            echo -e "${green}访问地址：https://${server_ip}:${existing_port}/${config_webBasePath}${plain}"
         fi
     fi
 

@@ -100,6 +100,11 @@ func GetDBPath() string {
 	return fmt.Sprintf("%s/%s.db", GetDBFolderPath(), GetName())
 }
 
+// GetSettingPath returns the full path to the panel settings JSON file.
+func GetSettingPath() string {
+	return fmt.Sprintf("%s/%s.json", GetDBFolderPath(), GetName())
+}
+
 // GetLogFolder returns the path to the log folder based on environment variables or platform defaults.
 func GetLogFolder() string {
 	logFolderPath := os.Getenv("XUI_LOG_FOLDER")
