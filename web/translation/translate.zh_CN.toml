@@ -114,6 +114,8 @@
 "wrongUsernameOrPassword" = "用户名、密码或双重验证码无效。"
 "successLogin" = "您已成功登录您的账户。"
 "successRegister" = "注册成功，请登录。"
+"userExists" = "用户名已存在"
+"errorRegister" = "注册失败"
 
 [pages.index]
 "title" = "系统状态"

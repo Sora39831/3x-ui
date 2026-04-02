@@ -105,7 +105,8 @@ type AllSetting struct {
 	LdapDefaultLimitIP    int    `json:"ldapDefaultLimitIP" form:"ldapDefaultLimitIP"`
 
 	// Registration settings
-	TurnstileSiteKey string `json:"turnstileSiteKey" form:"turnstileSiteKey"`
+	TurnstileSiteKey   string `json:"turnstileSiteKey" form:"turnstileSiteKey"`
+	TurnstileSecretKey string `json:"turnstileSecretKey" form:"turnstileSecretKey"`
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.

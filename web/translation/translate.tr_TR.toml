@@ -108,6 +108,9 @@
 "emptyPassword" = "Şifre gerekli"
 "wrongUsernameOrPassword" = "Geçersiz kullanıcı adı, şifre veya iki adımlı doğrulama kodu."
 "successLogin" = "Hesabınıza başarıyla giriş yaptınız."
+"successRegister" = "Kayıt başarılı, lütfen giriş yapın."
+"userExists" = "Kullanıcı adı zaten mevcut"
+"errorRegister" = "Kayıt başarısız"
 
 [pages.index]
 "title" = "Genel Bakış"

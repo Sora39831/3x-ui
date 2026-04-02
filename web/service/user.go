@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
@@ -124,6 +125,35 @@ func (s *UserService) UpdateUser(id int, username string, password string) error
 		Where("id = ?", id).
 		Updates(map[string]any{"username": username, "password": hashedPassword}).
 		Error
+}
+
+func (s *UserService) RegisterUser(username string, password string) error {
+	if username == "" {
+		return errors.New("username can not be empty")
+	}
+	if password == "" {
+		return errors.New("password can not be empty")
+	}
+
+	hashedPassword, err := crypto.HashPasswordAsBcrypt(password)
+	if err != nil {
+		return err
+	}
+
+	db := database.GetDB()
+	user := &model.User{
+		Username: username,
+		Password: hashedPassword,
+		Role:     "user",
+	}
+	if err := db.Create(user).Error; err != nil {
+		// Check for unique constraint violation
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "Duplicate") {
+			return errors.New("username already exists")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *UserService) UpdateFirstUser(username string, password string) error {

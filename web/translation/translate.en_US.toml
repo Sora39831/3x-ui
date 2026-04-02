@@ -114,6 +114,8 @@
 "wrongUsernameOrPassword" = "Invalid username or password or two-factor code."
 "successLogin" = " You have successfully logged into your account."
 "successRegister" = "Registration successful, please log in."
+"userExists" = "Username already exists"
+"errorRegister" = "Registration failed"
 
 [pages.index]
 "title" = "Overview"
