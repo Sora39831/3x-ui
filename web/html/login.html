@@ -1,5 +1,5 @@
 {{ template "page/head_start" .}}
-<script data-cfasync="false" src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script data-cfasync="false" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -211,18 +211,24 @@
           this.regUser = { username: "", password: "", confirmPassword: "" };
           turnstileToken = '';
           if (window.turnstile) {
-            turnstile.reset('#turnstile-widget');
+            var container = document.getElementById('turnstile-widget');
+            if (container) {
+              turnstile.reset(container);
+            }
           }
         }
         this.loadingStates.registerSpinning = false;
       },
       renderTurnstile() {
         if (window.turnstile) {
-          turnstile.render('#turnstile-widget', {
-            sitekey: this.turnstileSiteKey,
-            callback: function(token) { turnstileToken = token; },
-            size: this.turnstileSize,
-          });
+          var container = document.getElementById('turnstile-widget');
+          if (container) {
+            turnstile.render(container, {
+              sitekey: this.turnstileSiteKey,
+              callback: function(token) { turnstileToken = token; },
+              size: this.turnstileSize,
+            });
+          }
         }
       },
       async getTurnstileSiteKey() {
