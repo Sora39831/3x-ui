@@ -752,9 +752,10 @@ prompt_and_setup_ssl() {
 }
 
 config_after_install() {
-    # 检测 x-ui 是否已安装：检查数据库文件和二进制文件
+    # 检测 x-ui 是否已安装：优先检查 x-ui.json（设置文件），其次检查 x-ui.db
+    local db_folder="${XUI_DB_FOLDER:-/etc/x-ui}"
     local is_fresh_install=false
-    if [[ ! -f "${xui_folder}/x-ui.db" ]]; then
+    if [[ ! -f "${db_folder}/x-ui.json" && ! -f "${db_folder}/x-ui.db" ]]; then
         is_fresh_install=true
     fi
 
@@ -842,30 +843,19 @@ config_after_install() {
         echo -e "${yellow}⚠ 重要：请安全保存这些凭据！${plain}"
         echo -e "${yellow}⚠ SSL 证书：已启用并配置${plain}"
     else
-        # 已有安装：保留用户配置，仅处理缺失的 WebBasePath
-        if [[ ${#existing_webBasePath} -lt 4 ]]; then
-            local config_webBasePath=$(gen_random_string 18)
+        # 已有安装（存在 x-ui.json 或 x-ui.db）：保留所有配置，不重新输入
+        local config_webBasePath="${existing_webBasePath}"
+        if [[ ${#config_webBasePath} -lt 4 ]]; then
+            config_webBasePath=$(gen_random_string 18)
             echo -e "${yellow}WebBasePath 缺失或过短，正在生成新的...${plain}"
             ${xui_folder}/x-ui setting -webBasePath "${config_webBasePath}"
             echo -e "${green}新 WebBasePath：${config_webBasePath}${plain}"
-        else
-            local config_webBasePath="${existing_webBasePath}"
         fi
 
-        # 已有安装：如果未配置证书，提示用户配置 SSL
-        if [[ -z "${existing_cert}" ]]; then
-            echo ""
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${green}         SSL 证书配置（推荐）             ${plain}"
-            echo -e "${green}═══════════════════════════════════════════${plain}"
-            echo -e "${yellow}Let's Encrypt 现已支持域名和 IP 地址！${plain}"
-            echo ""
-            prompt_and_setup_ssl "${existing_port}" "${config_webBasePath}" "${server_ip}"
-            echo -e "${green}访问地址：  https://${SSL_HOST}:${existing_port}/${config_webBasePath}${plain}"
-        else
-            echo -e "${green}SSL 证书已配置，无需操作。${plain}"
-            echo -e "${green}访问地址：https://${server_ip}:${existing_port}/${config_webBasePath}${plain}"
+        if [[ -n "${existing_cert}" ]]; then
+            echo -e "${green}SSL 证书已配置。${plain}"
         fi
+        echo -e "${green}访问地址：https://${server_ip}:${existing_port}/${config_webBasePath}${plain}"
     fi
 
     ${xui_folder}/x-ui migrate
