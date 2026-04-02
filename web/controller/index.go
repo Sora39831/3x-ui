@@ -35,6 +35,7 @@ type IndexController struct {
 
 	settingService service.SettingService
 	userService    service.UserService
+	inboundService service.InboundService
 	tgbot          service.Tgbot
 }
 
@@ -151,7 +152,7 @@ func (a *IndexController) register(c *gin.Context) {
 		}
 	}
 
-	err = a.userService.RegisterUser(form.Username, form.Password)
+	err = a.userService.RegisterUser(form.Username, form.Password, &a.inboundService)
 	if err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "already exists") {

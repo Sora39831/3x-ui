@@ -190,23 +190,31 @@ func (s *InboundService) checkEmailExistForInbound(inbound *model.Inbound) (stri
 	if err != nil {
 		return "", err
 	}
-	allEmails, err := s.getAllEmails()
-	if err != nil {
-		return "", err
-	}
 	var emails []string
 	for _, client := range clients {
 		if client.Email != "" {
 			if s.contains(emails, client.Email) {
 				return client.Email, nil
 			}
-			if s.contains(allEmails, client.Email) {
-				return client.Email, nil
-			}
 			emails = append(emails, client.Email)
 		}
 	}
 	return "", nil
+}
+
+// checkEmailExistInInbound checks if an email already exists in a specific inbound's clients.
+func (s *InboundService) checkEmailExistInInbound(inbound *model.Inbound, email string) (bool, error) {
+	clients, err := s.GetClients(inbound)
+	if err != nil {
+		return false, err
+	}
+	lowerEmail := strings.ToLower(email)
+	for _, client := range clients {
+		if strings.ToLower(client.Email) == lowerEmail {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // AddInbound creates a new inbound configuration.
@@ -582,19 +590,25 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 			interfaceClients[i] = cm
 		}
 	}
-	existEmail, err := s.checkEmailsExistForClients(clients)
-	if err != nil {
-		return false, err
-	}
-	if existEmail != "" {
-		return false, common.NewError("Duplicate email:", existEmail)
-	}
 
 	oldInbound, err := s.GetInbound(data.Id)
 	if err != nil {
 		return false, err
 	}
 
+	// Check email uniqueness within this inbound only
+	for _, client := range clients {
+		if client.Email == "" {
+			continue
+		}
+		exists, err := s.checkEmailExistInInbound(oldInbound, client.Email)
+		if err != nil {
+			return false, err
+		}
+		if exists {
+			return false, common.NewError("Duplicate email in this inbound:", client.Email)
+		}
+	}
 	// Secure client ID
 	for _, client := range clients {
 		switch oldInbound.Protocol {
@@ -818,14 +832,25 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 	}
 
 	if len(clients[0].Email) > 0 && clients[0].Email != oldEmail {
-		existEmail, err := s.checkEmailsExistForClients(clients)
+		oldInbound, err := s.GetInbound(data.Id)
 		if err != nil {
 			return false, err
 		}
-		if existEmail != "" {
-			return false, common.NewError("Duplicate email:", existEmail)
+
+		// Check email uniqueness within this inbound only
+		for _, client := range clients {
+			if client.Email == "" {
+				continue
+			}
+			exists, err := s.checkEmailExistInInbound(oldInbound, client.Email)
+			if err != nil {
+				return false, err
+			}
+			if exists {
+				return false, common.NewError("Duplicate email in this inbound:", client.Email)
+			}
 		}
-	}
+}
 
 	var oldSettings map[string]any
 	err = json.Unmarshal([]byte(oldInbound.Settings), &oldSettings)

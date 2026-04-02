@@ -106,7 +106,21 @@ func runSeeders(isUsersEmpty bool) error {
 			hashSeeder := &model.HistoryOfSeeders{
 				SeederName: "UserPasswordHash",
 			}
-			return db.Create(hashSeeder).Error
+			if err := db.Create(hashSeeder).Error; err != nil {
+				return err
+			}
+		}
+
+		if !slices.Contains(seedersHistory, "RemoveClientTrafficEmailUnique") {
+			// Drop the old unique index on client_traffics.email to allow
+			// the same email across multiple inbounds
+			db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email")
+			uniqueSeeder := &model.HistoryOfSeeders{
+				SeederName: "RemoveClientTrafficEmailUnique",
+			}
+			if err := db.Create(uniqueSeeder).Error; err != nil {
+				return err
+			}
 		}
 	}
 
