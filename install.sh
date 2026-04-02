@@ -480,9 +480,6 @@ ssl_cert_issue() {
         chmod 644 $certPath/fullchain.pem 2>/dev/null
     fi
 
-    # 启动面板
-    systemctl start x-ui 2>/dev/null || rc-service x-ui start 2>/dev/null
-
     # 证书安装成功后提示用户为面板设置证书路径
     read -rp "是否要为面板设置此证书？(y/n)：" setPanel
     if [[ "$setPanel" == "y" || "$setPanel" == "Y" ]]; then
@@ -1044,7 +1041,7 @@ install_x-ui() {
             chmod 644 ${xui_service}/x-ui.service >/dev/null 2>&1
             systemctl daemon-reload
             systemctl enable x-ui
-            systemctl start x-ui
+            systemctl restart x-ui
         else
             echo -e "${red}安装 x-ui.service 文件失败${plain}"
             exit 1
