@@ -5,8 +5,6 @@ on:
   push:
     tags:
       - "v*.*.*"
-  release:
-    types: [created]
   pull_request:
     paths:
       - '**.js'
@@ -181,16 +179,16 @@ jobs:
           name: x-ui-linux-${{ matrix.platform }}
           path: ./x-ui-linux-${{ matrix.platform }}.tar.gz
 
-      - name: Upload files to GH release
-        uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'release'
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
-          file: x-ui-linux-${{ matrix.platform }}.tar.gz
-          asset_name: x-ui-linux-${{ matrix.platform }}.tar.gz
-          overwrite: true
-          prerelease: true
+      - name: Create release and upload assets
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --prerelease --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" x-ui-linux-${{ matrix.platform }}.tar.gz --clobber
 
   # =================================
   #  Windows Build (disabled)
