@@ -312,6 +312,15 @@
 "requestHeader" = "Header yêu cầu"
 "responseHeader" = "Header phản hồi"
 
+[pages.user]
+"title" = "Bảng điều khiển người dùng"
+"username" = "Tên người dùng"
+"upload" = "Tải lên"
+"download" = "Tải xuống"
+"totalTraffic" = "Tổng lưu lượng"
+"expiryTime" = "Thời gian hết hạn"
+"status" = "Trạng thái"
+
 [pages.settings]
 "title" = "Cài đặt"
 "save" = "Lưu"

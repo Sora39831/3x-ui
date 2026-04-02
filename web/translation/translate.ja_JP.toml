@@ -312,6 +312,15 @@
 "requestHeader" = "リクエストヘッダー"
 "responseHeader" = "レスポンスヘッダー"
 
+[pages.user]
+"title" = "ユーザーダッシュボード"
+"username" = "ユーザー名"
+"upload" = "アップロード"
+"download" = "ダウンロード"
+"totalTraffic" = "合計トラフィック"
+"expiryTime" = "有効期限"
+"status" = "ステータス"
+
 [pages.settings]
 "title" = "パネル設定"
 "save" = "保存"

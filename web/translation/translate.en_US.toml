@@ -317,6 +317,15 @@
 "requestHeader" = "Request Header"
 "responseHeader" = "Response Header"
 
+[pages.user]
+"title" = "User Dashboard"
+"username" = "Username"
+"upload" = "Upload"
+"download" = "Download"
+"totalTraffic" = "Total Traffic"
+"expiryTime" = "Expiry Time"
+"status" = "Status"
+
 [pages.settings]
 "title" = "Panel Settings"
 "save" = "Save"

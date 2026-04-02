@@ -312,6 +312,15 @@
 "requestHeader" = "Cabeçalho da Requisição"
 "responseHeader" = "Cabeçalho da Resposta"
 
+[pages.user]
+"title" = "Painel do Usuário"
+"username" = "Nome de Usuário"
+"upload" = "Upload"
+"download" = "Download"
+"totalTraffic" = "Tráfego Total"
+"expiryTime" = "Data de Expiração"
+"status" = "Status"
+
 [pages.settings]
 "title" = "Configurações do Painel"
 "save" = "Salvar"

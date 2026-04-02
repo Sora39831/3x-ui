@@ -312,6 +312,15 @@
 "requestHeader" = "رأس الطلب"
 "responseHeader" = "رأس الرد"
 
+[pages.user]
+"title" = "لوحة المستخدم"
+"username" = "اسم المستخدم"
+"upload" = "الرفع"
+"download" = "التحميل"
+"totalTraffic" = "إجمالي حركة المرور"
+"expiryTime" = "تاريخ الانتهاء"
+"status" = "الحالة"
+
 [pages.settings]
 "title" = "إعدادات البانل"
 "save" = "حفظ"

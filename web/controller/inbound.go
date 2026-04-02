@@ -48,6 +48,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/resetAllClientTraffics/:id", a.resetAllClientTraffics)
 	g.POST("/delDepletedClients/:id", a.delDepletedClients)
 	g.POST("/import", a.importInbound)
+	g.GET("/userInfo", a.getUserInfo)
 	g.POST("/onlines", a.onlines)
 	g.POST("/lastOnline", a.lastOnline)
 	g.POST("/updateClientTraffic/:email", a.updateClientTraffic)
@@ -453,4 +454,15 @@ func (a *InboundController) delInboundClientByEmail(c *gin.Context) {
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}
+}
+
+// getUserInfo returns client traffic information for the logged-in user.
+func (a *InboundController) getUserInfo(c *gin.Context) {
+	user := session.GetLoginUser(c)
+	traffic, err := a.inboundService.GetClientTrafficByEmail(user.Username)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.trafficGetError"), err)
+		return
+	}
+	jsonObj(c, traffic, nil)
 }

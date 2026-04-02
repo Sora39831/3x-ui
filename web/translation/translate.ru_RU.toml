@@ -312,6 +312,15 @@
 "requestHeader" = "Заголовок запроса"
 "responseHeader" = "Заголовок ответа"
 
+[pages.user]
+"title" = "Панель пользователя"
+"username" = "Имя пользователя"
+"upload" = "Загрузка"
+"download" = "Скачивание"
+"totalTraffic" = "Общий трафик"
+"expiryTime" = "Срок действия"
+"status" = "Статус"
+
 [pages.settings]
 "title" = "Настройки"
 "save" = "Сохранить"

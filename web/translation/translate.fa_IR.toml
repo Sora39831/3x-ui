@@ -312,6 +312,15 @@
 "requestHeader" = "سربرگ درخواست"
 "responseHeader" = "سربرگ پاسخ"
 
+[pages.user]
+"title" = "داشبورد کاربر"
+"username" = "نام کاربری"
+"upload" = "آپلود"
+"download" = "دانلود"
+"totalTraffic" = "ترافیک کل"
+"expiryTime" = "زمان انقضا"
+"status" = "وضعیت"
+
 [pages.settings]
 "title" = "تنظیمات پنل"
 "save" = "ذخیره"

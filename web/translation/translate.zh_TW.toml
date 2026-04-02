@@ -312,6 +312,15 @@
 "requestHeader" = "請求頭"
 "responseHeader" = "響應頭"
 
+[pages.user]
+"title" = "用戶面板"
+"username" = "用戶名"
+"upload" = "上傳"
+"download" = "下載"
+"totalTraffic" = "總流量"
+"expiryTime" = "到期時間"
+"status" = "狀態"
+
 [pages.settings]
 "title" = "面板設定"
 "save" = "儲存"

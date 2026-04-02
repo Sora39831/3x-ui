@@ -62,7 +62,12 @@ func (a *IndexController) initRouter(g *gin.RouterGroup) {
 // index handles the root route, redirecting logged-in users to the panel or showing the login page.
 func (a *IndexController) index(c *gin.Context) {
 	if session.IsLogin(c) {
-		c.Redirect(http.StatusTemporaryRedirect, "panel/")
+		user := session.GetLoginUser(c)
+		if user.Role == "admin" {
+			c.Redirect(http.StatusTemporaryRedirect, "panel/")
+		} else {
+			c.Redirect(http.StatusTemporaryRedirect, "panel/user")
+		}
 		return
 	}
 	html(c, "login.html", "pages.login.title", nil)

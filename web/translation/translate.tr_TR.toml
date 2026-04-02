@@ -312,6 +312,15 @@
 "requestHeader" = "İstek Başlığı"
 "responseHeader" = "Yanıt Başlığı"
 
+[pages.user]
+"title" = "Kullanıcı Paneli"
+"username" = "Kullanıcı Adı"
+"upload" = "Yükleme"
+"download" = "İndirme"
+"totalTraffic" = "Toplam Trafik"
+"expiryTime" = "Bitiş Tarihi"
+"status" = "Durum"
+
 [pages.settings]
 "title" = "Panel Ayarları"
 "save" = "Kaydet"

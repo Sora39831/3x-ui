@@ -312,6 +312,15 @@
 "requestHeader" = "Заголовок запиту"
 "responseHeader" = "Заголовок відповіді"
 
+[pages.user]
+"title" = "Панель користувача"
+"username" = "Ім'я користувача"
+"upload" = "Завантаження"
+"download" = "Завантаження"
+"totalTraffic" = "Загальний трафік"
+"expiryTime" = "Термін дії"
+"status" = "Статус"
+
 [pages.settings]
 "title" = "Параметри панелі"
 "save" = "Зберегти"

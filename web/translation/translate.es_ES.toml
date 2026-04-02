@@ -312,6 +312,15 @@
 "requestHeader" = "Encabezado de solicitud"
 "responseHeader" = "Encabezado de respuesta"
 
+[pages.user]
+"title" = "Panel de Usuario"
+"username" = "Nombre de usuario"
+"upload" = "Subida"
+"download" = "Descarga"
+"totalTraffic" = "Tráfico Total"
+"expiryTime" = "Fecha de Expiración"
+"status" = "Estado"
+
 [pages.settings]
 "title" = "Configuraciones"
 "save" = "Guardar"

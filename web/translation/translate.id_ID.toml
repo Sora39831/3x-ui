@@ -312,6 +312,15 @@
 "requestHeader" = "Header Permintaan"
 "responseHeader" = "Header Respons"
 
+[pages.user]
+"title" = "Dasbor Pengguna"
+"username" = "Nama Pengguna"
+"upload" = "Unggah"
+"download" = "Unduh"
+"totalTraffic" = "Total Lalu Lintas"
+"expiryTime" = "Waktu Kedaluwarsa"
+"status" = "Status"
+
 [pages.settings]
 "title" = "Pengaturan Panel"
 "save" = "Simpan"
