@@ -3,10 +3,11 @@ name: Release 3X-UI
 on:
   workflow_dispatch:
   push:
-    branches:
-      - '**'
     tags:
       - "v*.*.*"
+  release:
+    types: [created]
+  pull_request:
     paths:
       - '**.js'
       - '**.css'
@@ -18,7 +19,6 @@ on:
       - 'x-ui.service.debian'
       - 'x-ui.service.arch'
       - 'x-ui.service.rhel'
-  pull_request:
 
 jobs:
   analyze:
@@ -66,12 +66,18 @@ jobs:
       matrix:
         platform:
           - amd64
-          - arm64
-          - armv7
-          - armv6
-          - 386
-          - armv5
-          - s390x
+          # 手动注释，请勿更改
+          # - arm64
+          # 手动注释，请勿更改
+          # - armv7
+          # 手动注释，请勿更改
+          # - armv6
+          # 手动注释，请勿更改
+          # - 386
+          # 手动注释，请勿更改
+          # - armv5
+          # 手动注释，请勿更改
+          # - s390x
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -114,7 +120,7 @@ jobs:
           go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o xui-release -v main.go
           file xui-release
           ldd xui-release || echo "Static binary confirmed"
-          
+
           mkdir x-ui
           cp xui-release x-ui/
           cp x-ui.service.debian x-ui/
@@ -124,7 +130,7 @@ jobs:
           mv x-ui/xui-release x-ui/x-ui
           mkdir x-ui/bin
           cd x-ui/bin
-          
+
           # Download dependencies
           Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.2.6/"
           if [ "${{ matrix.platform }}" == "amd64" ]; then
@@ -165,7 +171,7 @@ jobs:
           wget -q -O geosite_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
           mv xray xray-linux-${{ matrix.platform }}
           cd ../..
-          
+
       - name: Package
         run: tar -zcvf x-ui-linux-${{ matrix.platform }}.tar.gz x-ui
 
@@ -177,7 +183,7 @@ jobs:
 
       - name: Upload files to GH release
         uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'release'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}
@@ -197,7 +203,8 @@ jobs:
     strategy:
       matrix:
         platform:
-          - amd64
+          # 手动注释，请勿更改
+          # - amd64
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -242,7 +249,7 @@ jobs:
           Copy-Item xui-release.exe x-ui\x-ui.exe
           mkdir x-ui\bin
           cd x-ui\bin
-          
+
           # Download Xray for Windows
           $Xray_URL = "https://github.com/XTLS/Xray-core/releases/download/v26.2.6/"
           Invoke-WebRequest -Uri "${Xray_URL}Xray-windows-64.zip" -OutFile "Xray-windows-64.zip"
@@ -273,7 +280,7 @@ jobs:
 
       - name: Upload files to GH release
         uses: svenstaro/upload-release-action@v2
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        if: github.event_name == 'release'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.ref_name }}
