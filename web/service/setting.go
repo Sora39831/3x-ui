@@ -106,7 +106,7 @@ var defaultValueMap = map[string]string{
 	"ldapDefaultLimitIP":    "0",
 
 	// Registration settings
-	"turnstileSiteKey":    "",
+	"turnstileSiteKey":   "",
 	"turnstileSecretKey": "",
 }
 
