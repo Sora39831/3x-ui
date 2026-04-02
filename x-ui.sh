@@ -188,6 +188,22 @@ uninstall() {
         return 0
     fi
 
+    # 询问是否吊销证书
+    local domains=$(find /root/cert/ -mindepth 1 -maxdepth 1 -type d -exec basename {} \; 2>/dev/null)
+    if [[ -n "$domains" ]]; then
+        echo ""
+        echo "检测到以下证书："
+        echo "$domains"
+        confirm "是否要吊销所有证书？" "n"
+        if [[ $? == 0 ]]; then
+            for domain in $domains; do
+                ~/.acme.sh/acme.sh --revoke -d "${domain}" 2>/dev/null
+                LOGI "域名 $domain 的证书已吊销"
+            done
+            rm -rf /root/cert/
+        fi
+    fi
+
     if [[ $release == "alpine" ]]; then
         rc-service x-ui stop
         rc-update del x-ui
@@ -268,15 +284,21 @@ reset_webbasepath() {
 }
 
 reset_config() {
-    confirm "确定要重置所有面板设置吗？账户数据不会丢失，用户名和密码不会改变" "n"
+    confirm "确定要重置所有面板设置吗？这将清除面板的端口、路径、证书等配置，但不会删除账户数据和流量数据。" "n"
     if [[ $? != 0 ]]; then
         if [[ $# == 0 ]]; then
             show_menu
         fi
         return 0
     fi
+
+    # 重置面板证书配置
+    ${xui_folder}/x-ui cert -reset 2>/dev/null
+    # 重置面板设置（端口、路径等）
     ${xui_folder}/x-ui setting -reset
+
     echo -e "所有面板设置已重置为默认值。"
+    echo -e "${yellow}面板将使用默认端口 2053 和随机用户名/密码重新启动。${plain}"
     restart
 }
 

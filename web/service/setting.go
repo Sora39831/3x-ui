@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
@@ -104,6 +106,69 @@ var defaultValueMap = map[string]string{
 	"ldapDefaultLimitIP":    "0",
 }
 
+// loadSettings reads the JSON settings file into a map.
+// If the file doesn't exist, it creates one from defaultValueMap (excluding xrayTemplateConfig).
+func loadSettings() (map[string]string, error) {
+	path := config.GetSettingPath()
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		settings := make(map[string]string)
+		for k, v := range defaultValueMap {
+			if k == "xrayTemplateConfig" {
+				continue
+			}
+			settings[k] = v
+		}
+		return settings, saveSettings(settings)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var settings map[string]string
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, fmt.Errorf("failed to parse settings file %s: %w", path, err)
+	}
+	return settings, nil
+}
+
+// saveSettings writes the settings map to the JSON file.
+func saveSettings(settings map[string]string) error {
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(config.GetSettingPath(), data, 0644)
+}
+
+// getXrayTemplateConfigFromDB reads xrayTemplateConfig directly from the database.
+func getXrayTemplateConfigFromDB() (string, error) {
+	db := database.GetDB()
+	setting := &model.Setting{}
+	err := db.Model(model.Setting{}).Where("key = ?", "xrayTemplateConfig").First(setting).Error
+	if err != nil {
+		return "", err
+	}
+	return setting.Value, nil
+}
+
+// saveXrayTemplateConfigToDB writes xrayTemplateConfig directly to the database.
+func saveXrayTemplateConfigToDB(value string) error {
+	db := database.GetDB()
+	setting := &model.Setting{}
+	err := db.Model(model.Setting{}).Where("key = ?", "xrayTemplateConfig").First(setting).Error
+	if database.IsNotFound(err) {
+		return db.Create(&model.Setting{
+			Key:   "xrayTemplateConfig",
+			Value: value,
+		}).Error
+	}
+	if err != nil {
+		return err
+	}
+	setting.Value = value
+	return db.Save(setting).Error
+}
+
 // SettingService provides business logic for application settings management.
 // It handles configuration storage, retrieval, and validation for all system settings.
 type SettingService struct{}
@@ -118,9 +183,7 @@ func (s *SettingService) GetDefaultJSONConfig() (any, error) {
 }
 
 func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
-	db := database.GetDB()
-	settings := make([]*model.Setting, 0)
-	err := db.Model(model.Setting{}).Not("key = ?", "xrayTemplateConfig").Find(&settings).Error
+	settings, err := loadSettings()
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +211,6 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 		}
 
 		if !found {
-			// Some settings are automatically generated, no need to return to the front end to modify the user
 			return nil
 		}
 
@@ -171,15 +233,18 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 	}
 
 	keyMap := map[string]bool{}
-	for _, setting := range settings {
-		err := setSetting(setting.Key, setting.Value)
+	for key, value := range settings {
+		err := setSetting(key, value)
 		if err != nil {
 			return nil, err
 		}
-		keyMap[setting.Key] = true
+		keyMap[key] = true
 	}
 
 	for key, value := range defaultValueMap {
+		if key == "xrayTemplateConfig" {
+			continue
+		}
 		if keyMap[key] {
 			continue
 		}
@@ -193,53 +258,41 @@ func (s *SettingService) GetAllSetting() (*entity.AllSetting, error) {
 }
 
 func (s *SettingService) ResetSettings() error {
-	db := database.GetDB()
-	err := db.Where("1 = 1").Delete(model.Setting{}).Error
-	if err != nil {
+	// Delete the JSON settings file
+	err := os.Remove(config.GetSettingPath())
+	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	return db.Model(model.User{}).
-		Where("1 = 1").Error
-}
-
-func (s *SettingService) getSetting(key string) (*model.Setting, error) {
-	db := database.GetDB()
-	setting := &model.Setting{}
-	err := db.Model(model.Setting{}).Where("key = ?", key).First(setting).Error
-	if err != nil {
-		return nil, err
+	// Reset certificate settings to empty
+	if err := s.SetCertFile(""); err != nil {
+		return err
 	}
-	return setting, nil
+	return s.SetKeyFile("")
 }
 
 func (s *SettingService) saveSetting(key string, value string) error {
-	setting, err := s.getSetting(key)
-	db := database.GetDB()
-	if database.IsNotFound(err) {
-		return db.Create(&model.Setting{
-			Key:   key,
-			Value: value,
-		}).Error
-	} else if err != nil {
+	settings, err := loadSettings()
+	if err != nil {
 		return err
 	}
-	setting.Key = key
-	setting.Value = value
-	return db.Save(setting).Error
+	settings[key] = value
+	return saveSettings(settings)
 }
 
 func (s *SettingService) getString(key string) (string, error) {
-	setting, err := s.getSetting(key)
-	if database.IsNotFound(err) {
-		value, ok := defaultValueMap[key]
-		if !ok {
-			return "", common.NewErrorf("key <%v> not in defaultValueMap", key)
-		}
-		return value, nil
-	} else if err != nil {
+	settings, err := loadSettings()
+	if err != nil {
 		return "", err
 	}
-	return setting.Value, nil
+	value, ok := settings[key]
+	if !ok {
+		defaultValue, hasDefault := defaultValueMap[key]
+		if !hasDefault {
+			return "", common.NewErrorf("key <%v> not in defaultValueMap", key)
+		}
+		return defaultValue, nil
+	}
+	return value, nil
 }
 
 func (s *SettingService) setString(key string, value string) error {
@@ -271,7 +324,12 @@ func (s *SettingService) setInt(key string, value int) error {
 }
 
 func (s *SettingService) GetXrayConfigTemplate() (string, error) {
-	return s.getString("xrayTemplateConfig")
+	config, err := getXrayTemplateConfigFromDB()
+	if err != nil {
+		// If not in DB, return the embedded default
+		return xrayTemplateConfig, nil
+	}
+	return config, nil
 }
 
 func (s *SettingService) GetXrayOutboundTestUrl() (string, error) {
@@ -693,20 +751,20 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
 		return err
 	}
 
+	settings, err := loadSettings()
+	if err != nil {
+		return err
+	}
+
 	v := reflect.ValueOf(allSetting).Elem()
 	t := reflect.TypeFor[entity.AllSetting]()
 	fields := reflect_util.GetFields(t)
-	errs := make([]error, 0)
 	for _, field := range fields {
 		key := field.Tag.Get("json")
 		fieldV := v.FieldByName(field.Name)
-		value := fmt.Sprint(fieldV.Interface())
-		err := s.saveSetting(key, value)
-		if err != nil {
-			errs = append(errs, err)
-		}
+		settings[key] = fmt.Sprint(fieldV.Interface())
 	}
-	return common.Combine(errs...)
+	return saveSettings(settings)
 }
 
 func (s *SettingService) GetDefaultXrayConfig() (any, error) {
