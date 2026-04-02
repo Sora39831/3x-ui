@@ -118,7 +118,7 @@
                         </a-form-item>
                         <a-form-item>
                           <div class="cf-turnstile-wrapper">
-                            <div class="cf-turnstile" :data-sitekey="turnstileSiteKey" data-callback="onTurnstileCallback"></div>
+                            <div class="cf-turnstile" :data-sitekey="turnstileSiteKey" data-callback="onTurnstileCallback" :data-size="turnstileSize"></div>
                           </div>
                         </a-form-item>
                         <a-form-item>
@@ -174,6 +174,11 @@
       if (this.turnstileSiteKey) {
         this.loadTurnstileScript();
       }
+    },
+    computed: {
+      turnstileSize() {
+        return window.innerWidth < 480 ? 'compact' : 'normal';
+      },
     },
     methods: {
       switchTab(key) {
