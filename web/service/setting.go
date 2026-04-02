@@ -111,6 +111,7 @@ var defaultValueMap = map[string]string{
 
 // loadSettings reads the JSON settings file into a map.
 // If the file doesn't exist, it creates one from defaultValueMap (excluding xrayTemplateConfig).
+// If the file exists, missing keys from defaultValueMap are merged in (supports new fields added after install).
 func loadSettings() (map[string]string, error) {
 	path := config.GetSettingPath()
 	data, err := os.ReadFile(path)
@@ -130,6 +131,22 @@ func loadSettings() (map[string]string, error) {
 	var settings map[string]string
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return nil, fmt.Errorf("failed to parse settings file %s: %w", path, err)
+	}
+	// Merge missing keys from defaults so new fields are picked up on upgrade
+	needsSave := false
+	for k, v := range defaultValueMap {
+		if k == "xrayTemplateConfig" {
+			continue
+		}
+		if _, exists := settings[k]; !exists {
+			settings[k] = v
+			needsSave = true
+		}
+	}
+	if needsSave {
+		if err := saveSettings(settings); err != nil {
+			return nil, fmt.Errorf("failed to save merged settings: %w", err)
+		}
 	}
 	return settings, nil
 }
