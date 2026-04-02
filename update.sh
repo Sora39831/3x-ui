@@ -756,8 +756,8 @@ get_releases() {
         fi
     fi
 
-    latest_stable=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":false' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    latest_prerelease=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":true' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_stable=$(echo "$releases_json" | tr '{' '\n' | grep -B5 '"prerelease": false' | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_prerelease=$(echo "$releases_json" | tr '{' '\n' | grep -B5 '"prerelease": true' | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
 
     if [[ -z "$latest_stable" && -z "$latest_prerelease" ]]; then
         _fail "ERROR: Failed to fetch x-ui version"

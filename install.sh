@@ -884,10 +884,10 @@ get_releases() {
     fi
 
     # Parse first non-prerelease tag_name
-    latest_stable=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":false' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_stable=$(echo "$releases_json" | tr '{' '\n' | grep -B5 '"prerelease": false' | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
 
     # Parse first prerelease tag_name
-    latest_prerelease=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":true' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_prerelease=$(echo "$releases_json" | tr '{' '\n' | grep -B5 '"prerelease": true' | grep '"tag_name":' | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
 
     if [[ -z "$latest_stable" && -z "$latest_prerelease" ]]; then
         echo -e "${red}获取 x-ui 版本失败${plain}"
