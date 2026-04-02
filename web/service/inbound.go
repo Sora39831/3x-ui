@@ -850,7 +850,7 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 				return false, common.NewError("Duplicate email in this inbound:", client.Email)
 			}
 		}
-}
+	}
 
 	var oldSettings map[string]any
 	err = json.Unmarshal([]byte(oldInbound.Settings), &oldSettings)
