@@ -111,6 +111,8 @@
 "successRegister" = "登録が完了しました。ログインしてください。"
 "userExists" = "ユーザー名は既に存在します"
 "errorRegister" = "登録に失敗しました"
+"invalidUsername" = "ユーザー名は3〜64文字で入力してください"
+"invalidPassword" = "パスワードは8〜128文字で入力してください"
 
 [pages.index]
 "title" = "システムステータス"

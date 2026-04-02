@@ -111,6 +111,8 @@
 "successRegister" = "Kayıt başarılı, lütfen giriş yapın."
 "userExists" = "Kullanıcı adı zaten mevcut"
 "errorRegister" = "Kayıt başarısız"
+"invalidUsername" = "Kullanıcı adı 3-64 karakter olmalıdır"
+"invalidPassword" = "Şifre 8-128 karakter olmalıdır"
 
 [pages.index]
 "title" = "Genel Bakış"

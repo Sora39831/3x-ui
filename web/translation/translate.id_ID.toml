@@ -111,6 +111,8 @@
 "successRegister" = "Pendaftaran berhasil, silakan masuk."
 "userExists" = "Nama pengguna sudah ada"
 "errorRegister" = "Pendaftaran gagal"
+"invalidUsername" = "Nama pengguna harus 3-64 karakter"
+"invalidPassword" = "Kata sandi harus 8-128 karakter"
 
 [pages.index]
 "title" = "Ikhtisar"

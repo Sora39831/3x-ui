@@ -106,7 +106,7 @@ type AllSetting struct {
 
 	// Registration settings
 	TurnstileSiteKey   string `json:"turnstileSiteKey" form:"turnstileSiteKey"`
-	TurnstileSecretKey string `json:"turnstileSecretKey" form:"turnstileSecretKey"`
+	TurnstileSecretKey string `json:"-" form:"-"` // server-side only, never sent to frontend
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.

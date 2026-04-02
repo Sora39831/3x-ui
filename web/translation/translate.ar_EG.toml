@@ -111,6 +111,8 @@
 "successRegister" = "تم التسجيل بنجاح، يرجى تسجيل الدخول."
 "userExists" = "اسم المستخدم موجود بالفعل"
 "errorRegister" = "فشل التسجيل"
+"invalidUsername" = "يجب أن يكون اسم المستخدم بين 3 و 64 حرفًا"
+"invalidPassword" = "يجب أن تكون كلمة المرور بين 8 و 128 حرفًا"
 
 [pages.index]
 "title" = "نظرة عامة"

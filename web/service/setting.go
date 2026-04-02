@@ -959,6 +959,10 @@ func (s *SettingService) GetTurnstileSecretKey() (string, error) {
 	return s.getString("turnstileSecretKey")
 }
 
+func (s *SettingService) SetTurnstileSecretKey(value string) error {
+	return s.setString("turnstileSecretKey", value)
+}
+
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
 	if err := allSetting.CheckValid(); err != nil {
 		return err
@@ -974,6 +978,9 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
 	fields := reflect_util.GetFields(t)
 	for _, field := range fields {
 		key := field.Tag.Get("json")
+		if key == "-" || key == "" {
+			continue
+		}
 		fieldV := v.FieldByName(field.Name)
 		settings[key] = fmt.Sprint(fieldV.Interface())
 	}

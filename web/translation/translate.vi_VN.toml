@@ -111,6 +111,8 @@
 "successRegister" = "Đăng ký thành công, vui lòng đăng nhập."
 "userExists" = "Tên người dùng đã tồn tại"
 "errorRegister" = "Đăng ký thất bại"
+"invalidUsername" = "Tên người dùng phải từ 3-64 ký tự"
+"invalidPassword" = "Mật khẩu phải từ 8-128 ký tự"
 
 [pages.index]
 "title" = "Trạng thái hệ thống"

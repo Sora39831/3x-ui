@@ -111,6 +111,8 @@
 "successRegister" = "Registro bem-sucedido, por favor faça login."
 "userExists" = "Nome de usuário já existe"
 "errorRegister" = "Falha no registro"
+"invalidUsername" = "O nome de usuário deve ter entre 3 e 64 caracteres"
+"invalidPassword" = "A senha deve ter entre 8 e 128 caracteres"
 
 [pages.index]
 "title" = "Visão Geral"

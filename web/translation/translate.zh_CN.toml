@@ -116,6 +116,8 @@
 "successRegister" = "注册成功，请登录。"
 "userExists" = "用户名已存在"
 "errorRegister" = "注册失败"
+"invalidUsername" = "用户名长度必须为3-64个字符"
+"invalidPassword" = "密码长度必须为8-128个字符"
 
 [pages.index]
 "title" = "系统状态"

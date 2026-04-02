@@ -15,6 +15,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrUsernameAlreadyExists is returned when a user tries to register with a taken username.
+var ErrUsernameAlreadyExists = errors.New("username already exists")
+
 // UserService provides business logic for user management and authentication.
 // It handles user creation, login, password management, and 2FA operations.
 type UserService struct {
@@ -152,8 +155,9 @@ func (s *UserService) RegisterUser(username string, password string, inboundServ
 			Role:     "user",
 		}
 		if err := tx.Create(user).Error; err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") || strings.Contains(err.Error(), "Duplicate") {
-				return errors.New("username already exists")
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "UNIQUE constraint failed") || strings.Contains(errMsg, "Duplicate") {
+				return ErrUsernameAlreadyExists
 			}
 			return err
 		}
