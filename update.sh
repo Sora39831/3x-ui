@@ -745,6 +745,47 @@ config_after_update() {
     fi
 }
 
+get_releases() {
+    local releases_json
+    releases_json=$(${curl_bin} -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases" 2>/dev/null)
+    if [[ -z "$releases_json" ]]; then
+        echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
+        releases_json=$(${curl_bin} -4 -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases" 2>/dev/null)
+        if [[ -z "$releases_json" ]]; then
+            _fail "ERROR: Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later"
+        fi
+    fi
+
+    latest_stable=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":false' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_prerelease=$(echo "$releases_json" | tr '{' '\n' | grep '"prerelease":true' | head -1 | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [[ -z "$latest_stable" && -z "$latest_prerelease" ]]; then
+        _fail "ERROR: Failed to fetch x-ui version"
+    fi
+}
+
+select_version() {
+    if [[ -n "$latest_stable" && -n "$latest_prerelease" ]]; then
+        echo ""
+        echo -e "${green}Which version do you want to update to?${plain}"
+        echo -e "${green}1)${plain} Latest Stable: ${latest_stable}"
+        echo -e "${green}2)${plain} Latest Pre-release: ${latest_prerelease}"
+        read -rp "Please enter your choice [1-2]: " version_choice
+        while [[ "$version_choice" != "1" && "$version_choice" != "2" ]]; do
+            read -rp "Invalid input, please re-enter [1-2]: " version_choice
+        done
+        if [[ "$version_choice" == "1" ]]; then
+            tag_version="$latest_stable"
+        else
+            tag_version="$latest_prerelease"
+        fi
+    elif [[ -n "$latest_stable" ]]; then
+        tag_version="$latest_stable"
+    else
+        tag_version="$latest_prerelease"
+    fi
+}
+
 update_x-ui() {
     cd ${xui_folder%/x-ui}/
     
@@ -757,15 +798,9 @@ update_x-ui() {
     
     echo -e "${green}Downloading new x-ui version...${plain}"
     
-    tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    if [[ ! -n "$tag_version" ]]; then
-        echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-        tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/Sora39831/3x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$tag_version" ]]; then
-            _fail "ERROR: Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later"
-        fi
-    fi
-    echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
+    get_releases
+    select_version
+    echo -e "Got x-ui version: ${tag_version}, beginning the installation..."
     ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/Sora39831/3x-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2>/dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
