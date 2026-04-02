@@ -101,6 +101,11 @@
 "hello" = "Hello"
 "title" = "Welcome"
 "loginAgain" = "Your session has expired, please log in again"
+"loginTab" = "Login"
+"registerTab" = "Register"
+"confirmPassword" = "Confirm Password"
+"passwordMismatch" = "Passwords do not match"
+"turnstileRequired" = "Please complete the verification"
 
 [pages.login.toasts]
 "invalidFormData" = "The Input data format is invalid."
@@ -108,6 +113,7 @@
 "emptyPassword" = "Password is required"
 "wrongUsernameOrPassword" = "Invalid username or password or two-factor code."
 "successLogin" = " You have successfully logged into your account."
+"successRegister" = "Registration successful, please log in."
 
 [pages.index]
 "title" = "Overview"

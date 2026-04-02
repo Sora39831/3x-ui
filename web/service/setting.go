@@ -104,6 +104,9 @@ var defaultValueMap = map[string]string{
 	"ldapDefaultTotalGB":    "0",
 	"ldapDefaultExpiryDays": "0",
 	"ldapDefaultLimitIP":    "0",
+
+	// Registration settings
+	"turnstileSiteKey": "",
 }
 
 // loadSettings reads the JSON settings file into a map.
@@ -744,6 +747,10 @@ func (s *SettingService) GetLdapDefaultExpiryDays() (int, error) {
 
 func (s *SettingService) GetLdapDefaultLimitIP() (int, error) {
 	return s.getInt("ldapDefaultLimitIP")
+}
+
+func (s *SettingService) GetTurnstileSiteKey() (string, error) {
+	return s.getString("turnstileSiteKey")
 }
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
