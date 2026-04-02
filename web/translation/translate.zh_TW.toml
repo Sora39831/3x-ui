@@ -108,6 +108,9 @@
 "emptyPassword" = "請輸入密碼"
 "wrongUsernameOrPassword" = "用戶名、密碼或雙重驗證碼無效。"
 "successLogin" = "您已成功登入您的帳戶。"
+"successRegister" = "註冊成功，請登入。"
+"userExists" = "使用者名稱已存在"
+"errorRegister" = "註冊失敗"
 
 [pages.index]
 "title" = "系統狀態"

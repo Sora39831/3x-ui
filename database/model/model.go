@@ -26,8 +26,9 @@ const (
 // User represents a user account in the 3x-ui panel.
 type User struct {
 	Id       int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	Username string `json:"username"`
+	Username string `json:"username" gorm:"uniqueIndex"`
 	Password string `json:"password"`
+	Role     string `json:"role" gorm:"default:user"`
 }
 
 // Inbound represents an Xray inbound configuration with traffic statistics and settings.

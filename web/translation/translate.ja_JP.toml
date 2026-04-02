@@ -108,6 +108,9 @@
 "emptyPassword" = "パスワードを入力してください"
 "wrongUsernameOrPassword" = "ユーザー名、パスワード、または二段階認証コードが無効です。"
 "successLogin" = "アカウントに正常にログインしました。"
+"successRegister" = "登録が完了しました。ログインしてください。"
+"userExists" = "ユーザー名は既に存在します"
+"errorRegister" = "登録に失敗しました"
 
 [pages.index]
 "title" = "システムステータス"

@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"text/template"
 	"time"
 
@@ -19,6 +20,13 @@ type LoginForm struct {
 	Username      string `json:"username" form:"username"`
 	Password      string `json:"password" form:"password"`
 	TwoFactorCode string `json:"twoFactorCode" form:"twoFactorCode"`
+}
+
+// RegisterForm represents the registration request structure.
+type RegisterForm struct {
+	Username       string `json:"username" form:"username"`
+	Password       string `json:"password" form:"password"`
+	TurnstileToken string `json:"turnstileToken" form:"turnstileToken"`
 }
 
 // IndexController handles the main index and login-related routes.
@@ -43,6 +51,7 @@ func (a *IndexController) initRouter(g *gin.RouterGroup) {
 	g.GET("/logout", a.logout)
 
 	g.POST("/login", a.login)
+	g.POST("/register", a.register)
 	g.POST("/getTwoFactorEnable", a.getTwoFactorEnable)
 	g.POST("/getTurnstileSiteKey", a.getTurnstileSiteKey)
 }
@@ -110,6 +119,52 @@ func (a *IndexController) login(c *gin.Context) {
 
 	logger.Infof("%s logged in successfully", safeUser)
 	jsonMsg(c, I18nWeb(c, "pages.login.toasts.successLogin"), nil)
+}
+
+// register handles new user registration.
+func (a *IndexController) register(c *gin.Context) {
+	var form RegisterForm
+
+	if err := c.ShouldBind(&form); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.invalidFormData"))
+		return
+	}
+	if form.Username == "" {
+		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyUsername"))
+		return
+	}
+	if form.Password == "" {
+		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyPassword"))
+		return
+	}
+
+	// Verify Turnstile token if site key is configured
+	turnstileSecretKey, err := a.settingService.GetTurnstileSecretKey()
+	if err == nil && turnstileSecretKey != "" {
+		if form.TurnstileToken == "" {
+			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.turnstileRequired"))
+			return
+		}
+		if !service.VerifyTurnstile(turnstileSecretKey, form.TurnstileToken, getRemoteIp(c)) {
+			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.turnstileRequired"))
+			return
+		}
+	}
+
+	err = a.userService.RegisterUser(form.Username, form.Password)
+	if err != nil {
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "already exists") {
+			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.userExists"))
+			return
+		}
+		logger.Warningf("register failed for user \"%s\": %s", template.HTMLEscapeString(form.Username), err)
+		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.errorRegister"))
+		return
+	}
+
+	logger.Infof("new user registered: %s", template.HTMLEscapeString(form.Username))
+	jsonMsg(c, I18nWeb(c, "pages.login.toasts.successRegister"), nil)
 }
 
 // logout handles user logout by clearing the session and redirecting to the login page.

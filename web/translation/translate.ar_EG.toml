@@ -108,6 +108,9 @@
 "emptyPassword" = "الباسورد مطلوب"
 "wrongUsernameOrPassword" = "اسم المستخدم أو كلمة المرور أو كود المصادقة الثنائية غير صحيح."
 "successLogin" = "لقد تم تسجيل الدخول إلى حسابك بنجاح."
+"successRegister" = "تم التسجيل بنجاح، يرجى تسجيل الدخول."
+"userExists" = "اسم المستخدم موجود بالفعل"
+"errorRegister" = "فشل التسجيل"
 
 [pages.index]
 "title" = "نظرة عامة"

@@ -108,6 +108,9 @@
 "emptyPassword" = "Vui lòng nhập mật khẩu."
 "wrongUsernameOrPassword" = "Tên người dùng, mật khẩu hoặc mã xác thực hai yếu tố không hợp lệ."
 "successLogin" = "Bạn đã đăng nhập vào tài khoản thành công."
+"successRegister" = "Đăng ký thành công, vui lòng đăng nhập."
+"userExists" = "Tên người dùng đã tồn tại"
+"errorRegister" = "Đăng ký thất bại"
 
 [pages.index]
 "title" = "Trạng thái hệ thống"

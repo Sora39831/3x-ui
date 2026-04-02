@@ -108,6 +108,9 @@
 "emptyPassword" = "Senha é obrigatória"
 "wrongUsernameOrPassword" = "Nome de usuário, senha ou código de dois fatores inválido."
 "successLogin" = "Você entrou na sua conta com sucesso."
+"successRegister" = "Registro bem-sucedido, por favor faça login."
+"userExists" = "Nome de usuário já existe"
+"errorRegister" = "Falha no registro"
 
 [pages.index]
 "title" = "Visão Geral"

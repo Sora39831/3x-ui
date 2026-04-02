@@ -108,6 +108,9 @@
 "emptyPassword" = "Введите пароль"
 "wrongUsernameOrPassword" = "Неверные данные учетной записи."
 "successLogin" = "Вход выполнен успешно"
+"successRegister" = "Регистрация прошла успешно, пожалуйста, войдите."
+"userExists" = "Имя пользователя уже существует"
+"errorRegister" = "Ошибка регистрации"
 
 [pages.index]
 "title" = "Дашборд"

@@ -66,6 +66,7 @@ func initUser() error {
 		user := &model.User{
 			Username: defaultUsername,
 			Password: hashedPassword,
+			Role:     "admin",
 		}
 		return db.Create(user).Error
 	}

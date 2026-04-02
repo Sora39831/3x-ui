@@ -106,7 +106,190 @@ var defaultValueMap = map[string]string{
 	"ldapDefaultLimitIP":    "0",
 
 	// Registration settings
-	"turnstileSiteKey": "",
+	"turnstileSiteKey":    "",
+	"turnstileSecretKey": "",
+}
+
+// settingGroups defines the nested JSON structure for on-disk settings.
+// Each group maps nested keys to their flat equivalents in defaultValueMap.
+var settingGroups = map[string]map[string]string{
+	"web": {
+		"listen":        "webListen",
+		"domain":        "webDomain",
+		"port":          "webPort",
+		"certFile":      "webCertFile",
+		"keyFile":       "webKeyFile",
+		"basePath":      "webBasePath",
+		"sessionMaxAge": "sessionMaxAge",
+	},
+	"tgBot": {
+		"enable":      "tgBotEnable",
+		"token":       "tgBotToken",
+		"proxy":       "tgBotProxy",
+		"apiServer":   "tgBotAPIServer",
+		"chatId":      "tgBotChatId",
+		"runTime":     "tgRunTime",
+		"backup":      "tgBotBackup",
+		"loginNotify": "tgBotLoginNotify",
+		"cpu":         "tgCpu",
+		"lang":        "tgLang",
+	},
+	"sub": {
+		"enable":        "subEnable",
+		"jsonEnable":    "subJsonEnable",
+		"title":         "subTitle",
+		"supportUrl":    "subSupportUrl",
+		"profileUrl":    "subProfileUrl",
+		"announce":      "subAnnounce",
+		"enableRouting": "subEnableRouting",
+		"routingRules":  "subRoutingRules",
+		"listen":        "subListen",
+		"port":          "subPort",
+		"path":          "subPath",
+		"domain":        "subDomain",
+		"certFile":      "subCertFile",
+		"keyFile":       "subKeyFile",
+		"updates":       "subUpdates",
+		"encrypt":       "subEncrypt",
+		"showInfo":      "subShowInfo",
+		"uri":           "subURI",
+		"jsonPath":      "subJsonPath",
+		"jsonURI":       "subJsonURI",
+		"jsonFragment":  "subJsonFragment",
+		"jsonNoises":    "subJsonNoises",
+		"jsonMux":       "subJsonMux",
+		"jsonRules":     "subJsonRules",
+	},
+	"ldap": {
+		"enable":            "ldapEnable",
+		"host":              "ldapHost",
+		"port":              "ldapPort",
+		"useTLS":            "ldapUseTLS",
+		"bindDN":            "ldapBindDN",
+		"password":          "ldapPassword",
+		"baseDN":            "ldapBaseDN",
+		"userFilter":        "ldapUserFilter",
+		"userAttr":          "ldapUserAttr",
+		"vlessField":        "ldapVlessField",
+		"syncCron":          "ldapSyncCron",
+		"flagField":         "ldapFlagField",
+		"truthyValues":      "ldapTruthyValues",
+		"invertFlag":        "ldapInvertFlag",
+		"inboundTags":       "ldapInboundTags",
+		"autoCreate":        "ldapAutoCreate",
+		"autoDelete":        "ldapAutoDelete",
+		"defaultTotalGB":    "ldapDefaultTotalGB",
+		"defaultExpiryDays": "ldapDefaultExpiryDays",
+		"defaultLimitIP":    "ldapDefaultLimitIP",
+	},
+	"other": {
+		"timeLocation":                "timeLocation",
+		"twoFactorEnable":             "twoFactorEnable",
+		"twoFactorToken":              "twoFactorToken",
+		"externalTrafficInformEnable": "externalTrafficInformEnable",
+		"externalTrafficInformURI":    "externalTrafficInformURI",
+		"turnstileSiteKey":            "turnstileSiteKey",
+		"turnstileSecretKey":          "turnstileSecretKey",
+		"datepicker":                  "datepicker",
+		"pageSize":                    "pageSize",
+		"expireDiff":                  "expireDiff",
+		"trafficDiff":                 "trafficDiff",
+		"remarkModel":                 "remarkModel",
+		"secret":                      "secret",
+		"warp":                        "warp",
+		"xrayOutboundTestUrl":         "xrayOutboundTestUrl",
+	},
+}
+
+// flatToNestedKey maps flat keys to their [group, nestedKey] pair.
+var flatToNestedKey map[string][2]string
+
+func init() {
+	flatToNestedKey = make(map[string][2]string)
+	for group, keys := range settingGroups {
+		for nestedKey, flatKey := range keys {
+			flatToNestedKey[flatKey] = [2]string{group, nestedKey}
+		}
+	}
+}
+
+// expandToNested converts a flat map[string]string to nested map[string]any
+// using the settingGroups mapping. Keys not in any group are placed at the top level.
+func expandToNested(flat map[string]string) map[string]any {
+	result := make(map[string]any)
+
+	// Initialize all groups
+	for group := range settingGroups {
+		result[group] = make(map[string]string)
+	}
+
+	// Place each flat key into its group
+	for flatKey, value := range flat {
+		if pair, ok := flatToNestedKey[flatKey]; ok {
+			group, nestedKey := pair[0], pair[1]
+			result[group].(map[string]string)[nestedKey] = value
+		} else {
+			// Ungrouped keys go to top level
+			result[flatKey] = value
+		}
+	}
+
+	// Remove empty groups
+	for group := range result {
+		if m, ok := result[group].(map[string]string); ok && len(m) == 0 {
+			delete(result, group)
+		}
+	}
+
+	return result
+}
+
+// flattenNested converts a nested map[string]any (from JSON) to a flat map[string]string.
+// It uses settingGroups to map nested keys back to flat keys.
+func flattenNested(nested map[string]any) map[string]string {
+	result := make(map[string]string)
+
+	for key, val := range nested {
+		switch v := val.(type) {
+		case map[string]any:
+			// This is a group
+			if groupKeys, ok := settingGroups[key]; ok {
+				for nestedKey, flatKey := range groupKeys {
+					if strVal, exists := v[nestedKey]; exists {
+						result[flatKey] = fmt.Sprint(strVal)
+					}
+				}
+			}
+		default:
+			// Top-level value (ungrouped key)
+			result[key] = fmt.Sprint(val)
+		}
+	}
+
+	return result
+}
+
+// tryParseNested detects whether the JSON is nested or flat format and returns a flat map.
+func tryParseNested(data []byte) (map[string]string, error) {
+	// First try to detect if it's nested by checking for object values
+	var probe map[string]any
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return nil, err
+	}
+
+	// Check if any value is a nested object (map[string]any) — indicates nested format
+	for _, v := range probe {
+		if _, isNested := v.(map[string]any); isNested {
+			return flattenNested(probe), nil
+		}
+	}
+
+	// Flat format — all values are strings
+	result := make(map[string]string, len(probe))
+	for k, v := range probe {
+		result[k] = fmt.Sprint(v)
+	}
+	return result, nil
 }
 
 // loadSettings reads the JSON settings file into a map.
@@ -128,8 +311,9 @@ func loadSettings() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	var settings map[string]string
-	if err := json.Unmarshal(data, &settings); err != nil {
+	// Detect format: try nested first, fall back to flat
+	settings, err := tryParseNested(data)
+	if err != nil {
 		return nil, fmt.Errorf("failed to parse settings file %s: %w", path, err)
 	}
 	// Merge missing keys from defaults so new fields are picked up on upgrade
@@ -151,9 +335,10 @@ func loadSettings() (map[string]string, error) {
 	return settings, nil
 }
 
-// saveSettings writes the settings map to the JSON file.
+// saveSettings writes the settings map to the JSON file in nested format.
 func saveSettings(settings map[string]string) error {
-	data, err := json.MarshalIndent(settings, "", "  ")
+	nested := expandToNested(settings)
+	data, err := json.MarshalIndent(nested, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -768,6 +953,10 @@ func (s *SettingService) GetLdapDefaultLimitIP() (int, error) {
 
 func (s *SettingService) GetTurnstileSiteKey() (string, error) {
 	return s.getString("turnstileSiteKey")
+}
+
+func (s *SettingService) GetTurnstileSecretKey() (string, error) {
+	return s.getString("turnstileSecretKey")
 }
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {

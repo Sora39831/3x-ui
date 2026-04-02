@@ -108,6 +108,9 @@
 "emptyPassword" = "Kata Sandi diperlukan"
 "wrongUsernameOrPassword" = "Username, kata sandi, atau kode dua faktor tidak valid."
 "successLogin" = "Anda telah berhasil masuk ke akun Anda."
+"successRegister" = "Pendaftaran berhasil, silakan masuk."
+"userExists" = "Nama pengguna sudah ada"
+"errorRegister" = "Pendaftaran gagal"
 
 [pages.index]
 "title" = "Ikhtisar"
