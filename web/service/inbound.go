@@ -165,25 +165,31 @@ func (s *InboundService) contains(slice []string, str string) bool {
 	return false
 }
 
-func (s *InboundService) checkEmailsExistForClients(clients []model.Client) (string, error) {
-	allEmails, err := s.getAllEmails()
-	if err != nil {
-		return "", err
-	}
-	var emails []string
-	for _, client := range clients {
-		if client.Email != "" {
-			if s.contains(emails, client.Email) {
-				return client.Email, nil
-			}
-			if s.contains(allEmails, client.Email) {
-				return client.Email, nil
-			}
-			emails = append(emails, client.Email)
-		}
-	}
-	return "", nil
-}
+// checkEmailsExistForClients 检查一批客户端中是否有重复的 email（包括列表内部重复和与数据库已有 email 冲突）
+// 当前未使用，保留供后续功能（如批量添加客户端时的邮箱校验）使用
+// func (s *InboundService) checkEmailsExistForClients(clients []model.Client) (string, error) {
+// 	// 获取数据库中所有已存在的 email，用于检测冲突
+// 	allEmails, err := s.getAllEmails()
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	var emails []string // 用于记录当前批次中已遍历过的 email，检测列表内部重复
+// 	for _, client := range clients {
+// 		if client.Email != "" {
+// 			// 检查是否在当前批次中重复出现
+// 			if s.contains(emails, client.Email) {
+// 				return client.Email, nil
+// 			}
+// 			// 检查是否与数据库中已有 email 冲突
+// 			if s.contains(allEmails, client.Email) {
+// 				return client.Email, nil
+// 			}
+// 			emails = append(emails, client.Email)
+// 		}
+// 	}
+// 	// 全部检查通过，无重复
+// 	return "", nil
+// }
 
 func (s *InboundService) checkEmailExistForInbound(inbound *model.Inbound) (string, error) {
 	clients, err := s.GetClients(inbound)
