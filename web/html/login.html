@@ -190,6 +190,9 @@
     methods: {
       switchTab(key) {
         this.activeTab = key;
+        if (key === 'register' && this.turnstileSiteKey) {
+          this.$nextTick(() => this.renderTurnstile());
+        }
       },
       async doLogin() {
         this.loadingStates.spinning = true;
@@ -226,6 +229,14 @@
               turnstile.reset(container);
             }
           }
+        } else {
+          turnstileToken = '';
+          if (window.turnstile) {
+            var container = document.getElementById('turnstile-widget');
+            if (container) {
+              turnstile.reset(container);
+            }
+          }
         }
         this.loadingStates.registerSpinning = false;
       },
@@ -240,7 +251,7 @@
       renderTurnstile() {
         if (window.turnstile) {
           var container = document.getElementById('turnstile-widget');
-          if (container) {
+          if (container && !container.querySelector('iframe')) {
             turnstile.render(container, {
               sitekey: this.turnstileSiteKey,
               callback: function(token) { turnstileToken = token; },
