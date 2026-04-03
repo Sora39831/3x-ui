@@ -158,8 +158,14 @@ func (a *IndexController) register(c *gin.Context) {
 	}
 
 	// Verify Turnstile token if site key is configured
-	turnstileSecretKey, err := a.settingService.GetTurnstileSecretKey()
-	if err == nil && turnstileSecretKey != "" {
+	turnstileSiteKey, _ := a.settingService.GetTurnstileSiteKey()
+	if turnstileSiteKey != "" {
+		turnstileSecretKey, err := a.settingService.GetTurnstileSecretKey()
+		if err != nil || turnstileSecretKey == "" {
+			logger.Warning("Turnstile site key is configured but secret key is missing")
+			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.errorRegister"))
+			return
+		}
 		if form.TurnstileToken == "" {
 			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.turnstileRequired"))
 			return
@@ -170,7 +176,7 @@ func (a *IndexController) register(c *gin.Context) {
 		}
 	}
 
-	err = a.userService.RegisterUser(form.Username, form.Password, &a.inboundService)
+	err := a.userService.RegisterUser(form.Username, form.Password, &a.inboundService)
 	if err != nil {
 		if errors.Is(err, service.ErrUsernameAlreadyExists) {
 			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.userExists"))
