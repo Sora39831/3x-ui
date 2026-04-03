@@ -16,7 +16,7 @@ func setupTestDB(t *testing.T) {
 	t.Setenv("XUI_DEBUG", "")
 	t.Setenv("XUI_DB_FOLDER", tmpDir)
 	dbPath := filepath.Join(tmpDir, "test.db")
-	if err := database.InitDB(dbPath); err != nil {
+	if err := database.InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
 	t.Cleanup(func() {
@@ -120,7 +120,7 @@ func TestUpdateFirstUser_CreateWhenNone(t *testing.T) {
 	}()
 
 	dbPath := filepath.Join(tmpDir, "empty.db")
-	if err := database.InitDB(dbPath); err != nil {
+	if err := database.InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
 	defer database.CloseDB()
