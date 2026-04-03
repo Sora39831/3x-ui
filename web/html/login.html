@@ -117,7 +117,7 @@
                             <a-icon slot="prefix" type="lock" class="fs-1rem"></a-icon>
                           </a-input-password>
                         </a-form-item>
-                        <a-form-item>
+                        <a-form-item v-if="turnstileSiteKey">
                           <div class="cf-turnstile-wrapper">
                             <div class="cf-turnstile" id="turnstile-widget"></div>
                           </div>
@@ -170,7 +170,7 @@
         this.twoFactorEnable = await this.getTwoFactorEnable();
         this.turnstileSiteKey = await this.getTurnstileSiteKey();
         if (this.turnstileSiteKey) {
-          this.renderTurnstile();
+          this.waitForTurnstileAndRender();
         }
       } finally {
         this.loadingStates.fetched = true;
@@ -228,6 +228,14 @@
           }
         }
         this.loadingStates.registerSpinning = false;
+      },
+      waitForTurnstileAndRender(retries = 20, interval = 300) {
+        if (window.turnstile) {
+          this.renderTurnstile();
+          return;
+        }
+        if (retries <= 0) return;
+        setTimeout(() => this.waitForTurnstileAndRender(retries - 1, interval), interval);
       },
       renderTurnstile() {
         if (window.turnstile) {
