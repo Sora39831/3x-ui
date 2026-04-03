@@ -250,11 +250,13 @@ func (s *UserService) UpdateFirstUser(username string, password string) error {
 	if database.IsNotFound(err) {
 		user.Username = username
 		user.Password = hashedPassword
+		user.Role = "admin"
 		return db.Model(model.User{}).Create(user).Error
 	} else if err != nil {
 		return err
 	}
 	user.Username = username
 	user.Password = hashedPassword
+	user.Role = "admin"
 	return db.Save(user).Error
 }

@@ -75,6 +75,15 @@
                   </template>
                   <template v-else>-</template>
                 </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.remained" }}'>
+                  <template v-if="traffic && traffic.total > 0">
+                    <span :class="{ 'text-red': (traffic.total - traffic.up - traffic.down) <= 0 }">
+                      [[ SizeFormatter.sizeFormat(Math.max(traffic.total - traffic.up - traffic.down, 0)) ]]
+                    </span>
+                  </template>
+                  <template v-else-if="traffic">{{ i18n "unlimited" }}</template>
+                  <template v-else>-</template>
+                </a-descriptions-item>
                 <a-descriptions-item label='{{ i18n "pages.user.expiryTime" }}'>
                   <template v-if="traffic">
                     <template v-if="traffic.expiryTime > 0">
@@ -85,6 +94,12 @@
                     <template v-else>
                       {{ i18n "unlimited" }}
                     </template>
+                  </template>
+                  <template v-else>-</template>
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.lastOnline" }}'>
+                  <template v-if="traffic && traffic.lastOnline > 0">
+                    [[ new Date(traffic.lastOnline * 1000).toLocaleString() ]]
                   </template>
                   <template v-else>-</template>
                 </a-descriptions-item>
