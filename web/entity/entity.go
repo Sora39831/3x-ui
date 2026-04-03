@@ -104,6 +104,14 @@ type AllSetting struct {
 	LdapDefaultExpiryDays int    `json:"ldapDefaultExpiryDays" form:"ldapDefaultExpiryDays"`
 	LdapDefaultLimitIP    int    `json:"ldapDefaultLimitIP" form:"ldapDefaultLimitIP"`
 
+	// Database settings
+	DBType     string `json:"dbType" form:"dbType"`
+	DBHost     string `json:"dbHost" form:"dbHost"`
+	DBPort     string `json:"dbPort" form:"dbPort"`
+	DBUser     string `json:"dbUser" form:"dbUser"`
+	DBPassword string `json:"dbPassword" form:"dbPassword"`
+	DBName     string `json:"dbName" form:"dbName"`
+
 	// Registration settings
 	TurnstileSiteKey   string `json:"turnstileSiteKey" form:"turnstileSiteKey"`
 	TurnstileSecretKey string `json:"-" form:"-"` // server-side only, never sent to frontend
