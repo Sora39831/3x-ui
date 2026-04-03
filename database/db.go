@@ -70,7 +70,15 @@ func initUser() error {
 			Password: hashedPassword,
 			Role:     "admin",
 		}
-		return db.Create(user).Error
+		if err := db.Create(user).Error; err != nil {
+			return err
+		}
+
+		// Mark password hashing seeder as done since initUser already uses bcrypt
+		hashSeeder := &model.HistoryOfSeeders{
+			SeederName: "UserPasswordHash",
+		}
+		return db.Create(hashSeeder).Error
 	}
 	return nil
 }
