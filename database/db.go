@@ -244,6 +244,7 @@ func buildMariaDBDSN(dbConfig config.DBConfig) string {
 			"parseTime": "True",
 			"loc":       "Local",
 		},
+		AllowNativePasswords: true,
 	}
 	return cfg.FormatDSN()
 }
