@@ -166,10 +166,20 @@
     },
     async mounted() {
       this.lang = LanguageManager.getLanguage();
-      this.twoFactorEnable = await this.getTwoFactorEnable();
-      this.turnstileSiteKey = await this.getTurnstileSiteKey();
-      if (this.turnstileSiteKey) {
-        this.renderTurnstile();
+      try {
+        this.twoFactorEnable = await this.getTwoFactorEnable();
+        this.turnstileSiteKey = await this.getTurnstileSiteKey();
+        if (this.turnstileSiteKey) {
+          this.renderTurnstile();
+        }
+      } finally {
+        this.loadingStates.fetched = true;
+        this.$nextTick(() => {
+          if (!this.animationStarted) {
+            this.animationStarted = true;
+            this.initHeadline();
+          }
+        });
       }
     },
     computed: {
@@ -241,16 +251,9 @@
       async getTwoFactorEnable() {
         const msg = await HttpUtil.post('/getTwoFactorEnable');
         if (msg.success) {
-          this.twoFactorEnable = msg.obj;
-          this.loadingStates.fetched = true;
-          this.$nextTick(() => {
-            if (!this.animationStarted) {
-              this.animationStarted = true;
-              this.initHeadline();
-            }
-          });
           return msg.obj;
         }
+        return false;
       },
       initHeadline() {
         const animationDelay = 2000;

@@ -203,15 +203,19 @@ func (a *IndexController) logout(c *gin.Context) {
 // getTwoFactorEnable retrieves the current status of two-factor authentication.
 func (a *IndexController) getTwoFactorEnable(c *gin.Context) {
 	status, err := a.settingService.GetTwoFactorEnable()
-	if err == nil {
-		jsonObj(c, status, nil)
+	if err != nil {
+		jsonObj(c, false, err)
+		return
 	}
+	jsonObj(c, status, nil)
 }
 
 // getTurnstileSiteKey returns the Cloudflare Turnstile site key for the registration form.
 func (a *IndexController) getTurnstileSiteKey(c *gin.Context) {
 	siteKey, err := a.settingService.GetTurnstileSiteKey()
-	if err == nil {
-		jsonObj(c, siteKey, nil)
+	if err != nil {
+		jsonObj(c, "", err)
+		return
 	}
+	jsonObj(c, siteKey, nil)
 }
