@@ -481,6 +481,11 @@ func main() {
 	settingCmd.StringVar(&dbPassword, "dbPassword", "", "Set MariaDB password")
 	settingCmd.StringVar(&dbName, "dbName", "", "Set MariaDB database name")
 
+	// Allow dbPassword to be passed via env var to avoid leaking it in process args
+	if p := os.Getenv("XUI_DB_PASSWORD"); p != "" {
+		dbPassword = p
+	}
+
 	oldUsage := flag.Usage
 	flag.Usage = func() {
 		oldUsage()

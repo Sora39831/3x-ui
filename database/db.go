@@ -1,5 +1,5 @@
 // Package database provides database initialization, migration, and management utilities
-// for the 3x-ui panel using GORM with SQLite.
+// for the 3x-ui panel using GORM with SQLite or MariaDB.
 package database
 
 import (

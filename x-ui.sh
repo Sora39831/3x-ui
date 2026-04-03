@@ -2268,7 +2268,7 @@ db_switch_to_mariadb() {
     db_name=${db_name:-3xui}
 
     echo -e "${green}正在配置 MariaDB 连接...${plain}"
-    ${xui_folder}/x-ui setting -dbType mariadb -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbPassword "$db_pass" -dbName "$db_name" >/dev/null 2>&1
+    XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting -dbType mariadb -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
 
     echo -e "${green}正在迁移数据从 SQLite 到 MariaDB...${plain}"
     ${xui_folder}/x-ui migrate-db
