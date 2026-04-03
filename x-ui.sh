@@ -2202,6 +2202,144 @@ show_usage() {
 └────────────────────────────────────────────────────────────────┘"
 }
 
+# Read dbType from /etc/x-ui/x-ui.json
+read_json_dbtype() {
+    local json_path="/etc/x-ui/x-ui.json"
+    if [ ! -f "$json_path" ]; then
+        echo "sqlite"
+        return
+    fi
+    # Try nested format first (other.dbType)
+    local db_type=$(grep -o '"dbType"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" | head -1 | sed 's/.*"dbType"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    if [ -z "$db_type" ]; then
+        echo "sqlite"
+    else
+        echo "$db_type"
+    fi
+}
+
+# Show current database status
+db_show_status() {
+    local current_type=$(read_json_dbtype)
+    echo -e "${green}当前数据库类型: ${current_type}${plain}"
+    if [ "$current_type" = "mariadb" ]; then
+        local json_path="/etc/x-ui/x-ui.json"
+        local host=$(grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | head -1 | sed 's/.*"dbHost"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        local port=$(grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | head -1 | sed 's/.*"dbPort"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        local dbname=$(grep -o '"dbName"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | head -1 | sed 's/.*"dbName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        echo -e "${green}MariaDB 主机: ${host:-127.0.0.1}:${port:-3306}${plain}"
+        echo -e "${green}数据库名: ${dbname:-3xui}${plain}"
+    fi
+}
+
+# Switch to MariaDB
+db_switch_to_mariadb() {
+    local current_type=$(read_json_dbtype)
+    if [ "$current_type" = "mariadb" ]; then
+        echo -e "${yellow}当前已经是 MariaDB${plain}"
+        db_menu
+        return
+    fi
+
+    echo -e "${green}请输入 MariaDB 连接信息（直接回车使用默认值）：${plain}"
+
+    read -rp "MariaDB IP（默认 127.0.0.1）: " db_host
+    db_host=${db_host:-127.0.0.1}
+
+    read -rp "MariaDB 端口（默认 3306）: " db_port
+    db_port=${db_port:-3306}
+
+    read -rp "MariaDB 用户名: " db_user
+    if [ -z "$db_user" ]; then
+        echo -e "${red}用户名不能为空${plain}"
+        db_menu
+        return
+    fi
+
+    read -rsp "MariaDB 密码: " db_pass
+    echo
+    if [ -z "$db_pass" ]; then
+        echo -e "${red}密码不能为空${plain}"
+        db_menu
+        return
+    fi
+
+    read -rp "数据库名（默认 3xui）: " db_name
+    db_name=${db_name:-3xui}
+
+    echo -e "${green}正在配置 MariaDB 连接...${plain}"
+    ${xui_folder}/x-ui setting -dbType mariadb -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbPassword "$db_pass" -dbName "$db_name" >/dev/null 2>&1
+
+    echo -e "${green}正在迁移数据从 SQLite 到 MariaDB...${plain}"
+    ${xui_folder}/x-ui migrate-db
+
+    if [ $? -eq 0 ]; then
+        echo -e "${green}数据库切换成功，正在重启面板...${plain}"
+        restart
+    else
+        echo -e "${red}数据迁移失败，正在回滚到 SQLite...${plain}"
+        ${xui_folder}/x-ui setting -dbType sqlite >/dev/null 2>&1
+        restart
+    fi
+}
+
+# Switch to SQLite
+db_switch_to_sqlite() {
+    local current_type=$(read_json_dbtype)
+    if [ "$current_type" = "sqlite" ]; then
+        echo -e "${yellow}当前已经是 SQLite${plain}"
+        db_menu
+        return
+    fi
+
+    echo -e "${green}正在迁移数据从 MariaDB 到 SQLite...${plain}"
+    ${xui_folder}/x-ui setting -dbType sqlite >/dev/null 2>&1
+    ${xui_folder}/x-ui migrate-db
+
+    if [ $? -eq 0 ]; then
+        echo -e "${green}数据库切换成功，正在重启面板...${plain}"
+        restart
+    else
+        echo -e "${red}数据迁移失败${plain}"
+    fi
+}
+
+# Database management menu
+db_menu() {
+    local current_type=$(read_json_dbtype)
+
+    echo -e "
+╔────────────────────────────────────────────────╗
+│   ${green}数据库管理${plain}                                    │
+│────────────────────────────────────────────────│
+│   ${green}0.${plain} 返回主菜单                                │
+│   ${green}1.${plain} 查看当前数据库类型（当前: ${current_type}）   │
+│   ${green}2.${plain} 切换到 MariaDB                             │
+│   ${green}3.${plain} 切换到 SQLite                               │
+╚════════════════════════════════════════════════╝
+"
+    read -rp "请输入选择 [0-3]：" num
+    case "${num}" in
+    0)
+        show_menu
+        ;;
+    1)
+        db_show_status
+        db_menu
+        ;;
+    2)
+        db_switch_to_mariadb
+        ;;
+    3)
+        db_switch_to_sqlite
+        ;;
+    *)
+        echo -e "${red}无效选项，请选择有效数字。${plain}\n"
+        db_menu
+        ;;
+    esac
+}
+
 show_menu() {
     echo -e "
 ╔────────────────────────────────────────────────╗
@@ -2239,10 +2377,12 @@ show_menu() {
 │  ${green}24.${plain} BBR 管理                                  │
 │  ${green}25.${plain} 更新 Geo 文件                             │
 │  ${green}26.${plain} 网速测试 (Speedtest)                      │
+│────────────────────────────────────────────────│
+│  ${green}27.${plain} 数据库管理                                │
 ╚────────────────────────────────────────────────╝
 "
     show_status
-    echo && read -rp "请输入选择 [0-26]：" num
+    echo && read -rp "请输入选择 [0-27]：" num
 
     case "${num}" in
     0)
@@ -2326,8 +2466,11 @@ show_menu() {
     26)
         run_speedtest
         ;;
+    27)
+        check_install && db_menu
+        ;;
     *)
-        LOGE "请输入正确的数字 [0-26]"
+        LOGE "请输入正确的数字 [0-27]"
         ;;
     esac
 }
