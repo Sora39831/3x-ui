@@ -14,7 +14,7 @@ func setupTestDB(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XUI_DEBUG", "")
 	dbPath := filepath.Join(tmpDir, "test.db")
-	if err := InitDB(dbPath); err != nil {
+	if err := InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
 	t.Cleanup(func() {
@@ -25,7 +25,7 @@ func setupTestDB(t *testing.T) {
 func TestIsSQLiteDB_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "valid.db")
-	if err := InitDB(dbPath); err != nil {
+	if err := InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
 	defer CloseDB()
@@ -137,13 +137,13 @@ func TestInitDB_Idempotent(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "idempotent.db")
 
 	// First init
-	if err := InitDB(dbPath); err != nil {
+	if err := InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("first InitDB failed: %v", err)
 	}
 	CloseDB()
 
 	// Second init on the same file should not fail
-	if err := InitDB(dbPath); err != nil {
+	if err := InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("second InitDB failed: %v", err)
 	}
 	defer CloseDB()
@@ -159,7 +159,7 @@ func TestInitDB_Idempotent(t *testing.T) {
 func TestValidateSQLiteDB_ValidDB(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "valid.db")
-	if err := InitDB(dbPath); err != nil {
+	if err := InitDBWithPath(dbPath); err != nil {
 		t.Fatalf("InitDB failed: %v", err)
 	}
 	CloseDB()
