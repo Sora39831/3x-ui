@@ -2233,6 +2233,110 @@ db_show_status() {
     fi
 }
 
+# Check if MariaDB is installed (server or client)
+check_mariadb_installed() {
+    if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
+        return 0
+    fi
+    if systemctl is-active --quiet mariadb 2>/dev/null || systemctl is-active --quiet mysql 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Install MariaDB server based on distro
+install_mariadb() {
+    echo -e "${green}正在安装 MariaDB...${plain}"
+    case "${release}" in
+    ubuntu | debian | linuxmint)
+        apt-get update -y && apt-get install -y mariadb-server mariadb-client
+        ;;
+    centos | rhel | almalinux | rocky | ol | alinux | amzn)
+        if command -v dnf >/dev/null 2>&1; then
+            dnf install -y mariadb-server mariadb
+        else
+            yum install -y mariadb-server mariadb
+        fi
+        ;;
+    fedora)
+        dnf install -y mariadb-server mariadb
+        ;;
+    arch | manjaro)
+        pacman -Sy --noconfirm mariadb
+        mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null 2>&1
+        ;;
+    opensuse* | sles)
+        zypper install -y mariadb-server mariadb-client
+        ;;
+    alpine)
+        apk add mariadb mariadb-client
+        mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null 2>&1
+        ;;
+    *)
+        echo -e "${red}不支持的发行版: ${release}，请手动安装 MariaDB${plain}"
+        return 1
+        ;;
+    esac
+    local ret=$?
+    if [ $ret -eq 0 ]; then
+        echo -e "${green}MariaDB 安装成功${plain}"
+    else
+        echo -e "${red}MariaDB 安装失败${plain}"
+    fi
+    return $ret
+}
+
+# Start and enable MariaDB service
+start_mariadb_service() {
+    local svc_name=""
+    if systemctl list-unit-files | grep -q "^mariadb.service"; then
+        svc_name="mariadb"
+    elif systemctl list-unit-files | grep -q "^mysql.service"; then
+        svc_name="mysql"
+    fi
+    if [ -n "$svc_name" ]; then
+        systemctl start "$svc_name" 2>/dev/null
+        systemctl enable "$svc_name" 2>/dev/null
+    else
+        # alpine / no systemd
+        rc-service mariadb start 2>/dev/null
+        rc-update add mariadb 2>/dev/null
+    fi
+}
+
+# Test MariaDB connection with given credentials
+# Args: host port user pass
+test_mariadb_connection() {
+    local host="$1" port="$2" user="$3" pass="$4"
+    mariadb -h "$host" -P "$port" -u "$user" -p"$pass" -e "SELECT 1;" >/dev/null 2>&1
+    return $?
+}
+
+# Test connection to a specific database, create if not exists
+# Args: host port user pass dbname
+ensure_mariadb_database() {
+    local host="$1" port="$2" user="$3" pass="$4" dbname="$5"
+    # Check if database exists
+    local exists
+    exists=$(mariadb -h "$host" -P "$port" -u "$user" -p"$pass" -N -B -e \
+        "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${dbname}';" 2>/dev/null)
+    if [ "$exists" = "1" ]; then
+        echo -e "${green}数据库 '${dbname}' 已存在${plain}"
+        return 0
+    fi
+    # Create database
+    echo -e "${green}正在创建数据库 '${dbname}'...${plain}"
+    mariadb -h "$host" -P "$port" -u "$user" -p"$pass" -e \
+        "CREATE DATABASE \`${dbname}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo -e "${green}数据库 '${dbname}' 创建成功${plain}"
+        return 0
+    else
+        echo -e "${red}数据库 '${dbname}' 创建失败${plain}"
+        return 1
+    fi
+}
+
 # Switch to MariaDB
 db_switch_to_mariadb() {
     local current_type=$(read_json_dbtype)
@@ -2242,6 +2346,35 @@ db_switch_to_mariadb() {
         return
     fi
 
+    # Step 1: Check MariaDB installation
+    if ! check_mariadb_installed; then
+        echo -e "${yellow}未检测到 MariaDB${plain}"
+        confirm "是否安装 MariaDB？" "y"
+        if [ $? -ne 0 ]; then
+            echo -e "${yellow}已取消安装，返回数据库菜单${plain}"
+            db_menu
+            return
+        fi
+        install_mariadb
+        if [ $? -ne 0 ]; then
+            echo -e "${red}MariaDB 安装失败，返回数据库菜单${plain}"
+            db_menu
+            return
+        fi
+        start_mariadb_service
+        if ! check_mariadb_installed; then
+            echo -e "${red}MariaDB 安装后仍无法检测到，请手动检查${plain}"
+            db_menu
+            return
+        fi
+        echo -e "${green}MariaDB 已安装并启动${plain}"
+    else
+        echo -e "${green}MariaDB 已安装${plain}"
+        # Ensure service is running
+        start_mariadb_service
+    fi
+
+    # Step 2: Collect connection info
     echo -e "${green}请输入 MariaDB 连接信息（直接回车使用默认值）：${plain}"
 
     read -rp "MariaDB IP（默认 127.0.0.1）: " db_host
@@ -2268,6 +2401,22 @@ db_switch_to_mariadb() {
     read -rp "数据库名（默认 3xui）: " db_name
     db_name=${db_name:-3xui}
 
+    # Step 3: Test connection
+    echo -e "${green}正在测试数据库连接...${plain}"
+    if ! test_mariadb_connection "$db_host" "$db_port" "$db_user" "$db_pass"; then
+        echo -e "${red}无法连接到 MariaDB，请检查用户名、密码及主机信息${plain}"
+        db_menu
+        return
+    fi
+    echo -e "${green}数据库连接成功${plain}"
+
+    # Step 4: Ensure database exists
+    if ! ensure_mariadb_database "$db_host" "$db_port" "$db_user" "$db_pass" "$db_name"; then
+        db_menu
+        return
+    fi
+
+    # Step 5: Save config and migrate
     echo -e "${green}正在配置 MariaDB 连接...${plain}"
     XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
 
