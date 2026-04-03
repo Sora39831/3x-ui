@@ -401,6 +401,27 @@ func migrateDb() {
 	fmt.Println("Migration done!")
 }
 
+// migrateDbBetweenDrivers migrates data between SQLite and MariaDB based on the configured dbType.
+func migrateDbBetweenDrivers() {
+	dbType := config.GetDBTypeFromJSON()
+	switch dbType {
+	case "mariadb":
+		fmt.Println("Migrating data from SQLite to MariaDB...")
+		if err := database.MigrateSQLiteToMariaDB(); err != nil {
+			log.Fatal("Migration failed: ", err)
+		}
+		fmt.Println("Migration to MariaDB completed successfully.")
+	case "sqlite":
+		fmt.Println("Migrating data from MariaDB to SQLite...")
+		if err := database.MigrateMariaDBToSQLite(); err != nil {
+			log.Fatal("Migration failed: ", err)
+		}
+		fmt.Println("Migration to SQLite completed successfully.")
+	default:
+		log.Fatalf("Unknown dbType: %s", dbType)
+	}
+}
+
 // main is the entry point of the 3x-ui application.
 // It parses command-line arguments to run the web server, migrate database, or update settings.
 func main() {
@@ -447,6 +468,18 @@ func main() {
 	settingCmd.StringVar(&tgbotRuntime, "tgbotRuntime", "", "Set cron time for Telegram bot notifications")
 	settingCmd.StringVar(&tgbotchatid, "tgbotchatid", "", "Set chat ID for Telegram bot notifications")
 	settingCmd.BoolVar(&enabletgbot, "enabletgbot", false, "Enable notifications via Telegram bot")
+	var dbTypeFlag string
+	var dbHost string
+	var dbPort string
+	var dbUser string
+	var dbPassword string
+	var dbName string
+	settingCmd.StringVar(&dbTypeFlag, "dbType", "", "Set database type (sqlite or mariadb)")
+	settingCmd.StringVar(&dbHost, "dbHost", "", "Set MariaDB host")
+	settingCmd.StringVar(&dbPort, "dbPort", "", "Set MariaDB port")
+	settingCmd.StringVar(&dbUser, "dbUser", "", "Set MariaDB username")
+	settingCmd.StringVar(&dbPassword, "dbPassword", "", "Set MariaDB password")
+	settingCmd.StringVar(&dbName, "dbName", "", "Set MariaDB database name")
 
 	oldUsage := flag.Usage
 	flag.Usage = func() {
@@ -455,6 +488,7 @@ func main() {
 		fmt.Println("Commands:")
 		fmt.Println("    run            run web panel")
 		fmt.Println("    migrate        migrate form other/old x-ui")
+		fmt.Println("    migrate-db     migrate data between SQLite and MariaDB")
 		fmt.Println("    setting        set settings")
 	}
 
@@ -474,6 +508,8 @@ func main() {
 		runWebServer()
 	case "migrate":
 		migrateDb()
+	case "migrate-db":
+		migrateDbBetweenDrivers()
 	case "setting":
 		err := settingCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -499,6 +535,48 @@ func main() {
 		}
 		if enabletgbot {
 			updateTgbotEnableSts(enabletgbot)
+		}
+		if dbTypeFlag != "" {
+			if err := config.WriteSettingToJSON("dbType", dbTypeFlag); err != nil {
+				fmt.Println("Failed to set dbType:", err)
+			} else {
+				fmt.Println("dbType set to:", dbTypeFlag)
+			}
+		}
+		if dbHost != "" {
+			if err := config.WriteSettingToJSON("dbHost", dbHost); err != nil {
+				fmt.Println("Failed to set dbHost:", err)
+			} else {
+				fmt.Println("dbHost set to:", dbHost)
+			}
+		}
+		if dbPort != "" {
+			if err := config.WriteSettingToJSON("dbPort", dbPort); err != nil {
+				fmt.Println("Failed to set dbPort:", err)
+			} else {
+				fmt.Println("dbPort set to:", dbPort)
+			}
+		}
+		if dbUser != "" {
+			if err := config.WriteSettingToJSON("dbUser", dbUser); err != nil {
+				fmt.Println("Failed to set dbUser:", err)
+			} else {
+				fmt.Println("dbUser set to:", dbUser)
+			}
+		}
+		if dbPassword != "" {
+			if err := config.WriteSettingToJSON("dbPassword", dbPassword); err != nil {
+				fmt.Println("Failed to set dbPassword:", err)
+			} else {
+				fmt.Println("dbPassword set")
+			}
+		}
+		if dbName != "" {
+			if err := config.WriteSettingToJSON("dbName", dbName); err != nil {
+				fmt.Println("Failed to set dbName:", err)
+			} else {
+				fmt.Println("dbName set to:", dbName)
+			}
 		}
 	case "cert":
 		err := settingCmd.Parse(os.Args[2:])
