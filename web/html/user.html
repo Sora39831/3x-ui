@@ -1,0 +1,169 @@
+{{ template "page/head_start" .}}
+{{ template "page/head_end" .}}
+
+{{ template "page/body_start" .}}
+<a-layout id="app" v-cloak :class="themeSwitcher.currentTheme + ' login-app'">
+  <transition name="list" appear>
+    <a-layout-content class="under min-h-0">
+      <div class="waves-header">
+        <div class="waves-inner-header"></div>
+        <svg class="waves" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+          viewBox="0 24 150 28" preserveAspectRatio="none" shape-rendering="auto">
+          <defs>
+            <path id="gentle-wave" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z" />
+          </defs>
+          <g class="parallax">
+            <use xlink:href="#gentle-wave" x="48" y="0" fill="rgba(0, 135, 113, 0.08)" />
+            <use xlink:href="#gentle-wave" x="48" y="3" fill="rgba(0, 135, 113, 0.08)" />
+            <use xlink:href="#gentle-wave" x="48" y="5" fill="rgba(0, 135, 113, 0.08)" />
+            <use xlink:href="#gentle-wave" x="48" y="7" fill="#c7ebe2" />
+          </g>
+        </svg>
+      </div>
+      <a-row type="flex" justify="center" align="middle" class="h-100 overflow-y-auto overflow-x-hidden">
+        <a-col :xs="22" :sm="16" :md="12" :lg="10" :xl="8" :xxl="6" class="my-3rem">
+          <template v-if="loading">
+            <div class="text-center">
+              <a-spin size="large" />
+            </div>
+          </template>
+          <template v-else>
+            <a-card :class="themeSwitcher.currentTheme" class="user-card">
+              <div class="setting-section">
+                <a-popover :overlay-class-name="themeSwitcher.currentTheme" title='{{ i18n "menu.settings" }}'
+                  placement="bottomRight" trigger="click">
+                  <template slot="content">
+                    <a-space direction="vertical" :size="10">
+                      <a-theme-switch-login></a-theme-switch-login>
+                      <span>{{ i18n "pages.settings.language" }}</span>
+                      <a-select ref="selectLang" class="w-100" v-model="lang" @change="LanguageManager.setLanguage(lang)"
+                        :dropdown-class-name="themeSwitcher.currentTheme">
+                        <a-select-option :value="l.value" label="English" v-for="l in LanguageManager.supportedLanguages">
+                          <span role="img" aria-label="l.name" v-text="l.icon"></span>
+                          &nbsp;&nbsp;<span v-text="l.name"></span>
+                        </a-select-option>
+                      </a-select>
+                    </a-space>
+                  </template>
+                  <a-button shape="circle" icon="setting"></a-button>
+                </a-popover>
+              </div>
+              <div class="text-center mb-24">
+                <a-icon type="user" style="font-size: 48px; color: #008771;" />
+                <h2 class="mt-8">[[ username ]]</h2>
+              </div>
+              <a-divider />
+              <a-descriptions :column="1" bordered size="small">
+                <a-descriptions-item label='{{ i18n "pages.user.username" }}'>
+                  [[ username ]]
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.upload" }}'>
+                  [[ traffic ? SizeFormatter.sizeFormat(traffic.up) : '-' ]]
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.download" }}'>
+                  [[ traffic ? SizeFormatter.sizeFormat(traffic.down) : '-' ]]
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.totalTraffic" }}'>
+                  <template v-if="traffic">
+                    <template v-if="traffic.total > 0">
+                      [[ SizeFormatter.sizeFormat(traffic.up + traffic.down) ]] / [[ SizeFormatter.sizeFormat(traffic.total) ]]
+                      <a-progress :percent="traffic.total > 0 ? NumberFormatter.toFixed((traffic.up + traffic.down) / traffic.total * 100, 1) : 0" size="small" :status="((traffic.up + traffic.down) / traffic.total * 100) >= 90 ? 'exception' : 'normal'" />
+                    </template>
+                    <template v-else>
+                      {{ i18n "unlimited" }}
+                    </template>
+                  </template>
+                  <template v-else>-</template>
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.remained" }}'>
+                  <template v-if="traffic && traffic.total > 0">
+                    <span :class="{ 'text-red': (traffic.total - traffic.up - traffic.down) <= 0 }">
+                      [[ SizeFormatter.sizeFormat(Math.max(traffic.total - traffic.up - traffic.down, 0)) ]]
+                    </span>
+                  </template>
+                  <template v-else-if="traffic">{{ i18n "unlimited" }}</template>
+                  <template v-else>-</template>
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.expiryTime" }}'>
+                  <template v-if="traffic">
+                    <template v-if="traffic.expiryTime > 0">
+                      <span :class="{ 'text-red': traffic.expiryTime < Date.now() }">
+                        [[ formatExpiryTime(traffic.expiryTime) ]]
+                      </span>
+                    </template>
+                    <template v-else>
+                      {{ i18n "unlimited" }}
+                    </template>
+                  </template>
+                  <template v-else>-</template>
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.lastOnline" }}'>
+                  <template v-if="traffic && traffic.lastOnline > 0">
+                    [[ new Date(traffic.lastOnline * 1000).toLocaleString() ]]
+                  </template>
+                  <template v-else>-</template>
+                </a-descriptions-item>
+                <a-descriptions-item label='{{ i18n "pages.user.status" }}'>
+                  <a-badge v-if="traffic" :status="traffic.enable ? 'processing' : 'default'" :text="traffic.enable ? '{{ i18n 'enabled' }}' : '{{ i18n 'disabled' }}'" />
+                  <template v-else>-</template>
+                </a-descriptions-item>
+              </a-descriptions>
+              <div class="mt-24 text-center">
+                <a-button type="primary" icon="logout" @click="logout">
+                  {{ i18n "menu.logout" }}
+                </a-button>
+              </div>
+            </a-card>
+          </template>
+        </a-col>
+      </a-row>
+    </a-layout-content>
+  </transition>
+</a-layout>
+{{template "page/body_scripts" .}}
+{{template "component/aThemeSwitch" .}}
+<script>
+  const app = new Vue({
+    delimiters: ['[[', ']]'],
+    el: '#app',
+    data: {
+      themeSwitcher,
+      loading: true,
+      username: '',
+      traffic: null,
+      lang: '',
+    },
+    async mounted() {
+      this.lang = LanguageManager.getLanguage();
+      await this.loadUserInfo();
+    },
+    methods: {
+      async loadUserInfo() {
+        try {
+          const msg = await HttpUtil.get('/panel/api/inbounds/userInfo');
+          if (msg.success) {
+            this.username = msg.obj?.email || '';
+            this.traffic = msg.obj;
+          }
+        } catch (e) {
+          console.error("Failed to get user info:", e);
+        }
+        this.loading = false;
+      },
+      formatExpiryTime(timestamp) {
+        if (timestamp <= 0) return '{{ i18n "unlimited" }}';
+        const date = new Date(timestamp);
+        const now = Date.now();
+        if (timestamp < now) {
+          return date.toLocaleString() + ' ({{ i18n "depleted" }})';
+        }
+        const diffDays = Math.ceil((timestamp - now) / (1000 * 60 * 60 * 24));
+        return date.toLocaleString() + ' (' + diffDays + ' {{ i18n "day" }})';
+      },
+      logout() {
+        location.href = basePath + 'logout/';
+      },
+    },
+  });
+</script>
+{{ template "page/body_end" .}}

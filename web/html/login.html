@@ -1,4 +1,5 @@
 {{ template "page/head_start" .}}
+<script data-cfasync="false" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -118,7 +119,7 @@
                         </a-form-item>
                         <a-form-item>
                           <div class="cf-turnstile-wrapper">
-                            <div class="cf-turnstile" :data-sitekey="turnstileSiteKey" data-callback="onTurnstileCallback" :data-size="turnstileSize"></div>
+                            <div class="cf-turnstile" id="turnstile-widget"></div>
                           </div>
                         </a-form-item>
                         <a-form-item>
@@ -149,10 +150,6 @@
 <script>
   var turnstileToken = '';
 
-  function onTurnstileCallback(token) {
-    turnstileToken = token;
-  }
-
   const app = new Vue({
     delimiters: ['[[', ']]'],
     el: '#app',
@@ -172,7 +169,7 @@
       this.twoFactorEnable = await this.getTwoFactorEnable();
       this.turnstileSiteKey = await this.getTurnstileSiteKey();
       if (this.turnstileSiteKey) {
-        this.loadTurnstileScript();
+        this.renderTurnstile();
       }
     },
     computed: {
@@ -214,17 +211,25 @@
           this.regUser = { username: "", password: "", confirmPassword: "" };
           turnstileToken = '';
           if (window.turnstile) {
-            turnstile.reset('.cf-turnstile');
+            var container = document.getElementById('turnstile-widget');
+            if (container) {
+              turnstile.reset(container);
+            }
           }
         }
         this.loadingStates.registerSpinning = false;
       },
-      loadTurnstileScript() {
-        const script = document.createElement('script');
-        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-        script.async = true;
-        script.defer = true;
-        document.head.appendChild(script);
+      renderTurnstile() {
+        if (window.turnstile) {
+          var container = document.getElementById('turnstile-widget');
+          if (container) {
+            turnstile.render(container, {
+              sitekey: this.turnstileSiteKey,
+              callback: function(token) { turnstileToken = token; },
+              size: this.turnstileSize,
+            });
+          }
+        }
       },
       async getTurnstileSiteKey() {
         const msg = await HttpUtil.post('/getTurnstileSiteKey');

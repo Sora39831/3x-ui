@@ -104,9 +104,17 @@ type AllSetting struct {
 	LdapDefaultExpiryDays int    `json:"ldapDefaultExpiryDays" form:"ldapDefaultExpiryDays"`
 	LdapDefaultLimitIP    int    `json:"ldapDefaultLimitIP" form:"ldapDefaultLimitIP"`
 
+	// Database settings
+	DBType     string `json:"dbType" form:"dbType"`
+	DBHost     string `json:"dbHost" form:"dbHost"`
+	DBPort     string `json:"dbPort" form:"dbPort"`
+	DBUser     string `json:"dbUser" form:"dbUser"`
+	DBPassword string `json:"-" form:"dbPassword"`
+	DBName     string `json:"dbName" form:"dbName"`
+
 	// Registration settings
 	TurnstileSiteKey   string `json:"turnstileSiteKey" form:"turnstileSiteKey"`
-	TurnstileSecretKey string `json:"turnstileSecretKey" form:"turnstileSecretKey"`
+	TurnstileSecretKey string `json:"-" form:"-"` // server-side only, never sent to frontend
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.
@@ -174,6 +182,28 @@ func (s *AllSetting) CheckValid() error {
 	_, err := time.LoadLocation(s.TimeLocation)
 	if err != nil {
 		return common.NewError("time location not exist:", s.TimeLocation)
+	}
+
+	// Validate database settings
+	if s.DBType != "" && s.DBType != "sqlite" && s.DBType != "mariadb" {
+		return common.NewError("db type must be sqlite or mariadb, got:", s.DBType)
+	}
+	if s.DBType == "mariadb" {
+		if s.DBHost == "" {
+			return common.NewError("db host is required for MariaDB")
+		}
+		if s.DBPort != "" {
+			port := 0
+			for _, c := range s.DBPort {
+				if c < '0' || c > '9' {
+					return common.NewError("db port is not a valid number:", s.DBPort)
+				}
+				port = port*10 + int(c-'0')
+			}
+			if port <= 0 || port > math.MaxUint16 {
+				return common.NewError("db port is not a valid port:", s.DBPort)
+			}
+		}
 	}
 
 	return nil

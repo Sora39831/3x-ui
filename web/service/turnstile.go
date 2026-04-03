@@ -6,9 +6,13 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/mhsanaei/3x-ui/v2/logger"
 )
 
 const turnstileVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+var turnstileClient = &http.Client{Timeout: 10 * time.Second}
 
 type turnstileResponse struct {
 	Success bool `json:"success"`
@@ -24,20 +28,22 @@ func VerifyTurnstile(secretKey, token, remoteIP string) bool {
 		form.Set("remoteip", remoteIP)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.PostForm(turnstileVerifyURL, form)
+	resp, err := turnstileClient.PostForm(turnstileVerifyURL, form)
 	if err != nil {
+		logger.Warning("Turnstile verification request failed (network error):", err)
 		return false
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
+		logger.Warning("Turnstile verification failed to read response:", err)
 		return false
 	}
 
 	var result turnstileResponse
 	if err := json.Unmarshal(body, &result); err != nil {
+		logger.Warning("Turnstile verification failed to parse response:", err)
 		return false
 	}
 	return result.Success

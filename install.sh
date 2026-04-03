@@ -786,18 +786,16 @@ config_after_install() {
         # 全新安装：用户输入或随机生成凭据
         echo -e "${yellow}设置面板凭据（输入 rd 或留空将自动生成）：${plain}"
 
-        read -rp "请输入用户名：" config_username
+        read -rp "请输入用户名 [默认 admin]：" config_username
         config_username="${config_username// /}"
         if [[ -z "$config_username" || "$config_username" == "rd" ]]; then
-            config_username=$(gen_random_string 10)
-            echo -e "${green}已生成随机用户名：${config_username}${plain}"
+            config_username="admin"
         fi
 
-        read -rp "请输入密码：" config_password
+        read -rp "请输入密码 [默认 admin]：" config_password
         config_password="${config_password// /}"
         if [[ -z "$config_password" || "$config_password" == "rd" ]]; then
-            config_password=$(gen_random_string 10)
-            echo -e "${green}已生成随机密码：${config_password}${plain}"
+            config_password="admin"
         fi
 
         read -rp "请输入 Web 路径（不含前导 /）：" config_webBasePath

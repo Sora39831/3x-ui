@@ -882,6 +882,9 @@ func (s *ServerService) GetConfigJson() (any, error) {
 }
 
 func (s *ServerService) GetDb() ([]byte, error) {
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		return nil, common.NewError("database export is not supported when using MariaDB — use mysqldump instead")
+	}
 	// Update by manually trigger a checkpoint operation
 	err := database.Checkpoint()
 	if err != nil {
@@ -904,6 +907,9 @@ func (s *ServerService) GetDb() ([]byte, error) {
 }
 
 func (s *ServerService) ImportDB(file multipart.File) error {
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		return common.NewError("database import is not supported when using MariaDB — use mysql restore instead")
+	}
 	// Check if the file is a SQLite database
 	isValidDb, err := database.IsSQLiteDB(file)
 	if err != nil {
@@ -1009,7 +1015,7 @@ func (s *ServerService) ImportDB(file multipart.File) error {
 	}
 
 	// Open & migrate new DB
-	if err = database.InitDB(config.GetDBPath()); err != nil {
+	if err = database.InitDBWithPath(config.GetDBPath()); err != nil {
 		if errRename := os.Rename(fallbackPath, config.GetDBPath()); errRename != nil {
 			return common.NewErrorf("Error migrating db and restoring fallback: %v", errRename)
 		}

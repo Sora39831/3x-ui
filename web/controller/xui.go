@@ -1,6 +1,10 @@
 package controller
 
 import (
+	"net/http"
+
+	"github.com/mhsanaei/3x-ui/v2/web/session"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,6 +29,7 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	g.Use(a.checkLogin)
 
 	g.GET("/", a.index)
+	g.GET("/user", a.user)
 	g.GET("/inbounds", a.inbounds)
 	g.GET("/settings", a.settings)
 	g.GET("/xray", a.xraySettings)
@@ -33,9 +38,19 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	a.xraySettingController = NewXraySettingController(g)
 }
 
-// index renders the main panel index page.
+// index renders the main panel index page. Non-admin users are redirected to the user dashboard.
 func (a *XUIController) index(c *gin.Context) {
+	user := session.GetLoginUser(c)
+	if user.Role != "admin" {
+		c.Redirect(http.StatusTemporaryRedirect, "user")
+		return
+	}
 	html(c, "index.html", "pages.index.title", nil)
+}
+
+// user renders the user dashboard page.
+func (a *XUIController) user(c *gin.Context) {
+	html(c, "user.html", "pages.user.title", nil)
 }
 
 // inbounds renders the inbounds management page.

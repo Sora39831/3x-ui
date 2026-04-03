@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/mhsanaei/3x-ui/v2/web/middleware"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/web/session"
 
@@ -35,6 +37,7 @@ type IndexController struct {
 
 	settingService service.SettingService
 	userService    service.UserService
+	inboundService service.InboundService
 	tgbot          service.Tgbot
 }
 
@@ -51,7 +54,7 @@ func (a *IndexController) initRouter(g *gin.RouterGroup) {
 	g.GET("/logout", a.logout)
 
 	g.POST("/login", a.login)
-	g.POST("/register", a.register)
+	g.POST("/register", middleware.RateLimitMiddleware(5, time.Minute), a.register)
 	g.POST("/getTwoFactorEnable", a.getTwoFactorEnable)
 	g.POST("/getTurnstileSiteKey", a.getTurnstileSiteKey)
 }
@@ -59,7 +62,12 @@ func (a *IndexController) initRouter(g *gin.RouterGroup) {
 // index handles the root route, redirecting logged-in users to the panel or showing the login page.
 func (a *IndexController) index(c *gin.Context) {
 	if session.IsLogin(c) {
-		c.Redirect(http.StatusTemporaryRedirect, "panel/")
+		user := session.GetLoginUser(c)
+		if user.Role == "admin" {
+			c.Redirect(http.StatusTemporaryRedirect, "panel/")
+		} else {
+			c.Redirect(http.StatusTemporaryRedirect, "panel/user")
+		}
 		return
 	}
 	html(c, "login.html", "pages.login.title", nil)
@@ -129,12 +137,25 @@ func (a *IndexController) register(c *gin.Context) {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.invalidFormData"))
 		return
 	}
+
+	// Trim whitespace
+	form.Username = strings.TrimSpace(form.Username)
+	form.Password = strings.TrimSpace(form.Password)
+
 	if form.Username == "" {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyUsername"))
 		return
 	}
 	if form.Password == "" {
 		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.emptyPassword"))
+		return
+	}
+	if len(form.Username) < 3 || len(form.Username) > 64 {
+		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.invalidUsername"))
+		return
+	}
+	if len(form.Password) < 8 || len(form.Password) > 128 {
+		pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.invalidPassword"))
 		return
 	}
 
@@ -151,10 +172,9 @@ func (a *IndexController) register(c *gin.Context) {
 		}
 	}
 
-	err = a.userService.RegisterUser(form.Username, form.Password)
+	err = a.userService.RegisterUser(form.Username, form.Password, &a.inboundService)
 	if err != nil {
-		errMsg := err.Error()
-		if strings.Contains(errMsg, "already exists") {
+		if errors.Is(err, service.ErrUsernameAlreadyExists) {
 			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.userExists"))
 			return
 		}

@@ -1,0 +1,131 @@
+package config
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestGetVersion(t *testing.T) {
+	v := GetVersion()
+	if v == "" {
+		// version file might be empty in test, that's ok
+		t.Log("version is empty (expected in test environment)")
+	}
+}
+
+func TestGetName(t *testing.T) {
+	n := GetName()
+	if n == "" {
+		t.Fatal("name should not be empty")
+	}
+	if strings.TrimSpace(n) != n {
+		t.Error("name should be trimmed")
+	}
+}
+
+func TestIsDebugDefault(t *testing.T) {
+	t.Setenv("XUI_DEBUG", "")
+	if IsDebug() {
+		t.Error("IsDebug should return false by default")
+	}
+}
+
+func TestIsDebugTrue(t *testing.T) {
+	t.Setenv("XUI_DEBUG", "true")
+	if !IsDebug() {
+		t.Error("IsDebug should return true when XUI_DEBUG=true")
+	}
+}
+
+func TestIsDebugFalse(t *testing.T) {
+	t.Setenv("XUI_DEBUG", "false")
+	if IsDebug() {
+		t.Error("IsDebug should return false when XUI_DEBUG=false")
+	}
+}
+
+func TestGetLogLevelDefault(t *testing.T) {
+	t.Setenv("XUI_DEBUG", "")
+	t.Setenv("XUI_LOG_LEVEL", "")
+	if GetLogLevel() != Info {
+		t.Errorf("default log level should be Info, got %s", GetLogLevel())
+	}
+}
+
+func TestGetLogLevelDebug(t *testing.T) {
+	t.Setenv("XUI_DEBUG", "true")
+	if GetLogLevel() != Debug {
+		t.Errorf("log level should be Debug when XUI_DEBUG=true, got %s", GetLogLevel())
+	}
+}
+
+func TestGetLogLevelCustom(t *testing.T) {
+	t.Setenv("XUI_DEBUG", "")
+	t.Setenv("XUI_LOG_LEVEL", "warning")
+	if GetLogLevel() != Warning {
+		t.Errorf("log level should be Warning, got %s", GetLogLevel())
+	}
+}
+
+func TestGetBinFolderPathDefault(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", "")
+	if GetBinFolderPath() != "bin" {
+		t.Errorf("default bin folder should be 'bin', got %s", GetBinFolderPath())
+	}
+}
+
+func TestGetBinFolderPathCustom(t *testing.T) {
+	t.Setenv("XUI_BIN_FOLDER", "/custom/bin")
+	if GetBinFolderPath() != "/custom/bin" {
+		t.Errorf("bin folder should be '/custom/bin', got %s", GetBinFolderPath())
+	}
+}
+
+func TestGetDBFolderPathDefault(t *testing.T) {
+	t.Setenv("XUI_DB_FOLDER", "")
+	folder := GetDBFolderPath()
+	// On Linux without env var, should be "/etc/x-ui"
+	if folder != "/etc/x-ui" {
+		t.Errorf("default DB folder should be '/etc/x-ui', got %s", folder)
+	}
+}
+
+func TestGetDBFolderPathCustom(t *testing.T) {
+	t.Setenv("XUI_DB_FOLDER", "/tmp/test-db")
+	if GetDBFolderPath() != "/tmp/test-db" {
+		t.Errorf("DB folder should be '/tmp/test-db', got %s", GetDBFolderPath())
+	}
+}
+
+func TestGetDBPath(t *testing.T) {
+	t.Setenv("XUI_DB_FOLDER", "/tmp/test")
+	dbPath := GetDBPath()
+	expected := "/tmp/test/" + GetName() + ".db"
+	if dbPath != expected {
+		t.Errorf("GetDBPath() = %q, want %q", dbPath, expected)
+	}
+}
+
+func TestGetSettingPath(t *testing.T) {
+	t.Setenv("XUI_DB_FOLDER", "/tmp/test")
+	settingPath := GetSettingPath()
+	expected := "/tmp/test/" + GetName() + ".json"
+	if settingPath != expected {
+		t.Errorf("GetSettingPath() = %q, want %q", settingPath, expected)
+	}
+}
+
+func TestGetLogFolderDefault(t *testing.T) {
+	t.Setenv("XUI_LOG_FOLDER", "")
+	folder := GetLogFolder()
+	if folder != "/var/log/x-ui" {
+		t.Errorf("default log folder should be '/var/log/x-ui', got %s", folder)
+	}
+}
+
+func TestGetLogFolderCustom(t *testing.T) {
+	t.Setenv("XUI_LOG_FOLDER", "/custom/logs")
+	if GetLogFolder() != "/custom/logs" {
+		t.Errorf("log folder should be '/custom/logs', got %s", GetLogFolder())
+	}
+}

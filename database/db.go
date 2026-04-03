@@ -1,5 +1,5 @@
 // Package database provides database initialization, migration, and management utilities
-// for the 3x-ui panel using GORM with SQLite.
+// for the 3x-ui panel using GORM with SQLite or MariaDB.
 package database
 
 import (
@@ -17,6 +17,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/util/crypto"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 
+	mysql2 "github.com/go-sql-driver/mysql"
+	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -68,7 +70,15 @@ func initUser() error {
 			Password: hashedPassword,
 			Role:     "admin",
 		}
-		return db.Create(user).Error
+		if err := db.Create(user).Error; err != nil {
+			return err
+		}
+
+		// Mark password hashing seeder as done since initUser already uses bcrypt
+		hashSeeder := &model.HistoryOfSeeders{
+			SeederName: "UserPasswordHash",
+		}
+		return db.Create(hashSeeder).Error
 	}
 	return nil
 }
@@ -106,7 +116,26 @@ func runSeeders(isUsersEmpty bool) error {
 			hashSeeder := &model.HistoryOfSeeders{
 				SeederName: "UserPasswordHash",
 			}
-			return db.Create(hashSeeder).Error
+			if err := db.Create(hashSeeder).Error; err != nil {
+				return err
+			}
+		}
+
+		if !slices.Contains(seedersHistory, "RemoveClientTrafficEmailUnique") {
+			// Drop the old unique index on client_traffics.email to allow
+			// the same email across multiple inbounds
+			dbType := config.GetDBTypeFromJSON()
+			if dbType == "mariadb" {
+				db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email ON client_traffics")
+			} else {
+				db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email")
+			}
+			uniqueSeeder := &model.HistoryOfSeeders{
+				SeederName: "RemoveClientTrafficEmailUnique",
+			}
+			if err := db.Create(uniqueSeeder).Error; err != nil {
+				return err
+			}
 		}
 	}
 
@@ -121,7 +150,61 @@ func isTableEmpty(tableName string) (bool, error) {
 }
 
 // InitDB sets up the database connection, migrates models, and runs seeders.
-func InitDB(dbPath string) error {
+// It reads the dbType from the JSON config to determine whether to use SQLite or MariaDB.
+func InitDB() error {
+	CloseDB() // close any existing connection before re-initializing
+
+	dbType := config.GetDBTypeFromJSON()
+
+	var err error
+	switch dbType {
+	case "mariadb":
+		err = initMariaDB()
+	default:
+		err = initSQLite(config.GetDBPath())
+	}
+	if err != nil {
+		return err
+	}
+
+	if err := initModels(); err != nil {
+		return err
+	}
+
+	if err := initUser(); err != nil {
+		return err
+	}
+
+	isUsersEmpty, err := isTableEmpty("users")
+	if err != nil {
+		return err
+	}
+	return runSeeders(isUsersEmpty)
+}
+
+// InitDBWithPath is a convenience function for tests and migrations that need
+// to open a specific SQLite file.
+func InitDBWithPath(dbPath string) error {
+	CloseDB() // close any existing connection before re-initializing
+
+	if err := initSQLite(dbPath); err != nil {
+		return err
+	}
+	if err := initModels(); err != nil {
+		return err
+	}
+	if err := initUser(); err != nil {
+		return err
+	}
+	isUsersEmpty, err := isTableEmpty("users")
+	if err != nil {
+		return err
+	}
+	return runSeeders(isUsersEmpty)
+}
+
+// initSQLite opens a SQLite database connection and runs model migrations.
+func initSQLite(dbPath string) error {
 	dir := path.Dir(dbPath)
 	err := os.MkdirAll(dir, fs.ModePerm)
 	if err != nil {
@@ -144,19 +227,49 @@ func InitDB(dbPath string) error {
 		return err
 	}
 
-	if err := initModels(); err != nil {
-		return err
+	return nil
+}
+
+// buildMariaDBDSN constructs a MariaDB DSN from the given config using
+// go-sql-driver/mysql's Config to properly escape special characters in credentials.
+func buildMariaDBDSN(dbConfig config.DBConfig) string {
+	cfg := mysql2.Config{
+		User:   dbConfig.User,
+		Passwd: dbConfig.Password,
+		Net:    "tcp",
+		Addr:   dbConfig.Host + ":" + dbConfig.Port,
+		DBName: dbConfig.Name,
+		Params: map[string]string{
+			"charset":   "utf8mb4",
+			"parseTime": "True",
+			"loc":       "Local",
+		},
+	}
+	return cfg.FormatDSN()
+}
+
+// initMariaDB opens a MariaDB connection and runs model migrations.
+func initMariaDB() error {
+	dbConfig := config.GetDBConfigFromJSON()
+	dsn := buildMariaDBDSN(dbConfig)
+
+	var gormLogger logger.Interface
+	if config.IsDebug() {
+		gormLogger = logger.Default
+	} else {
+		gormLogger = logger.Discard
 	}
 
-	isUsersEmpty, err := isTableEmpty("users")
+	var err error
+	c := &gorm.Config{
+		Logger: gormLogger,
+	}
+	db, err = gorm.Open(mysql.Open(dsn), c)
 	if err != nil {
 		return err
 	}
 
-	if err := initUser(); err != nil {
-		return err
-	}
-	return runSeeders(isUsersEmpty)
+	return nil
 }
 
 // CloseDB closes the database connection if it exists.
@@ -193,13 +306,12 @@ func IsSQLiteDB(file io.ReaderAt) (bool, error) {
 }
 
 // Checkpoint performs a WAL checkpoint on the SQLite database to ensure data consistency.
+// For MariaDB, this is a no-op.
 func Checkpoint() error {
-	// Update WAL
-	err := db.Exec("PRAGMA wal_checkpoint;").Error
-	if err != nil {
-		return err
+	if config.GetDBTypeFromJSON() != "sqlite" {
+		return nil
 	}
-	return nil
+	return db.Exec("PRAGMA wal_checkpoint;").Error
 }
 
 // ValidateSQLiteDB opens the provided sqlite DB path with a throw-away connection

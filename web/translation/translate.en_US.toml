@@ -116,6 +116,8 @@
 "successRegister" = "Registration successful, please log in."
 "userExists" = "Username already exists"
 "errorRegister" = "Registration failed"
+"invalidUsername" = "Username must be 3-64 characters"
+"invalidPassword" = "Password must be 8-128 characters"
 
 [pages.index]
 "title" = "Overview"
@@ -314,6 +316,17 @@
 "statusDescription" = "Status Desc"
 "requestHeader" = "Request Header"
 "responseHeader" = "Response Header"
+
+[pages.user]
+"title" = "User Dashboard"
+"username" = "Username"
+"upload" = "Upload"
+"download" = "Download"
+"totalTraffic" = "Total Traffic"
+"expiryTime" = "Expiry Time"
+"lastOnline" = "Last Online"
+"remained" = "Remained"
+"status" = "Status"
 
 [pages.settings]
 "title" = "Panel Settings"
