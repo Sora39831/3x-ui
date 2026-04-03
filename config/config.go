@@ -200,36 +200,46 @@ type DBConfig struct {
 
 // GetDBConfigFromJSON reads all MariaDB connection settings from the JSON config file.
 func GetDBConfigFromJSON() DBConfig {
-	readString := func(data []byte, nestedGroup, flatKey string) string {
-		var settings map[string]any
-		if err := json.Unmarshal(data, &settings); err != nil {
-			return ""
-		}
-		// Nested format
+	data, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		return DBConfig{Type: "sqlite", Host: "127.0.0.1", Port: "3306", Name: "3xui"}
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return DBConfig{Type: "sqlite", Host: "127.0.0.1", Port: "3306", Name: "3xui"}
+	}
+
+	// readString extracts a value from either nested (group.key) or flat format
+	readString := func(nestedGroup, flatKey string) string {
 		if group, ok := settings[nestedGroup].(map[string]any); ok {
 			if v, ok := group[flatKey].(string); ok {
 				return v
 			}
 		}
-		// Flat format
 		if v, ok := settings[flatKey].(string); ok {
 			return v
 		}
 		return ""
 	}
 
-	data, err := os.ReadFile(GetSettingPath())
-	if err != nil {
-		return DBConfig{Type: "sqlite", Host: "127.0.0.1", Port: "3306", Name: "3xui"}
+	// Read dbType from the same parsed settings
+	dbType := "sqlite"
+	if other, ok := settings["other"].(map[string]any); ok {
+		if t, ok := other["dbType"].(string); ok && t != "" {
+			dbType = t
+		}
+	} else if t, ok := settings["dbType"].(string); ok && t != "" {
+		dbType = t
 	}
 
 	return DBConfig{
-		Type:     GetDBTypeFromJSON(),
-		Host:     readString(data, "other", "dbHost"),
-		Port:     readString(data, "other", "dbPort"),
-		User:     readString(data, "other", "dbUser"),
-		Password: readString(data, "other", "dbPassword"),
-		Name:     readString(data, "other", "dbName"),
+		Type:     dbType,
+		Host:     readString("other", "dbHost"),
+		Port:     readString("other", "dbPort"),
+		User:     readString("other", "dbUser"),
+		Password: readString("other", "dbPassword"),
+		Name:     readString("other", "dbName"),
 	}
 }
 

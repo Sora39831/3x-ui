@@ -401,24 +401,41 @@ func migrateDb() {
 	fmt.Println("Migration done!")
 }
 
-// migrateDbBetweenDrivers migrates data between SQLite and MariaDB based on the configured dbType.
-func migrateDbBetweenDrivers() {
-	dbType := config.GetDBTypeFromJSON()
-	switch dbType {
-	case "mariadb":
+// migrateDbBetweenDrivers migrates data between SQLite and MariaDB.
+// The direction can be specified via --direction flag, otherwise it falls back to dbType from config.
+func migrateDbBetweenDrivers(direction string) {
+	switch direction {
+	case "sqlite-to-mariadb":
 		fmt.Println("Migrating data from SQLite to MariaDB...")
 		if err := database.MigrateSQLiteToMariaDB(); err != nil {
 			log.Fatal("Migration failed: ", err)
 		}
 		fmt.Println("Migration to MariaDB completed successfully.")
-	case "sqlite":
+	case "mariadb-to-sqlite":
 		fmt.Println("Migrating data from MariaDB to SQLite...")
 		if err := database.MigrateMariaDBToSQLite(); err != nil {
 			log.Fatal("Migration failed: ", err)
 		}
 		fmt.Println("Migration to SQLite completed successfully.")
 	default:
-		log.Fatalf("Unknown dbType: %s", dbType)
+		// Fall back to inferring from dbType config
+		dbType := config.GetDBTypeFromJSON()
+		switch dbType {
+		case "mariadb":
+			fmt.Println("Migrating data from SQLite to MariaDB...")
+			if err := database.MigrateSQLiteToMariaDB(); err != nil {
+				log.Fatal("Migration failed: ", err)
+			}
+			fmt.Println("Migration to MariaDB completed successfully.")
+		case "sqlite":
+			fmt.Println("Migrating data from MariaDB to SQLite...")
+			if err := database.MigrateMariaDBToSQLite(); err != nil {
+				log.Fatal("Migration failed: ", err)
+			}
+			fmt.Println("Migration to SQLite completed successfully.")
+		default:
+			log.Fatalf("Unknown dbType: %s", dbType)
+		}
 	}
 }
 
@@ -474,12 +491,18 @@ func main() {
 	var dbUser string
 	var dbPassword string
 	var dbName string
+	var showDbType bool
 	settingCmd.StringVar(&dbTypeFlag, "dbType", "", "Set database type (sqlite or mariadb)")
 	settingCmd.StringVar(&dbHost, "dbHost", "", "Set MariaDB host")
 	settingCmd.StringVar(&dbPort, "dbPort", "", "Set MariaDB port")
 	settingCmd.StringVar(&dbUser, "dbUser", "", "Set MariaDB username")
 	settingCmd.StringVar(&dbPassword, "dbPassword", "", "Set MariaDB password")
 	settingCmd.StringVar(&dbName, "dbName", "", "Set MariaDB database name")
+	settingCmd.BoolVar(&showDbType, "showDbType", false, "Print current database type and exit")
+
+	migrateDbCmd := flag.NewFlagSet("migrate-db", flag.ExitOnError)
+	var migrateDirection string
+	migrateDbCmd.StringVar(&migrateDirection, "direction", "", "Migration direction: sqlite-to-mariadb or mariadb-to-sqlite")
 
 	// Allow dbPassword to be passed via env var to avoid leaking it in process args
 	if p := os.Getenv("XUI_DB_PASSWORD"); p != "" {
@@ -514,11 +537,20 @@ func main() {
 	case "migrate":
 		migrateDb()
 	case "migrate-db":
-		migrateDbBetweenDrivers()
+		err := migrateDbCmd.Parse(os.Args[2:])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		migrateDbBetweenDrivers(migrateDirection)
 	case "setting":
 		err := settingCmd.Parse(os.Args[2:])
 		if err != nil {
 			fmt.Println(err)
+			return
+		}
+		if showDbType {
+			fmt.Println(config.GetDBTypeFromJSON())
 			return
 		}
 		if reset {

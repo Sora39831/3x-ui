@@ -5,7 +5,6 @@ package database
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -18,6 +17,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/util/crypto"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 
+	mysql2 "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -124,7 +124,12 @@ func runSeeders(isUsersEmpty bool) error {
 		if !slices.Contains(seedersHistory, "RemoveClientTrafficEmailUnique") {
 			// Drop the old unique index on client_traffics.email to allow
 			// the same email across multiple inbounds
-			db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email")
+			dbType := config.GetDBTypeFromJSON()
+			if dbType == "mariadb" {
+				db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email ON client_traffics")
+			} else {
+				db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email")
+			}
 			uniqueSeeder := &model.HistoryOfSeeders{
 				SeederName: "RemoveClientTrafficEmailUnique",
 			}
@@ -147,6 +152,8 @@ func isTableEmpty(tableName string) (bool, error) {
 // InitDB sets up the database connection, migrates models, and runs seeders.
 // It reads the dbType from the JSON config to determine whether to use SQLite or MariaDB.
 func InitDB() error {
+	CloseDB() // close any existing connection before re-initializing
+
 	dbType := config.GetDBTypeFromJSON()
 
 	var err error
@@ -178,6 +185,8 @@ func InitDB() error {
 // InitDBWithPath is a convenience function for tests and migrations that need
 // to open a specific SQLite file.
 func InitDBWithPath(dbPath string) error {
+	CloseDB() // close any existing connection before re-initializing
+
 	if err := initSQLite(dbPath); err != nil {
 		return err
 	}
@@ -221,12 +230,28 @@ func initSQLite(dbPath string) error {
 	return nil
 }
 
+// buildMariaDBDSN constructs a MariaDB DSN from the given config using
+// go-sql-driver/mysql's Config to properly escape special characters in credentials.
+func buildMariaDBDSN(dbConfig config.DBConfig) string {
+	cfg := mysql2.Config{
+		User:   dbConfig.User,
+		Passwd: dbConfig.Password,
+		Net:    "tcp",
+		Addr:   dbConfig.Host + ":" + dbConfig.Port,
+		DBName: dbConfig.Name,
+		Params: map[string]string{
+			"charset":   "utf8mb4",
+			"parseTime": "True",
+			"loc":       "Local",
+		},
+	}
+	return cfg.FormatDSN()
+}
+
 // initMariaDB opens a MariaDB connection and runs model migrations.
 func initMariaDB() error {
 	dbConfig := config.GetDBConfigFromJSON()
-
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		dbConfig.User, dbConfig.Password, dbConfig.Host, dbConfig.Port, dbConfig.Name)
+	dsn := buildMariaDBDSN(dbConfig)
 
 	var gormLogger logger.Interface
 	if config.IsDebug() {

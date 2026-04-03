@@ -48,8 +48,7 @@ func openSQLite(dbPath string) (*gorm.DB, error) {
 // openMariaDB opens a MariaDB connection for migration.
 func openMariaDB() (*gorm.DB, error) {
 	dbConfig := config.GetDBConfigFromJSON()
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		dbConfig.User, dbConfig.Password, dbConfig.Host, dbConfig.Port, dbConfig.Name)
+	dsn := buildMariaDBDSN(dbConfig)
 	return gorm.Open(mysql.Open(dsn), &gorm.Config{Logger: logger.Discard})
 }
 

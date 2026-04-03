@@ -998,6 +998,10 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
 		fieldV := v.FieldByName(field.Name)
 		settings[key] = fmt.Sprint(fieldV.Interface())
 	}
+	// DBPassword uses json:"-" to avoid leaking to frontend, handle it via form tag
+	if allSetting.DBPassword != "" {
+		settings["dbPassword"] = allSetting.DBPassword
+	}
 	return saveSettings(settings)
 }
 

@@ -2202,15 +2202,10 @@ show_usage() {
 └────────────────────────────────────────────────────────────────┘"
 }
 
-# Read dbType from /etc/x-ui/x-ui.json
+# Read dbType from /etc/x-ui/x-ui.json using the Go binary
 read_json_dbtype() {
-    local json_path="/etc/x-ui/x-ui.json"
-    if [ ! -f "$json_path" ]; then
-        echo "sqlite"
-        return
-    fi
-    # Try nested format first (other.dbType)
-    local db_type=$(grep -o '"dbType"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" | head -1 | sed 's/.*"dbType"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    local db_type
+    db_type=$(${xui_folder}/x-ui setting -showDbType 2>/dev/null)
     if [ -z "$db_type" ]; then
         echo "sqlite"
     else
@@ -2224,9 +2219,15 @@ db_show_status() {
     echo -e "${green}当前数据库类型: ${current_type}${plain}"
     if [ "$current_type" = "mariadb" ]; then
         local json_path="/etc/x-ui/x-ui.json"
-        local host=$(grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | head -1 | sed 's/.*"dbHost"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-        local port=$(grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | head -1 | sed 's/.*"dbPort"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-        local dbname=$(grep -o '"dbName"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | head -1 | sed 's/.*"dbName"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+        if command -v jq >/dev/null 2>&1; then
+            local host=$(jq -r '.other.dbHost // "127.0.0.1"' "$json_path" 2>/dev/null)
+            local port=$(jq -r '.other.dbPort // "3306"' "$json_path" 2>/dev/null)
+            local dbname=$(jq -r '.other.dbName // "3xui"' "$json_path" 2>/dev/null)
+        else
+            local host=$(grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            local port=$(grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            local dbname=$(grep -o '"dbName"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+        fi
         echo -e "${green}MariaDB 主机: ${host:-127.0.0.1}:${port:-3306}${plain}"
         echo -e "${green}数据库名: ${dbname:-3xui}${plain}"
     fi
@@ -2268,17 +2269,17 @@ db_switch_to_mariadb() {
     db_name=${db_name:-3xui}
 
     echo -e "${green}正在配置 MariaDB 连接...${plain}"
-    XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting -dbType mariadb -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
+    XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
 
     echo -e "${green}正在迁移数据从 SQLite 到 MariaDB...${plain}"
-    ${xui_folder}/x-ui migrate-db
+    ${xui_folder}/x-ui migrate-db -direction sqlite-to-mariadb
 
     if [ $? -eq 0 ]; then
         echo -e "${green}数据库切换成功，正在重启面板...${plain}"
+        ${xui_folder}/x-ui setting -dbType mariadb >/dev/null 2>&1
         restart
     else
-        echo -e "${red}数据迁移失败，正在回滚到 SQLite...${plain}"
-        ${xui_folder}/x-ui setting -dbType sqlite >/dev/null 2>&1
+        echo -e "${red}数据迁移失败，保持 SQLite 不变${plain}"
         restart
     fi
 }
@@ -2293,14 +2294,15 @@ db_switch_to_sqlite() {
     fi
 
     echo -e "${green}正在迁移数据从 MariaDB 到 SQLite...${plain}"
-    ${xui_folder}/x-ui setting -dbType sqlite >/dev/null 2>&1
-    ${xui_folder}/x-ui migrate-db
+    ${xui_folder}/x-ui migrate-db -direction mariadb-to-sqlite
 
     if [ $? -eq 0 ]; then
         echo -e "${green}数据库切换成功，正在重启面板...${plain}"
+        ${xui_folder}/x-ui setting -dbType sqlite >/dev/null 2>&1
         restart
     else
-        echo -e "${red}数据迁移失败${plain}"
+        echo -e "${red}数据迁移失败，保持 MariaDB 不变${plain}"
+        db_menu
     fi
 }
 
