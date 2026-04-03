@@ -464,5 +464,9 @@ func (a *InboundController) getUserInfo(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.trafficGetError"), err)
 		return
 	}
+	if traffic == nil {
+		jsonObj(c, gin.H{"email": user.Username}, nil)
+		return
+	}
 	jsonObj(c, traffic, nil)
 }
