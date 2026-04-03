@@ -882,6 +882,9 @@ func (s *ServerService) GetConfigJson() (any, error) {
 }
 
 func (s *ServerService) GetDb() ([]byte, error) {
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		return nil, common.NewError("Database export is not supported for MariaDB")
+	}
 	// Update by manually trigger a checkpoint operation
 	err := database.Checkpoint()
 	if err != nil {
@@ -904,6 +907,9 @@ func (s *ServerService) GetDb() ([]byte, error) {
 }
 
 func (s *ServerService) ImportDB(file multipart.File) error {
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		return common.NewError("Database import is not supported for MariaDB")
+	}
 	// Check if the file is a SQLite database
 	isValidDb, err := database.IsSQLiteDB(file)
 	if err != nil {
