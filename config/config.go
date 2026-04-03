@@ -4,6 +4,7 @@ package config
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -158,4 +159,112 @@ func init() {
 		return // old does not exist
 	}
 	_ = copyFile(oldDBPath, newDBPath) // ignore error
+}
+
+// GetDBTypeFromJSON reads the dbType setting directly from the JSON config file.
+// This is needed before the database is initialized. Falls back to "sqlite".
+func GetDBTypeFromJSON() string {
+	data, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		return "sqlite"
+	}
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return "sqlite"
+	}
+
+	// Check nested format: "other" group contains "dbType"
+	if other, ok := settings["other"].(map[string]any); ok {
+		if dbType, ok := other["dbType"].(string); ok && dbType != "" {
+			return dbType
+		}
+	}
+
+	// Check flat format: top-level "dbType"
+	if dbType, ok := settings["dbType"].(string); ok && dbType != "" {
+		return dbType
+	}
+
+	return "sqlite"
+}
+
+// DBConfig holds MariaDB connection settings read from the JSON config file.
+type DBConfig struct {
+	Type     string
+	Host     string
+	Port     string
+	User     string
+	Password string
+	Name     string
+}
+
+// GetDBConfigFromJSON reads all MariaDB connection settings from the JSON config file.
+func GetDBConfigFromJSON() DBConfig {
+	readString := func(data []byte, nestedGroup, flatKey string) string {
+		var settings map[string]any
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return ""
+		}
+		// Nested format
+		if group, ok := settings[nestedGroup].(map[string]any); ok {
+			if v, ok := group[flatKey].(string); ok {
+				return v
+			}
+		}
+		// Flat format
+		if v, ok := settings[flatKey].(string); ok {
+			return v
+		}
+		return ""
+	}
+
+	data, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		return DBConfig{Type: "sqlite", Host: "127.0.0.1", Port: "3306", Name: "3xui"}
+	}
+
+	return DBConfig{
+		Type:     GetDBTypeFromJSON(),
+		Host:     readString(data, "other", "dbHost"),
+		Port:     readString(data, "other", "dbPort"),
+		User:     readString(data, "other", "dbUser"),
+		Password: readString(data, "other", "dbPassword"),
+		Name:     readString(data, "other", "dbName"),
+	}
+}
+
+// WriteSettingToJSON writes a single setting key to the JSON config file.
+// It reads the existing file, updates the value, and writes back.
+func WriteSettingToJSON(key, value string) error {
+	path := GetSettingPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return err
+	}
+
+	// Check if the key lives in a nested group
+	groupMap := map[string]string{
+		"dbType": "other", "dbHost": "other", "dbPort": "other",
+		"dbUser": "other", "dbPassword": "other", "dbName": "other",
+	}
+
+	if group, ok := groupMap[key]; ok {
+		if _, exists := settings[group]; !exists {
+			settings[group] = make(map[string]any)
+		}
+		settings[group].(map[string]any)[key] = value
+	} else {
+		settings[key] = value
+	}
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, out, 0644)
 }
