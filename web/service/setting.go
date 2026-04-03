@@ -108,6 +108,14 @@ var defaultValueMap = map[string]string{
 	// Registration settings
 	"turnstileSiteKey":   "",
 	"turnstileSecretKey": "",
+
+	// Database settings
+	"dbType":     "sqlite",
+	"dbHost":     "127.0.0.1",
+	"dbPort":     "3306",
+	"dbUser":     "",
+	"dbPassword": "",
+	"dbName":     "3xui",
 }
 
 // settingGroups defines the nested JSON structure for on-disk settings.
@@ -198,6 +206,12 @@ var settingGroups = map[string]map[string]string{
 		"secret":                      "secret",
 		"warp":                        "warp",
 		"xrayOutboundTestUrl":         "xrayOutboundTestUrl",
+		"dbType":                      "dbType",
+		"dbHost":                      "dbHost",
+		"dbPort":                      "dbPort",
+		"dbUser":                      "dbUser",
+		"dbPassword":                  "dbPassword",
+		"dbName":                      "dbName",
 	},
 }
 
@@ -1092,4 +1106,52 @@ func (s *SettingService) GetDefaultSettings(host string) (any, error) {
 	}
 
 	return result, nil
+}
+
+func (s *SettingService) GetDBType() (string, error) {
+	return s.getString("dbType")
+}
+
+func (s *SettingService) SetDBType(value string) error {
+	return s.setString("dbType", value)
+}
+
+func (s *SettingService) GetDBHost() (string, error) {
+	return s.getString("dbHost")
+}
+
+func (s *SettingService) SetDBHost(value string) error {
+	return s.setString("dbHost", value)
+}
+
+func (s *SettingService) GetDBPort() (string, error) {
+	return s.getString("dbPort")
+}
+
+func (s *SettingService) SetDBPort(value string) error {
+	return s.setString("dbPort", value)
+}
+
+func (s *SettingService) GetDBUser() (string, error) {
+	return s.getString("dbUser")
+}
+
+func (s *SettingService) SetDBUser(value string) error {
+	return s.setString("dbUser", value)
+}
+
+func (s *SettingService) GetDBPassword() (string, error) {
+	return s.getString("dbPassword")
+}
+
+func (s *SettingService) SetDBPassword(value string) error {
+	return s.setString("dbPassword", value)
+}
+
+func (s *SettingService) GetDBName() (string, error) {
+	return s.getString("dbName")
+}
+
+func (s *SettingService) SetDBName(value string) error {
+	return s.setString("dbName", value)
 }
