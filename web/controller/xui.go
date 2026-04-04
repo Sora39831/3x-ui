@@ -1,8 +1,10 @@
 package controller
 
 import (
+	"encoding/json"
 	"net/http"
 
+	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/web/session"
 
 	"github.com/gin-gonic/gin"
@@ -33,7 +35,7 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	g.GET("/inbounds", a.inbounds)
 	g.GET("/settings", a.settings)
 	g.GET("/xray", a.xraySettings)
-	g.GET("/users", a.checkAdmin, a.users)
+	g.GET("/api/user/info", a.userInfo)
 
 	a.settingController = NewSettingController(g)
 	a.xraySettingController = NewXraySettingController(g)
@@ -69,7 +71,74 @@ func (a *XUIController) xraySettings(c *gin.Context) {
 	html(c, "xray.html", "pages.xray.title", nil)
 }
 
-// users renders the admin user management page.
-func (a *XUIController) users(c *gin.Context) {
-	html(c, "users.html", "pages.users.title", nil)
+// userInfo returns per-inbound traffic info for the logged-in user.
+func (a *XUIController) userInfo(c *gin.Context) {
+	user := session.GetLoginUser(c)
+
+	inboundService := service.InboundService{}
+	inbounds, err := inboundService.GetAllInbounds()
+	if err != nil {
+		jsonObj(c, nil, err)
+		return
+	}
+
+	type UserInboundInfo struct {
+		Remark     string `json:"remark"`
+		Protocol   string `json:"protocol"`
+		Up         int64  `json:"up"`
+		Down       int64  `json:"down"`
+		Total      int64  `json:"total"`
+		ExpiryTime int64  `json:"expiryTime"`
+		Enable     bool   `json:"enable"`
+	}
+
+	var userInbounds []UserInboundInfo
+
+	for _, inbound := range inbounds {
+		var settings map[string]any
+		err := json.Unmarshal([]byte(inbound.Settings), &settings)
+		if err != nil {
+			continue
+		}
+
+		clientsInterface, ok := settings["clients"]
+		if !ok {
+			continue
+		}
+
+		clientsSlice, ok := clientsInterface.([]any)
+		if !ok {
+			continue
+		}
+
+		for _, ci := range clientsSlice {
+			clientMap, ok := ci.(map[string]any)
+			if !ok {
+				continue
+			}
+			clientEmail, _ := clientMap["email"].(string)
+			if clientEmail == user.Username {
+				info := UserInboundInfo{
+					Remark:   inbound.Remark,
+					Protocol: string(inbound.Protocol),
+					Enable:   true,
+				}
+				// Find matching traffic stats
+				for _, stat := range inbound.ClientStats {
+					if stat.Email == user.Username {
+						info.Up = stat.Up
+						info.Down = stat.Down
+						info.Total = stat.Total
+						info.ExpiryTime = stat.ExpiryTime
+						info.Enable = stat.Enable
+						break
+					}
+				}
+				userInbounds = append(userInbounds, info)
+				break
+			}
+		}
+	}
+
+	jsonObj(c, userInbounds, nil)
 }

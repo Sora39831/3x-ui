@@ -117,7 +117,7 @@
                             <a-icon slot="prefix" type="lock" class="fs-1rem"></a-icon>
                           </a-input-password>
                         </a-form-item>
-                        <a-form-item>
+                        <a-form-item v-if="turnstileSiteKey">
                           <div class="cf-turnstile-wrapper">
                             <div class="cf-turnstile" id="turnstile-widget"></div>
                           </div>
@@ -148,8 +148,6 @@
 {{template "page/body_scripts" .}}
 {{template "component/aThemeSwitch" .}}
 <script>
-  var turnstileToken = '';
-
   const app = new Vue({
     delimiters: ['[[', ']]'],
     el: '#app',
@@ -163,23 +161,45 @@
       lang: "",
       animationStarted: false,
       turnstileSiteKey: '',
+      turnstileToken: '',
+      windowWidth: window.innerWidth,
     },
     async mounted() {
       this.lang = LanguageManager.getLanguage();
-      this.twoFactorEnable = await this.getTwoFactorEnable();
-      this.turnstileSiteKey = await this.getTurnstileSiteKey();
-      if (this.turnstileSiteKey) {
-        this.renderTurnstile();
+      this._onResize = () => { this.windowWidth = window.innerWidth; };
+      window.addEventListener('resize', this._onResize);
+      try {
+        this.twoFactorEnable = await this.getTwoFactorEnable();
+        this.turnstileSiteKey = await this.getTurnstileSiteKey();
+        if (this.turnstileSiteKey) {
+          this.waitForTurnstileAndRender();
+        }
+      } finally {
+        this.loadingStates.fetched = true;
+        this.$nextTick(() => {
+          if (!this.animationStarted) {
+            this.animationStarted = true;
+            this.initHeadline();
+          }
+        });
+      }
+    },
+    beforeDestroy() {
+      if (this._onResize) {
+        window.removeEventListener('resize', this._onResize);
       }
     },
     computed: {
       turnstileSize() {
-        return window.innerWidth < 480 ? 'compact' : 'normal';
+        return this.windowWidth < 480 ? 'compact' : 'normal';
       },
     },
     methods: {
       switchTab(key) {
         this.activeTab = key;
+        if (key === 'register' && this.turnstileSiteKey) {
+          this.$nextTick(() => this.renderTurnstile());
+        }
       },
       async doLogin() {
         this.loadingStates.spinning = true;
@@ -194,7 +214,7 @@
           this.$message.error('{{ i18n "pages.login.passwordMismatch" }}');
           return;
         }
-        if (!turnstileToken) {
+        if (this.turnstileSiteKey && !this.turnstileToken) {
           this.$message.error('{{ i18n "pages.login.turnstileRequired" }}');
           return;
         }
@@ -202,32 +222,44 @@
         const msg = await HttpUtil.post('/register', {
           username: this.regUser.username,
           password: this.regUser.password,
-          turnstileToken: turnstileToken,
+          turnstileToken: this.turnstileToken,
         });
         if (msg.success) {
           this.$message.success('{{ i18n "pages.login.toasts.successRegister" }}');
           this.activeTab = 'login';
           this.user.username = this.regUser.username;
           this.regUser = { username: "", password: "", confirmPassword: "" };
-          turnstileToken = '';
-          if (window.turnstile) {
-            var container = document.getElementById('turnstile-widget');
-            if (container) {
-              turnstile.reset(container);
-            }
-          }
         }
+        this.resetTurnstile();
         this.loadingStates.registerSpinning = false;
+      },
+      waitForTurnstileAndRender(retries = 20, interval = 300) {
+        if (window.turnstile) {
+          this.renderTurnstile();
+          return;
+        }
+        if (retries <= 0) return;
+        setTimeout(() => this.waitForTurnstileAndRender(retries - 1, interval), interval);
       },
       renderTurnstile() {
         if (window.turnstile) {
-          var container = document.getElementById('turnstile-widget');
-          if (container) {
+          const container = document.getElementById('turnstile-widget');
+          if (container && !container.querySelector('iframe')) {
+            const self = this;
             turnstile.render(container, {
               sitekey: this.turnstileSiteKey,
-              callback: function(token) { turnstileToken = token; },
+              callback: function(token) { self.turnstileToken = token; },
               size: this.turnstileSize,
             });
+          }
+        }
+      },
+      resetTurnstile() {
+        this.turnstileToken = '';
+        if (window.turnstile) {
+          const container = document.getElementById('turnstile-widget');
+          if (container) {
+            turnstile.reset(container);
           }
         }
       },
@@ -241,16 +273,9 @@
       async getTwoFactorEnable() {
         const msg = await HttpUtil.post('/getTwoFactorEnable');
         if (msg.success) {
-          this.twoFactorEnable = msg.obj;
-          this.loadingStates.fetched = true;
-          this.$nextTick(() => {
-            if (!this.animationStarted) {
-              this.animationStarted = true;
-              this.initHeadline();
-            }
-          });
           return msg.obj;
         }
+        return false;
       },
       initHeadline() {
         const animationDelay = 2000;

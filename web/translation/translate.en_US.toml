@@ -330,6 +330,11 @@
 "lastOnline" = "Last Online"
 "remained" = "Remained"
 "status" = "Status"
+"remark" = "Remark"
+"protocol" = "Protocol"
+"statusEnabled" = "Enabled"
+"statusDisabled" = "Disabled"
+"noData" = "No data available"
 
 [pages.users]
 "title" = "User Management"
