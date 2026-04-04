@@ -18,7 +18,7 @@
             mode="combobox"
             show-search
             allow-clear
-            :filter-option="filterEmailOption"
+            :filter-option="(input, option) => String(option.componentOptions?.propsData?.value || '').toLowerCase().includes(String(input || '').toLowerCase())"
             :dropdown-class-name="themeSwitcher.currentTheme"
             :not-found-content="emailOptions.length === 0 ? null : undefined"
             :placeholder='{{ printf "%q" (i18n "pages.inbounds.emailSelectPlaceholder") }}'>
