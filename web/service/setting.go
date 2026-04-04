@@ -977,7 +977,7 @@ func (s *SettingService) SetTurnstileSecretKey(value string) error {
 	return s.setString("turnstileSecretKey", value)
 }
 
-func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
+func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, presentKeys map[string]struct{}) error {
 	if err := allSetting.CheckValid(); err != nil {
 		return err
 	}
@@ -994,6 +994,11 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
 		key := field.Tag.Get("json")
 		if key == "-" || key == "" {
 			continue
+		}
+		if presentKeys != nil {
+			if _, ok := presentKeys[key]; !ok {
+				continue
+			}
 		}
 		fieldV := v.FieldByName(field.Name)
 		settings[key] = fmt.Sprint(fieldV.Interface())

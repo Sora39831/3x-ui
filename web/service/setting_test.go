@@ -295,3 +295,57 @@ func TestRoundTripNestedFormat(t *testing.T) {
 		t.Error("expected 'tgBot' group in nested JSON")
 	}
 }
+
+func TestUpdateAllSettingPreservesOmittedFields(t *testing.T) {
+	setupTestSettings(t)
+
+	svc := &SettingService{}
+	if err := svc.setString("turnstileSiteKey", "site-key-123"); err != nil {
+		t.Fatalf("setString turnstileSiteKey error: %v", err)
+	}
+	if err := svc.setString("dbType", "mariadb"); err != nil {
+		t.Fatalf("setString dbType error: %v", err)
+	}
+	if err := svc.setString("dbHost", "10.0.0.8"); err != nil {
+		t.Fatalf("setString dbHost error: %v", err)
+	}
+
+	allSetting, err := svc.GetAllSetting()
+	if err != nil {
+		t.Fatalf("GetAllSetting error: %v", err)
+	}
+	allSetting.WebPort = 9443
+
+	presentKeys := map[string]struct{}{}
+	for _, key := range []string{
+		"webListen", "webDomain", "webPort", "webCertFile", "webKeyFile", "webBasePath", "sessionMaxAge",
+		"pageSize", "expireDiff", "trafficDiff", "remarkModel", "datepicker",
+		"tgBotEnable", "tgBotToken", "tgBotProxy", "tgBotAPIServer", "tgBotChatId", "tgRunTime", "tgBotBackup", "tgBotLoginNotify", "tgCpu", "tgLang",
+		"timeLocation", "twoFactorEnable", "twoFactorToken",
+		"subEnable", "subJsonEnable", "subTitle", "subSupportUrl", "subProfileUrl", "subAnnounce", "subEnableRouting", "subRoutingRules", "subListen", "subPort", "subPath", "subDomain", "subCertFile", "subKeyFile", "subUpdates", "externalTrafficInformEnable", "externalTrafficInformURI", "subEncrypt", "subShowInfo", "subURI", "subJsonPath", "subJsonURI", "subJsonFragment", "subJsonNoises", "subJsonMux", "subJsonRules",
+		"ldapEnable", "ldapHost", "ldapPort", "ldapUseTLS", "ldapBindDN", "ldapPassword", "ldapBaseDN", "ldapUserFilter", "ldapUserAttr", "ldapVlessField", "ldapSyncCron", "ldapFlagField", "ldapTruthyValues", "ldapInvertFlag", "ldapInboundTags", "ldapAutoCreate", "ldapAutoDelete", "ldapDefaultTotalGB", "ldapDefaultExpiryDays", "ldapDefaultLimitIP",
+	} {
+		presentKeys[key] = struct{}{}
+	}
+
+	if err := svc.UpdateAllSetting(allSetting, presentKeys); err != nil {
+		t.Fatalf("UpdateAllSetting error: %v", err)
+	}
+
+	settings, err := loadSettings()
+	if err != nil {
+		t.Fatalf("loadSettings error: %v", err)
+	}
+	if got := settings["turnstileSiteKey"]; got != "site-key-123" {
+		t.Fatalf("expected turnstileSiteKey to be preserved, got %q", got)
+	}
+	if got := settings["dbType"]; got != "mariadb" {
+		t.Fatalf("expected dbType to be preserved, got %q", got)
+	}
+	if got := settings["dbHost"]; got != "10.0.0.8" {
+		t.Fatalf("expected dbHost to be preserved, got %q", got)
+	}
+	if got := settings["webPort"]; got != "9443" {
+		t.Fatalf("expected webPort to be updated, got %q", got)
+	}
+}

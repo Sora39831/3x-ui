@@ -1,7 +1,9 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/util/crypto"
@@ -66,15 +68,47 @@ func (a *SettingController) getDefaultSettings(c *gin.Context) {
 	jsonObj(c, result, nil)
 }
 
+func bindSettingUpdate(c *gin.Context) (*entity.AllSetting, map[string]struct{}, error) {
+	allSetting := &entity.AllSetting{}
+	presentKeys := map[string]struct{}{}
+
+	if c.ContentType() == "application/json" {
+		body, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := json.Unmarshal(body, allSetting); err != nil {
+			return nil, nil, err
+		}
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
+			return nil, nil, err
+		}
+		for key := range raw {
+			presentKeys[key] = struct{}{}
+		}
+		return allSetting, presentKeys, nil
+	}
+
+	if err := c.ShouldBind(allSetting); err != nil {
+		return nil, nil, err
+	}
+	if err := c.Request.ParseForm(); err == nil {
+		for key := range c.Request.PostForm {
+			presentKeys[key] = struct{}{}
+		}
+	}
+	return allSetting, presentKeys, nil
+}
+
 // updateSetting updates all settings with the provided data.
 func (a *SettingController) updateSetting(c *gin.Context) {
-	allSetting := &entity.AllSetting{}
-	err := c.ShouldBind(allSetting)
+	allSetting, presentKeys, err := bindSettingUpdate(c)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return
 	}
-	err = a.settingService.UpdateAllSetting(allSetting)
+	err = a.settingService.UpdateAllSetting(allSetting, presentKeys)
 	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 }
 

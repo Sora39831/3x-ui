@@ -77,6 +77,14 @@ class AllSetting {
         this.ldapDefaultExpiryDays = 0;
         this.ldapDefaultLimitIP = 0;
 
+        this.dbType = "sqlite";
+        this.dbHost = "127.0.0.1";
+        this.dbPort = "3306";
+        this.dbUser = "";
+        this.dbName = "3xui";
+
+        this.turnstileSiteKey = "";
+
         if (data == null) {
             return
         }
