@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/util/crypto"
+	"github.com/mhsanaei/3x-ui/v2/xray"
 )
 
 func setupTestDB(t *testing.T) {
@@ -143,5 +145,143 @@ func TestUpdateFirstUser_CreateWhenNone(t *testing.T) {
 	}
 	if !crypto.CheckPasswordHash(user.Password, "firstpass") {
 		t.Error("password hash should match 'firstpass'")
+	}
+}
+
+func TestDeleteUser_RemovesClientsFromAllInbounds(t *testing.T) {
+	setupTestDB(t)
+
+	db := database.GetDB()
+	userSvc := &UserService{}
+	inboundSvc := &InboundService{}
+
+	hashedPassword, err := crypto.HashPasswordAsBcrypt("password123")
+	if err != nil {
+		t.Fatalf("hash password failed: %v", err)
+	}
+	managedUser := &model.User{
+		Username: "managed_user",
+		Password: hashedPassword,
+		Role:     "user",
+	}
+	if err := db.Create(managedUser).Error; err != nil {
+		t.Fatalf("create managed user failed: %v", err)
+	}
+
+	settings1Bytes, err := json.Marshal(map[string]any{
+		"clients": []map[string]any{
+			{"id": "client-1", "email": "managed_user", "enable": false},
+			{"id": "client-2", "email": "keep_user", "enable": false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal inbound settings 1 failed: %v", err)
+	}
+	settings2Bytes, err := json.Marshal(map[string]any{
+		"clients": []map[string]any{
+			{"id": "client-3", "email": "managed_user", "enable": false},
+			{"id": "client-4", "email": "another_user", "enable": false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal inbound settings 2 failed: %v", err)
+	}
+
+	inbound1 := &model.Inbound{
+		UserId:   1,
+		Port:     21001,
+		Protocol: model.VLESS,
+		Tag:      "user-delete-sync-1",
+		Settings: string(settings1Bytes),
+	}
+	inbound2 := &model.Inbound{
+		UserId:   1,
+		Port:     21002,
+		Protocol: model.VLESS,
+		Tag:      "user-delete-sync-2",
+		Settings: string(settings2Bytes),
+	}
+	if err := db.Create(inbound1).Error; err != nil {
+		t.Fatalf("create inbound1 failed: %v", err)
+	}
+	if err := db.Create(inbound2).Error; err != nil {
+		t.Fatalf("create inbound2 failed: %v", err)
+	}
+
+	if err := db.Create(&xray.ClientTraffic{InboundId: inbound1.Id, Email: "managed_user"}).Error; err != nil {
+		t.Fatalf("create traffic for inbound1 failed: %v", err)
+	}
+	if err := db.Create(&xray.ClientTraffic{InboundId: inbound2.Id, Email: "managed_user"}).Error; err != nil {
+		t.Fatalf("create traffic for inbound2 failed: %v", err)
+	}
+	if err := db.Create(&xray.ClientTraffic{InboundId: inbound1.Id, Email: "keep_user"}).Error; err != nil {
+		t.Fatalf("create keep_user traffic failed: %v", err)
+	}
+	if err := db.Create(&model.InboundClientIps{ClientEmail: "managed_user", Ips: "[\"1.1.1.1\"]"}).Error; err != nil {
+		t.Fatalf("create inbound client ips failed: %v", err)
+	}
+
+	if err := userSvc.DeleteUser(managedUser.Id, 1, inboundSvc); err != nil {
+		t.Fatalf("DeleteUser failed: %v", err)
+	}
+
+	var usersCount int64
+	if err := db.Model(&model.User{}).Where("id = ?", managedUser.Id).Count(&usersCount).Error; err != nil {
+		t.Fatalf("count users failed: %v", err)
+	}
+	if usersCount != 0 {
+		t.Fatalf("expected managed user to be deleted, remaining=%d", usersCount)
+	}
+
+	checkInboundHasNoManagedUser := func(inboundID int) {
+		t.Helper()
+		var inbound model.Inbound
+		if err := db.First(&inbound, inboundID).Error; err != nil {
+			t.Fatalf("load inbound %d failed: %v", inboundID, err)
+		}
+		var settings map[string]any
+		if err := json.Unmarshal([]byte(inbound.Settings), &settings); err != nil {
+			t.Fatalf("unmarshal inbound settings failed: %v", err)
+		}
+		clients, ok := settings["clients"].([]any)
+		if !ok {
+			t.Fatalf("invalid clients format in inbound %d", inboundID)
+		}
+		for _, clientRaw := range clients {
+			clientMap, ok := clientRaw.(map[string]any)
+			if !ok {
+				continue
+			}
+			email, _ := clientMap["email"].(string)
+			if email == "managed_user" {
+				t.Fatalf("managed_user still exists in inbound %d clients", inboundID)
+			}
+		}
+	}
+	checkInboundHasNoManagedUser(inbound1.Id)
+	checkInboundHasNoManagedUser(inbound2.Id)
+
+	var managedTrafficCount int64
+	if err := db.Model(&xray.ClientTraffic{}).Where("email = ?", "managed_user").Count(&managedTrafficCount).Error; err != nil {
+		t.Fatalf("count managed user traffic failed: %v", err)
+	}
+	if managedTrafficCount != 0 {
+		t.Fatalf("expected managed_user traffic to be deleted, remaining=%d", managedTrafficCount)
+	}
+
+	var keepTrafficCount int64
+	if err := db.Model(&xray.ClientTraffic{}).Where("email = ?", "keep_user").Count(&keepTrafficCount).Error; err != nil {
+		t.Fatalf("count keep_user traffic failed: %v", err)
+	}
+	if keepTrafficCount != 1 {
+		t.Fatalf("expected keep_user traffic to remain, got=%d", keepTrafficCount)
+	}
+
+	var ipsCount int64
+	if err := db.Model(&model.InboundClientIps{}).Where("client_email = ?", "managed_user").Count(&ipsCount).Error; err != nil {
+		t.Fatalf("count inbound client ips failed: %v", err)
+	}
+	if ipsCount != 0 {
+		t.Fatalf("expected managed_user inbound_client_ips to be deleted, remaining=%d", ipsCount)
 	}
 }

@@ -151,6 +151,68 @@ func (s *UserService) addUserClientsToAllInbounds(tx *gorm.DB, username string, 
 	return nil
 }
 
+func (s *UserService) removeUserClientsFromAllInbounds(tx *gorm.DB, username string, inboundService *InboundService) error {
+	inbounds, err := inboundService.GetAllInbounds()
+	if err != nil {
+		return err
+	}
+
+	for _, inbound := range inbounds {
+		var settings map[string]any
+		if err := json.Unmarshal([]byte(inbound.Settings), &settings); err != nil {
+			return err
+		}
+
+		clientsRaw, ok := settings["clients"].([]any)
+		if !ok {
+			continue
+		}
+
+		newClients := make([]any, 0, len(clientsRaw))
+		removedEmails := make(map[string]struct{})
+		for _, clientRaw := range clientsRaw {
+			clientMap, ok := clientRaw.(map[string]any)
+			if !ok {
+				newClients = append(newClients, clientRaw)
+				continue
+			}
+
+			email, _ := clientMap["email"].(string)
+			if strings.EqualFold(email, username) {
+				if email != "" {
+					removedEmails[email] = struct{}{}
+				}
+				continue
+			}
+			newClients = append(newClients, clientRaw)
+		}
+
+		if len(removedEmails) == 0 {
+			continue
+		}
+
+		settings["clients"] = newClients
+		newSettings, err := json.Marshal(settings)
+		if err != nil {
+			return err
+		}
+		if err := tx.Model(&model.Inbound{}).Where("id = ?", inbound.Id).Update("settings", string(newSettings)).Error; err != nil {
+			return err
+		}
+
+		for email := range removedEmails {
+			if err := inboundService.DelClientStat(tx, inbound.Id, email); err != nil {
+				return err
+			}
+			if err := inboundService.DelClientIPs(tx, email); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 // GetFirstUser retrieves the first user from the database.
 // This is typically used for initial setup or when there's only one admin user.
 func (s *UserService) GetFirstUser() (*model.User, error) {
@@ -368,7 +430,7 @@ func (s *UserService) UpdateManagedUser(id int, username string, password string
 }
 
 // DeleteUser deletes a managed user.
-func (s *UserService) DeleteUser(id int, currentUserId int) error {
+func (s *UserService) DeleteUser(id int, currentUserId int, inboundService *InboundService) error {
 	if id == currentUserId {
 		return ErrCannotDeleteSelf
 	}
@@ -382,15 +444,31 @@ func (s *UserService) DeleteUser(id int, currentUserId int) error {
 		return err
 	}
 
+	if user.Role == "admin" {
+		adminCount, err := s.countAdmins(db)
+		if err != nil {
+			return err
+		}
+		if adminCount <= 1 {
+			return ErrLastAdminRequired
+		}
+	}
+
+	if inboundService == nil {
+		inboundService = &InboundService{}
+	}
+	inbounds, err := inboundService.GetInbounds(id)
+	if err != nil {
+		return err
+	}
+	for _, inbound := range inbounds {
+		if _, err := inboundService.DelInbound(inbound.Id); err != nil {
+			return err
+		}
+	}
 	return db.Transaction(func(tx *gorm.DB) error {
-		if user.Role == "admin" {
-			adminCount, err := s.countAdmins(tx)
-			if err != nil {
-				return err
-			}
-			if adminCount <= 1 {
-				return ErrLastAdminRequired
-			}
+		if err := s.removeUserClientsFromAllInbounds(tx, user.Username, inboundService); err != nil {
+			return err
 		}
 		return tx.Delete(&model.User{}, id).Error
 	})

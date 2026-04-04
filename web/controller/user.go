@@ -105,19 +105,7 @@ func (a *UserController) deleteUser(c *gin.Context) {
 	}
 
 	currentUser := session.GetLoginUser(c)
-	inbounds, err := a.inboundService.GetInbounds(id)
-	if err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.users.toasts.delete"), err)
-		return
-	}
-	for _, inbound := range inbounds {
-		if _, err := a.inboundService.DelInbound(inbound.Id); err != nil {
-			jsonMsg(c, I18nWeb(c, "pages.users.toasts.delete"), err)
-			return
-		}
-	}
-
-	err = a.userService.DeleteUser(id, currentUser.Id)
+	err = a.userService.DeleteUser(id, currentUser.Id, &a.inboundService)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.users.toasts.delete"), a.localizeUserError(c, err))
 		return
