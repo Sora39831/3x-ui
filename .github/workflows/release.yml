@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v*.*.*"
+      - "v*.*"
   pull_request:
     paths:
       - '**.js'
@@ -17,6 +17,10 @@ on:
       - 'x-ui.service.debian'
       - 'x-ui.service.arch'
       - 'x-ui.service.rhel'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   analyze:
@@ -57,6 +61,7 @@ jobs:
         run: go test -race -shuffle=on ./...
 
   build:
+    timeout-minutes: 30
     permissions:
       contents: write
     strategy:
@@ -86,6 +91,21 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
+      - name: Get latest Xray version
+        id: xray_version
+        run: |
+          LATEST=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r '.tag_name')
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest Xray version: $LATEST"
+
+      - name: Cache Bootlin toolchain
+        uses: actions/cache@v4
+        with:
+          path: /tmp/toolchain
+          key: bootlin-${{ matrix.platform }}-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            bootlin-${{ matrix.platform }}-
+
       - name: Build 3X-UI
         run: |
           export CGO_ENABLED=1
@@ -101,19 +121,28 @@ jobs:
             386) BOOTLIN_ARCH="x86-i686" ;;
             s390x) BOOTLIN_ARCH="s390x-z13" ;;
           esac
-          echo "Resolving Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
-          TARBALL_BASE="https://toolchains.bootlin.com/downloads/releases/toolchains/$BOOTLIN_ARCH/tarballs/"
-          TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
-          [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
-          echo "Downloading: $TARBALL_URL"
-          cd /tmp
-          curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
-          tar -xf "$(basename "$TARBALL_URL")"
-          TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
-          export PATH="$(realpath "$TOOLCHAIN_DIR")/bin:$PATH"
-          export CC=$(realpath "$(find "$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
-          [ -z "$CC" ] && { echo "No gcc.br_real found in $TOOLCHAIN_DIR/bin" >&2; exit 1; }
-          cd -
+
+          TOOLCHAIN_DIR=$(find /tmp/toolchain -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" 2>/dev/null | head -n1)
+
+          if [ -z "$TOOLCHAIN_DIR" ]; then
+            echo "Cache miss, downloading toolchain..."
+            mkdir -p /tmp/toolchain
+            TARBALL_BASE="https://toolchains.bootlin.com/downloads/releases/toolchains/$BOOTLIN_ARCH/tarballs/"
+            TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
+            [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
+            echo "Downloading: $TARBALL_URL"
+            cd /tmp/toolchain
+            curl -fL -sS --retry 3 --retry-delay 5 -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
+            tar -xf "$(basename "$TARBALL_URL")"
+            TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+            cd -
+          else
+            echo "Using cached toolchain: $TOOLCHAIN_DIR"
+          fi
+
+          export PATH="$(realpath "/tmp/toolchain/$TOOLCHAIN_DIR")/bin:$PATH"
+          export CC=$(realpath "$(find "/tmp/toolchain/$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
+          [ -z "$CC" ] && { echo "No gcc.br_real found in /tmp/toolchain/$TOOLCHAIN_DIR/bin" >&2; exit 1; }
           go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o xui-release -v main.go
           file xui-release
           ldd xui-release || echo "Static binary confirmed"
@@ -128,44 +157,38 @@ jobs:
           mkdir x-ui/bin
           cd x-ui/bin
 
-          # Download dependencies
-          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.2.6/"
-          if [ "${{ matrix.platform }}" == "amd64" ]; then
-            wget -q ${Xray_URL}Xray-linux-64.zip
-            unzip Xray-linux-64.zip
-            rm -f Xray-linux-64.zip
-          elif [ "${{ matrix.platform }}" == "arm64" ]; then
-            wget -q ${Xray_URL}Xray-linux-arm64-v8a.zip
-            unzip Xray-linux-arm64-v8a.zip
-            rm -f Xray-linux-arm64-v8a.zip
-          elif [ "${{ matrix.platform }}" == "armv7" ]; then
-            wget -q ${Xray_URL}Xray-linux-arm32-v7a.zip
-            unzip Xray-linux-arm32-v7a.zip
-            rm -f Xray-linux-arm32-v7a.zip
-          elif [ "${{ matrix.platform }}" == "armv6" ]; then
-            wget -q ${Xray_URL}Xray-linux-arm32-v6.zip
-            unzip Xray-linux-arm32-v6.zip
-            rm -f Xray-linux-arm32-v6.zip
-          elif [ "${{ matrix.platform }}" == "386" ]; then
-            wget -q ${Xray_URL}Xray-linux-32.zip
-            unzip Xray-linux-32.zip
-            rm -f Xray-linux-32.zip
-          elif [ "${{ matrix.platform }}" == "armv5" ]; then
-            wget -q ${Xray_URL}Xray-linux-arm32-v5.zip
-            unzip Xray-linux-arm32-v5.zip
-            rm -f Xray-linux-arm32-v5.zip
-          elif [ "${{ matrix.platform }}" == "s390x" ]; then
-            wget -q ${Xray_URL}Xray-linux-s390x.zip
-            unzip Xray-linux-s390x.zip
-            rm -f Xray-linux-s390x.zip
-          fi
-          rm -f geoip.dat geosite.dat
-          wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-          wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-          wget -q -O geoip_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat
-          wget -q -O geosite_IR.dat https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat
-          wget -q -O geoip_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat
-          wget -q -O geosite_RU.dat https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat
+          # Download Xray
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/${{ steps.xray_version.outputs.version }}/"
+          declare -A XRAY_MAP=(
+            [amd64]="Xray-linux-64.zip"
+            [arm64]="Xray-linux-arm64-v8a.zip"
+            [armv7]="Xray-linux-arm32-v7a.zip"
+            [armv6]="Xray-linux-arm32-v6.zip"
+            [386]="Xray-linux-32.zip"
+            [armv5]="Xray-linux-arm32-v5.zip"
+            [s390x]="Xray-linux-s390x.zip"
+          )
+          XRAY_FILE="${XRAY_MAP[${{ matrix.platform }}]}"
+          [ -z "$XRAY_FILE" ] && { echo "Unknown platform: ${{ matrix.platform }}" >&2; exit 1; }
+          curl -fL -sS --retry 3 --retry-delay 5 -o "$XRAY_FILE" "${Xray_URL}${XRAY_FILE}"
+          unzip -q "$XRAY_FILE"
+          rm -f "$XRAY_FILE"
+
+          # Download geo data in parallel
+          curl -fL -sS --retry 3 -o geoip.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat &
+          curl -fL -sS --retry 3 -o geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat &
+          curl -fL -sS --retry 3 -o geoip_IR.dat \
+            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat &
+          curl -fL -sS --retry 3 -o geosite_IR.dat \
+            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat &
+          curl -fL -sS --retry 3 -o geoip_RU.dat \
+            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat &
+          curl -fL -sS --retry 3 -o geosite_RU.dat \
+            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat &
+          wait
+
           mv xray xray-linux-${{ matrix.platform }}
           cd ../..
 
@@ -185,7 +208,8 @@ jobs:
         run: |
           TAG="${{ github.ref_name }}"
           if ! gh release view "$TAG" > /dev/null 2>&1; then
-            gh release create "$TAG" --prerelease --title "$TAG" --generate-notes
+            gh release create "$TAG" --prerelease --title "$TAG" --generate-notes \
+              --notes "**Xray-core:** ${{ steps.xray_version.outputs.version }}"
           fi
           gh release upload "$TAG" x-ui-linux-${{ matrix.platform }}.tar.gz --clobber
 
@@ -194,7 +218,6 @@ jobs:
   # =================================
   # build-windows:
   #   name: Build for Windows
-  #   needs: analyze
   #   permissions:
   #     contents: write
   #   strategy:
