@@ -548,7 +548,7 @@ func (s *InboundService) updateClientTraffics(tx *gorm.DB, oldInbound *model.Inb
 			}
 		}
 		if !emailExists {
-			err = s.DelClientStat(tx, oldClient.Email)
+			err = s.DelClientStat(tx, oldInbound.Id, oldClient.Email)
 			if err != nil {
 				return err
 			}
@@ -754,12 +754,14 @@ func (s *InboundService) DelInboundClient(inboundId int, clientId string) (bool,
 
 	if len(email) > 0 {
 		notDepleted := true
-		err = db.Model(xray.ClientTraffic{}).Select("enable").Where("email = ?", email).First(&notDepleted).Error
-		if err != nil {
+		var traffic xray.ClientTraffic
+		err = db.Model(xray.ClientTraffic{}).Where("inbound_id = ? AND email = ?", inboundId, email).First(&traffic).Error
+		if err != nil && err != gorm.ErrRecordNotFound {
 			logger.Error("Get stats error")
 			return false, err
 		}
-		err = s.DelClientStat(db, email)
+		notDepleted = err == nil && traffic.Enable
+		err = s.DelClientStat(db, inboundId, email)
 		if err != nil {
 			logger.Error("Delete stats Data Error")
 			return false, err
@@ -905,7 +907,7 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 
 	if len(clients[0].Email) > 0 {
 		if len(oldEmail) > 0 {
-			err = s.UpdateClientStat(tx, oldEmail, &clients[0])
+			err = s.UpdateClientStat(tx, data.Id, oldEmail, &clients[0])
 			if err != nil {
 				return false, err
 			}
@@ -917,7 +919,7 @@ func (s *InboundService) UpdateInboundClient(data *model.Inbound, clientId strin
 			s.AddClientStat(tx, data.Id, &clients[0])
 		}
 	} else {
-		err = s.DelClientStat(tx, oldEmail)
+		err = s.DelClientStat(tx, data.Id, oldEmail)
 		if err != nil {
 			return false, err
 		}
@@ -1368,9 +1370,9 @@ func (s *InboundService) AddClientStat(tx *gorm.DB, inboundId int, client *model
 	return err
 }
 
-func (s *InboundService) UpdateClientStat(tx *gorm.DB, email string, client *model.Client) error {
+func (s *InboundService) UpdateClientStat(tx *gorm.DB, inboundId int, email string, client *model.Client) error {
 	result := tx.Model(xray.ClientTraffic{}).
-		Where("email = ?", email).
+		Where("inbound_id = ? AND email = ?", inboundId, email).
 		Updates(map[string]any{
 			"enable":      client.Enable,
 			"email":       client.Email,
@@ -1386,8 +1388,8 @@ func (s *InboundService) UpdateClientIPs(tx *gorm.DB, oldEmail string, newEmail 
 	return tx.Model(model.InboundClientIps{}).Where("client_email = ?", oldEmail).Update("client_email", newEmail).Error
 }
 
-func (s *InboundService) DelClientStat(tx *gorm.DB, email string) error {
-	return tx.Where("email = ?", email).Delete(xray.ClientTraffic{}).Error
+func (s *InboundService) DelClientStat(tx *gorm.DB, inboundId int, email string) error {
+	return tx.Where("inbound_id = ? AND email = ?", inboundId, email).Delete(xray.ClientTraffic{}).Error
 }
 
 func (s *InboundService) DelClientIPs(tx *gorm.DB, email string) error {
@@ -2070,6 +2072,23 @@ func (s *InboundService) GetClientTrafficByEmail(email string) (traffic *xray.Cl
 	return nil, nil
 }
 
+func (s *InboundService) GetClientTrafficByInboundAndEmail(inboundId int, email string) (*xray.ClientTraffic, error) {
+	db := database.GetDB()
+	traffic := &xray.ClientTraffic{}
+
+	err := db.Model(xray.ClientTraffic{}).
+		Where("inbound_id = ? AND email = ?", inboundId, email).
+		First(traffic).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		logger.Warningf("Error retrieving ClientTraffic with inbound %d and email %s: %v", inboundId, email, err)
+		return nil, err
+	}
+	return traffic, nil
+}
+
 func (s *InboundService) UpdateClientTrafficByEmail(email string, upload int64, download int64) error {
 	db := database.GetDB()
 
@@ -2330,7 +2349,9 @@ func (s *InboundService) MigrationRequirements() {
 		for _, modelClient := range modelClients {
 			if len(modelClient.Email) > 0 {
 				var count int64
-				tx.Model(xray.ClientTraffic{}).Where("email = ?", modelClient.Email).Count(&count)
+				tx.Model(xray.ClientTraffic{}).
+					Where("inbound_id = ? AND email = ?", inbounds[inbound_index].Id, modelClient.Email).
+					Count(&count)
 				if count == 0 {
 					s.AddClientStat(tx, inbounds[inbound_index].Id, &modelClient)
 				}
@@ -2508,12 +2529,12 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 
 	// remove stats too
 	if len(email) > 0 {
-		traffic, err := s.GetClientTrafficByEmail(email)
+		traffic, err := s.GetClientTrafficByInboundAndEmail(inboundId, email)
 		if err != nil {
 			return false, err
 		}
 		if traffic != nil {
-			if err := s.DelClientStat(db, email); err != nil {
+			if err := s.DelClientStat(db, inboundId, email); err != nil {
 				logger.Error("Delete stats Data Error")
 				return false, err
 			}
