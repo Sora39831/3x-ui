@@ -105,7 +105,7 @@ func (a *UserController) deleteUser(c *gin.Context) {
 	}
 
 	currentUser := session.GetLoginUser(c)
-	err = a.userService.DeleteUser(id, currentUser.Id)
+	err = a.userService.DeleteUser(id, currentUser.Id, &a.inboundService)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.users.toasts.delete"), a.localizeUserError(c, err))
 		return
