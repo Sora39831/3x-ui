@@ -327,6 +327,11 @@
 "lastOnline" = "上次在线"
 "remained" = "剩余流量"
 "status" = "状态"
+"remark" = "备注"
+"protocol" = "协议"
+"statusEnabled" = "已启用"
+"statusDisabled" = "已禁用"
+"noData" = "暂无数据"
 
 [pages.settings]
 "title" = "面板设置"

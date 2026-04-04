@@ -93,13 +93,11 @@ func (a *IndexController) login(c *gin.Context) {
 	user, checkErr := a.userService.CheckUser(form.Username, form.Password, form.TwoFactorCode)
 	timeStr := time.Now().Format("2006-01-02 15:04:05")
 	safeUser := template.HTMLEscapeString(form.Username)
-	safePass := template.HTMLEscapeString(form.Password)
 
 	if user == nil {
-		logger.Warningf("wrong username: \"%s\", password: \"%s\", IP: \"%s\"", safeUser, safePass, getRemoteIp(c))
+		logger.Warningf("wrong username: \"%s\", IP: \"%s\"", safeUser, getRemoteIp(c))
 
-		notifyPass := safePass
-
+		notifyPass := ""
 		if checkErr != nil && checkErr.Error() == "invalid 2fa code" {
 			translatedError := a.tgbot.I18nBot("tgbot.messages.2faFailed")
 			notifyPass = fmt.Sprintf("*** (%s)", translatedError)
@@ -160,8 +158,14 @@ func (a *IndexController) register(c *gin.Context) {
 	}
 
 	// Verify Turnstile token if site key is configured
-	turnstileSecretKey, err := a.settingService.GetTurnstileSecretKey()
-	if err == nil && turnstileSecretKey != "" {
+	turnstileSiteKey, _ := a.settingService.GetTurnstileSiteKey()
+	if turnstileSiteKey != "" {
+		turnstileSecretKey, err := a.settingService.GetTurnstileSecretKey()
+		if err != nil || turnstileSecretKey == "" {
+			logger.Warning("Turnstile site key is configured but secret key is missing")
+			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.errorRegister"))
+			return
+		}
 		if form.TurnstileToken == "" {
 			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.turnstileRequired"))
 			return
@@ -172,7 +176,7 @@ func (a *IndexController) register(c *gin.Context) {
 		}
 	}
 
-	err = a.userService.RegisterUser(form.Username, form.Password, &a.inboundService)
+	err := a.userService.RegisterUser(form.Username, form.Password, &a.inboundService)
 	if err != nil {
 		if errors.Is(err, service.ErrUsernameAlreadyExists) {
 			pureJsonMsg(c, http.StatusOK, false, I18nWeb(c, "pages.login.toasts.userExists"))
@@ -203,15 +207,19 @@ func (a *IndexController) logout(c *gin.Context) {
 // getTwoFactorEnable retrieves the current status of two-factor authentication.
 func (a *IndexController) getTwoFactorEnable(c *gin.Context) {
 	status, err := a.settingService.GetTwoFactorEnable()
-	if err == nil {
-		jsonObj(c, status, nil)
+	if err != nil {
+		jsonObj(c, false, err)
+		return
 	}
+	jsonObj(c, status, nil)
 }
 
 // getTurnstileSiteKey returns the Cloudflare Turnstile site key for the registration form.
 func (a *IndexController) getTurnstileSiteKey(c *gin.Context) {
 	siteKey, err := a.settingService.GetTurnstileSiteKey()
-	if err == nil {
-		jsonObj(c, siteKey, nil)
+	if err != nil {
+		jsonObj(c, "", err)
+		return
 	}
+	jsonObj(c, siteKey, nil)
 }
