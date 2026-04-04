@@ -121,6 +121,115 @@ var defaultValueMap = map[string]string{
 // settingGroups defines the nested JSON structure for on-disk settings.
 // Each group maps nested keys to their flat equivalents in defaultValueMap.
 var settingGroups = map[string]map[string]string{
+	"panelNetwork": {
+		"listen":   "webListen",
+		"domain":   "webDomain",
+		"port":     "webPort",
+		"basePath": "webBasePath",
+	},
+	"panelTLS": {
+		"certFile": "webCertFile",
+		"keyFile":  "webKeyFile",
+	},
+	"panelSecurity": {
+		"sessionMaxAge":      "sessionMaxAge",
+		"twoFactorEnable":    "twoFactorEnable",
+		"twoFactorToken":     "twoFactorToken",
+		"turnstileSiteKey":   "turnstileSiteKey",
+		"turnstileSecretKey": "turnstileSecretKey",
+		"secret":             "secret",
+	},
+	"panelUX": {
+		"timeLocation": "timeLocation",
+		"datepicker":   "datepicker",
+		"pageSize":     "pageSize",
+		"expireDiff":   "expireDiff",
+		"trafficDiff":  "trafficDiff",
+		"remarkModel":  "remarkModel",
+	},
+	"telegramBot": {
+		"enable":      "tgBotEnable",
+		"token":       "tgBotToken",
+		"proxy":       "tgBotProxy",
+		"apiServer":   "tgBotAPIServer",
+		"chatId":      "tgBotChatId",
+		"runTime":     "tgRunTime",
+		"backup":      "tgBotBackup",
+		"loginNotify": "tgBotLoginNotify",
+		"cpu":         "tgCpu",
+		"lang":        "tgLang",
+	},
+	"subscriptionNetwork": {
+		"enable":     "subEnable",
+		"jsonEnable": "subJsonEnable",
+		"listen":     "subListen",
+		"port":       "subPort",
+		"path":       "subPath",
+		"domain":     "subDomain",
+		"certFile":   "subCertFile",
+		"keyFile":    "subKeyFile",
+		"updates":    "subUpdates",
+		"encrypt":    "subEncrypt",
+		"showInfo":   "subShowInfo",
+		"uri":        "subURI",
+		"jsonPath":   "subJsonPath",
+		"jsonURI":    "subJsonURI",
+	},
+	"subscriptionBranding": {
+		"title":      "subTitle",
+		"supportUrl": "subSupportUrl",
+		"profileUrl": "subProfileUrl",
+		"announce":   "subAnnounce",
+	},
+	"subscriptionRouting": {
+		"enableRouting": "subEnableRouting",
+		"routingRules":  "subRoutingRules",
+		"jsonFragment":  "subJsonFragment",
+		"jsonNoises":    "subJsonNoises",
+		"jsonMux":       "subJsonMux",
+		"jsonRules":     "subJsonRules",
+	},
+	"ldapConnection": {
+		"enable":     "ldapEnable",
+		"host":       "ldapHost",
+		"port":       "ldapPort",
+		"useTLS":     "ldapUseTLS",
+		"bindDN":     "ldapBindDN",
+		"password":   "ldapPassword",
+		"baseDN":     "ldapBaseDN",
+		"userFilter": "ldapUserFilter",
+		"userAttr":   "ldapUserAttr",
+		"vlessField": "ldapVlessField",
+	},
+	"ldapSync": {
+		"syncCron":          "ldapSyncCron",
+		"flagField":         "ldapFlagField",
+		"truthyValues":      "ldapTruthyValues",
+		"invertFlag":        "ldapInvertFlag",
+		"inboundTags":       "ldapInboundTags",
+		"autoCreate":        "ldapAutoCreate",
+		"autoDelete":        "ldapAutoDelete",
+		"defaultTotalGB":    "ldapDefaultTotalGB",
+		"defaultExpiryDays": "ldapDefaultExpiryDays",
+		"defaultLimitIP":    "ldapDefaultLimitIP",
+	},
+	"systemIntegration": {
+		"externalTrafficInformEnable": "externalTrafficInformEnable",
+		"externalTrafficInformURI":    "externalTrafficInformURI",
+		"warp":                        "warp",
+		"xrayOutboundTestUrl":         "xrayOutboundTestUrl",
+	},
+	"databaseConnection": {
+		"dbType":     "dbType",
+		"dbHost":     "dbHost",
+		"dbPort":     "dbPort",
+		"dbUser":     "dbUser",
+		"dbPassword": "dbPassword",
+		"dbName":     "dbName",
+	},
+}
+
+var legacySettingGroups = map[string]map[string]string{
 	"web": {
 		"listen":        "webListen",
 		"domain":        "webDomain",
@@ -215,6 +324,14 @@ var settingGroups = map[string]map[string]string{
 	},
 }
 
+func settingsLayoutMeta() map[string]string {
+	return map[string]string{
+		"layout":      "按模块-用途来归类",
+		"schema":      "module-purpose-v1",
+		"description": "Top-level groups are organized by module and purpose for easier maintenance and development.",
+	}
+}
+
 // flatToNestedKey maps flat keys to their [group, nestedKey] pair.
 var flatToNestedKey map[string][2]string
 
@@ -231,6 +348,7 @@ func init() {
 // using the settingGroups mapping. Keys not in any group are placed at the top level.
 func expandToNested(flat map[string]string) map[string]any {
 	result := make(map[string]any)
+	result["_meta"] = settingsLayoutMeta()
 
 	// Initialize all groups
 	for group := range settingGroups {
@@ -268,6 +386,12 @@ func flattenNested(nested map[string]any) map[string]string {
 		case map[string]any:
 			// This is a group
 			if groupKeys, ok := settingGroups[key]; ok {
+				for nestedKey, flatKey := range groupKeys {
+					if strVal, exists := v[nestedKey]; exists {
+						result[flatKey] = fmt.Sprint(strVal)
+					}
+				}
+			} else if groupKeys, ok := legacySettingGroups[key]; ok {
 				for nestedKey, flatKey := range groupKeys {
 					if strVal, exists := v[nestedKey]; exists {
 						result[flatKey] = fmt.Sprint(strVal)
@@ -977,7 +1101,7 @@ func (s *SettingService) SetTurnstileSecretKey(value string) error {
 	return s.setString("turnstileSecretKey", value)
 }
 
-func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
+func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, presentKeys map[string]struct{}) error {
 	if err := allSetting.CheckValid(); err != nil {
 		return err
 	}
@@ -994,6 +1118,11 @@ func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting) error {
 		key := field.Tag.Get("json")
 		if key == "-" || key == "" {
 			continue
+		}
+		if presentKeys != nil {
+			if _, ok := presentKeys[key]; !ok {
+				continue
+			}
 		}
 		fieldV := v.FieldByName(field.Name)
 		settings[key] = fmt.Sprint(fieldV.Interface())

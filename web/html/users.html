@@ -1,0 +1,297 @@
+{{ template "page/head_start" .}}
+{{ template "page/head_end" .}}
+
+{{ template "page/body_start" .}}
+<a-layout id="app" v-cloak :class="themeSwitcher.currentTheme + ' users-page'">
+  <a-sidebar></a-sidebar>
+  <a-layout id="content-layout">
+    <a-layout-content>
+      <a-spin :spinning="loading" :delay="200" tip='{{ i18n "loading"}}'>
+        <transition name="list" appear>
+          <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 8 : 12]">
+            <a-col>
+              <a-card hoverable>
+                <a-row :gutter="[12, 12]">
+                  <a-col :xs="24" :md="12">
+                    <a-input-search
+                      v-model="searchText"
+                      allow-clear
+                      :placeholder='{{ printf "%q" (i18n "pages.users.searchPlaceholder") }}'>
+                    </a-input-search>
+                  </a-col>
+                  <a-col :xs="24" :md="12">
+                    <a-space :style="toolbarStyle">
+                      <a-button icon="reload" @click="loadUsers">{{ i18n "refresh" }}</a-button>
+                      <a-button type="primary" icon="plus" @click="openCreateModal">{{ i18n "create" }}</a-button>
+                    </a-space>
+                  </a-col>
+                </a-row>
+              </a-card>
+            </a-col>
+            <a-col>
+              <a-card hoverable>
+                <template #title>
+                  <a-space>
+                    <span>{{ i18n "pages.users.listTitle" }}</span>
+                    <a-tag color="blue">[[ filteredUsers.length ]]</a-tag>
+                  </a-space>
+                </template>
+                <a-table
+                  :columns="columns"
+                  :data-source="filteredUsers"
+                  :row-key="record => record.id"
+                  :pagination="{ pageSize: 10, showSizeChanger: true }"
+                  :scroll="isMobile ? { x: 560 } : undefined">
+                  <template slot="role" slot-scope="text, record">
+                    <a-tag :color="record.role === 'admin' ? 'gold' : 'blue'">
+                      [[ getRoleLabel(record.role) ]]
+                    </a-tag>
+                  </template>
+                  <template slot="actions" slot-scope="text, record">
+                    <a-space>
+                      <a-button size="small" icon="edit" @click="openEditModal(record)">
+                        {{ i18n "edit" }}
+                      </a-button>
+                      <a-popconfirm
+                        :title="deleteConfirm(record)"
+                        :ok-text='{{ printf "%q" (i18n "confirm") }}'
+                        :cancel-text='{{ printf "%q" (i18n "cancel") }}'
+                        @confirm="deleteUser(record)">
+                        <a-button size="small" type="danger" icon="delete" :disabled="record.id === currentUserId">
+                          {{ i18n "delete" }}
+                        </a-button>
+                      </a-popconfirm>
+                    </a-space>
+                  </template>
+                </a-table>
+              </a-card>
+            </a-col>
+          </a-row>
+        </transition>
+      </a-spin>
+    </a-layout-content>
+  </a-layout>
+
+  <a-modal
+    v-model="userModal.visible"
+    :title="userModal.isEdit ? '{{ i18n "pages.users.editTitle" }}' : '{{ i18n "pages.users.createTitle" }}'"
+    :confirm-loading="userModal.submitting"
+    :ok-text="userModal.isEdit ? '{{ i18n "update" }}' : '{{ i18n "create" }}'"
+    :cancel-text='{{ printf "%q" (i18n "cancel") }}'
+    :class="themeSwitcher.currentTheme"
+    @ok="submitUser">
+    <a-form layout="vertical">
+      <a-form-item
+        :label='{{ printf "%q" (i18n "username") }}'
+        :validate-status="formErrors.username ? 'error' : ''"
+        :help="formErrors.username || ''">
+        <a-input
+          v-model.trim="form.username"
+          :placeholder='{{ printf "%q" (i18n "pages.users.usernamePlaceholder") }}'>
+        </a-input>
+      </a-form-item>
+      <a-form-item
+        :label='{{ printf "%q" (i18n "password") }}'
+        :validate-status="formErrors.password ? 'error' : ''"
+        :help="formErrors.password || passwordHelp">
+        <a-input
+          v-model="form.password"
+          type="password"
+          :placeholder="userModal.isEdit ? '{{ i18n "pages.users.passwordPlaceholder" }}' : '{{ i18n "pages.users.passwordRequiredPlaceholder" }}'">
+        </a-input>
+      </a-form-item>
+      <a-form-item :label='{{ printf "%q" (i18n "pages.users.role") }}'>
+        <a-select v-model="form.role" :dropdown-class-name="themeSwitcher.currentTheme">
+          <a-select-option value="admin">{{ i18n "pages.users.roles.admin" }}</a-select-option>
+          <a-select-option value="user">{{ i18n "pages.users.roles.user" }}</a-select-option>
+        </a-select>
+      </a-form-item>
+    </a-form>
+  </a-modal>
+</a-layout>
+{{template "page/body_scripts" .}}
+{{template "component/aSidebar" .}}
+{{template "component/aThemeSwitch" .}}
+<script>
+  const app = new Vue({
+    delimiters: ['[[', ']]'],
+    mixins: [MediaQueryMixin],
+    el: '#app',
+    data: {
+      themeSwitcher,
+      loading: false,
+      searchText: '',
+      currentUserId: {{ .current_user_id }},
+      users: [],
+      columns: [
+        {
+          title: 'ID',
+          dataIndex: 'id',
+          key: 'id',
+          width: 90,
+          sorter: (a, b) => a.id - b.id,
+        },
+        {
+          title: '{{ i18n "username" }}',
+          dataIndex: 'username',
+          key: 'username',
+          sorter: (a, b) => a.username.localeCompare(b.username),
+        },
+        {
+          title: '{{ i18n "pages.users.role" }}',
+          key: 'role',
+          scopedSlots: { customRender: 'role' },
+          filters: [
+            { text: '{{ i18n "pages.users.roles.admin" }}', value: 'admin' },
+            { text: '{{ i18n "pages.users.roles.user" }}', value: 'user' },
+          ],
+          onFilter: (value, record) => record.role === value,
+        },
+        {
+          title: '{{ i18n "pages.settings.actions" }}',
+          key: 'actions',
+          width: 180,
+          scopedSlots: { customRender: 'actions' },
+        },
+      ],
+      userModal: {
+        visible: false,
+        isEdit: false,
+        editingId: null,
+        submitting: false,
+      },
+      form: {
+        username: '',
+        password: '',
+        role: 'user',
+      },
+      formErrors: {
+        username: '',
+        password: '',
+      },
+    },
+    computed: {
+      filteredUsers() {
+        const keyword = this.searchText.trim().toLowerCase();
+        if (!keyword) {
+          return this.users;
+        }
+        return this.users.filter((user) => {
+          return user.username.toLowerCase().includes(keyword) || this.getRoleLabel(user.role).toLowerCase().includes(keyword);
+        });
+      },
+      passwordHelp() {
+        return this.userModal.isEdit
+          ? '{{ i18n "pages.users.passwordEditHelp" }}'
+          : '{{ i18n "pages.users.passwordCreateHelp" }}';
+      },
+      toolbarStyle() {
+        return {
+          float: this.isMobile ? 'none' : 'right',
+          display: this.isMobile ? 'flex' : 'inline-flex',
+        };
+      },
+    },
+    async mounted() {
+      await this.loadUsers();
+    },
+    methods: {
+      getRoleLabel(role) {
+        return role === 'admin'
+          ? '{{ i18n "pages.users.roles.admin" }}'
+          : '{{ i18n "pages.users.roles.user" }}';
+      },
+      resetForm() {
+        this.form = {
+          username: '',
+          password: '',
+          role: 'user',
+        };
+        this.formErrors = {
+          username: '',
+          password: '',
+        };
+      },
+      openCreateModal() {
+        this.resetForm();
+        this.userModal.visible = true;
+        this.userModal.isEdit = false;
+        this.userModal.editingId = null;
+      },
+      openEditModal(record) {
+        this.resetForm();
+        this.userModal.visible = true;
+        this.userModal.isEdit = true;
+        this.userModal.editingId = record.id;
+        this.form.username = record.username;
+        this.form.role = record.role;
+      },
+      validateForm() {
+        const username = this.form.username.trim();
+        const password = this.form.password.trim();
+
+        this.formErrors.username = '';
+        this.formErrors.password = '';
+
+        if (!username) {
+          this.formErrors.username = '{{ i18n "pages.users.validation.usernameRequired" }}';
+        } else if (username.length < 3 || username.length > 64) {
+          this.formErrors.username = '{{ i18n "pages.users.validation.usernameLength" }}';
+        }
+
+        if (!this.userModal.isEdit && !password) {
+          this.formErrors.password = '{{ i18n "pages.users.validation.passwordRequired" }}';
+        } else if (password && (password.length < 8 || password.length > 128)) {
+          this.formErrors.password = '{{ i18n "pages.users.validation.passwordLength" }}';
+        }
+
+        return !this.formErrors.username && !this.formErrors.password;
+      },
+      async loadUsers() {
+        this.loading = true;
+        try {
+          const msg = await HttpUtil.get('/panel/api/users/list');
+          if (msg.success) {
+            this.users = Array.isArray(msg.obj) ? msg.obj : [];
+          }
+        } finally {
+          this.loading = false;
+        }
+      },
+      async submitUser() {
+        if (!this.validateForm()) {
+          return;
+        }
+
+        this.userModal.submitting = true;
+        try {
+          const payload = {
+            username: this.form.username.trim(),
+            password: this.form.password.trim(),
+            role: this.form.role,
+          };
+          const url = this.userModal.isEdit
+            ? `/panel/api/users/update/${this.userModal.editingId}`
+            : '/panel/api/users/add';
+          const msg = await HttpUtil.post(url, payload);
+          if (msg.success) {
+            this.userModal.visible = false;
+            await this.loadUsers();
+          }
+        } finally {
+          this.userModal.submitting = false;
+        }
+      },
+      deleteConfirm(record) {
+        return `{{ i18n "pages.users.deleteConfirm" }}: ${record.username}`;
+      },
+      async deleteUser(record) {
+        const msg = await HttpUtil.post(`/panel/api/users/del/${record.id}`, {});
+        if (msg.success) {
+          await this.loadUsers();
+        }
+      },
+    },
+  });
+</script>
+{{ template "page/body_end" .}}

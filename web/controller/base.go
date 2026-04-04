@@ -29,6 +29,25 @@ func (a *BaseController) checkLogin(c *gin.Context) {
 	}
 }
 
+// checkAdmin ensures the current request is made by an authenticated admin user.
+func (a *BaseController) checkAdmin(c *gin.Context) {
+	user := session.GetLoginUser(c)
+	if user == nil {
+		a.checkLogin(c)
+		return
+	}
+	if user.Role != "admin" {
+		if isAjax(c) {
+			pureJsonMsg(c, http.StatusForbidden, false, I18nWeb(c, "pages.users.toasts.adminOnly"))
+		} else {
+			c.Redirect(http.StatusTemporaryRedirect, c.GetString("base_path")+"panel/user")
+		}
+		c.Abort()
+		return
+	}
+	c.Next()
+}
+
 // I18nWeb retrieves an internationalized message for the web interface based on the current locale.
 func I18nWeb(c *gin.Context, name string, params ...string) string {
 	anyfunc, funcExists := c.Get("I18n")

@@ -118,6 +118,39 @@ func GetLogFolder() string {
 	return "/var/log/x-ui"
 }
 
+var settingGroupAliases = map[string][]string{
+	"dbType":     {"databaseConnection", "other"},
+	"dbHost":     {"databaseConnection", "other"},
+	"dbPort":     {"databaseConnection", "other"},
+	"dbUser":     {"databaseConnection", "other"},
+	"dbPassword": {"databaseConnection", "other"},
+	"dbName":     {"databaseConnection", "other"},
+}
+
+func readGroupedString(settings map[string]any, key string) string {
+	if groups, ok := settingGroupAliases[key]; ok {
+		for _, groupName := range groups {
+			if group, ok := settings[groupName].(map[string]any); ok {
+				if value, ok := group[key].(string); ok && value != "" {
+					return value
+				}
+			}
+		}
+	}
+	if value, ok := settings[key].(string); ok && value != "" {
+		return value
+	}
+	return ""
+}
+
+func settingsLayoutMeta() map[string]any {
+	return map[string]any{
+		"layout":      "按模块-用途来归类",
+		"schema":      "module-purpose-v1",
+		"description": "Top-level groups are organized by module and purpose for easier maintenance and development.",
+	}
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -173,15 +206,7 @@ func GetDBTypeFromJSON() string {
 		return "sqlite"
 	}
 
-	// Check nested format: "other" group contains "dbType"
-	if other, ok := settings["other"].(map[string]any); ok {
-		if dbType, ok := other["dbType"].(string); ok && dbType != "" {
-			return dbType
-		}
-	}
-
-	// Check flat format: top-level "dbType"
-	if dbType, ok := settings["dbType"].(string); ok && dbType != "" {
+	if dbType := readGroupedString(settings, "dbType"); dbType != "" {
 		return dbType
 	}
 
@@ -210,36 +235,18 @@ func GetDBConfigFromJSON() DBConfig {
 		return DBConfig{Type: "sqlite", Host: "127.0.0.1", Port: "3306", Name: "3xui"}
 	}
 
-	// readString extracts a value from either nested (group.key) or flat format
-	readString := func(nestedGroup, flatKey string) string {
-		if group, ok := settings[nestedGroup].(map[string]any); ok {
-			if v, ok := group[flatKey].(string); ok {
-				return v
-			}
-		}
-		if v, ok := settings[flatKey].(string); ok {
-			return v
-		}
-		return ""
-	}
-
-	// Read dbType from the same parsed settings
 	dbType := "sqlite"
-	if other, ok := settings["other"].(map[string]any); ok {
-		if t, ok := other["dbType"].(string); ok && t != "" {
-			dbType = t
-		}
-	} else if t, ok := settings["dbType"].(string); ok && t != "" {
+	if t := readGroupedString(settings, "dbType"); t != "" {
 		dbType = t
 	}
 
 	return DBConfig{
 		Type:     dbType,
-		Host:     readString("other", "dbHost"),
-		Port:     readString("other", "dbPort"),
-		User:     readString("other", "dbUser"),
-		Password: readString("other", "dbPassword"),
-		Name:     readString("other", "dbName"),
+		Host:     readGroupedString(settings, "dbHost"),
+		Port:     readGroupedString(settings, "dbPort"),
+		User:     readGroupedString(settings, "dbUser"),
+		Password: readGroupedString(settings, "dbPassword"),
+		Name:     readGroupedString(settings, "dbName"),
 	}
 }
 
@@ -256,14 +263,13 @@ func WriteSettingToJSON(key, value string) error {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return err
 	}
-
-	// Check if the key lives in a nested group
-	groupMap := map[string]string{
-		"dbType": "other", "dbHost": "other", "dbPort": "other",
-		"dbUser": "other", "dbPassword": "other", "dbName": "other",
+	if _, exists := settings["_meta"]; !exists {
+		settings["_meta"] = settingsLayoutMeta()
 	}
 
-	if group, ok := groupMap[key]; ok {
+	// Check if the key lives in a nested group
+	if groups, ok := settingGroupAliases[key]; ok && len(groups) > 0 {
+		group := groups[0]
 		if _, exists := settings[group]; !exists {
 			settings[group] = make(map[string]any)
 		}
