@@ -391,6 +391,20 @@ func GetListenIP(getListen bool) {
 // migrateDb performs database migration operations for the 3x-ui panel.
 func migrateDb() {
 	inboundService := service.InboundService{}
+	switch config.GetLogLevel() {
+	case config.Debug:
+		logger.InitLogger(logging.DEBUG)
+	case config.Info:
+		logger.InitLogger(logging.INFO)
+	case config.Notice:
+		logger.InitLogger(logging.NOTICE)
+	case config.Warning:
+		logger.InitLogger(logging.WARNING)
+	case config.Error:
+		logger.InitLogger(logging.ERROR)
+	default:
+		logger.InitLogger(logging.INFO)
+	}
 
 	err := database.InitDB()
 	if err != nil {

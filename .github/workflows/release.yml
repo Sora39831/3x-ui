@@ -91,12 +91,81 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
+      - name: Cache Go build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+          key: gobuild-${{ matrix.platform }}-${{ hashFiles('**/*.go', 'go.mod', 'go.sum') }}
+          restore-keys: |
+            gobuild-${{ matrix.platform }}-
+
       - name: Get latest Xray version
         id: xray_version
         run: |
           LATEST=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r '.tag_name')
           echo "version=$LATEST" >> "$GITHUB_OUTPUT"
           echo "Latest Xray version: $LATEST"
+
+      - name: Cache Xray binary
+        id: cache_xray
+        uses: actions/cache@v4
+        with:
+          path: /tmp/xray
+          key: xray-${{ matrix.platform }}-${{ steps.xray_version.outputs.version }}
+          restore-keys: |
+            xray-${{ matrix.platform }}-
+
+      - name: Download Xray
+        if: steps.cache_xray.outputs.cache-hit != 'true'
+        run: |
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/${{ steps.xray_version.outputs.version }}/"
+          declare -A XRAY_MAP=(
+            [amd64]="Xray-linux-64.zip"
+            [arm64]="Xray-linux-arm64-v8a.zip"
+            [armv7]="Xray-linux-arm32-v7a.zip"
+            [armv6]="Xray-linux-arm32-v6.zip"
+            [386]="Xray-linux-32.zip"
+            [armv5]="Xray-linux-arm32-v5.zip"
+            [s390x]="Xray-linux-s390x.zip"
+          )
+          XRAY_FILE="${XRAY_MAP[${{ matrix.platform }}]}"
+          [ -z "$XRAY_FILE" ] && { echo "Unknown platform: ${{ matrix.platform }}" >&2; exit 1; }
+          mkdir -p /tmp/xray
+          curl -fL -sS --retry 3 --retry-delay 5 -o "/tmp/xray/$XRAY_FILE" "${Xray_URL}${XRAY_FILE}"
+          cd /tmp/xray
+          unzip -q "$XRAY_FILE"
+          rm -f "$XRAY_FILE"
+
+      - name: Get cache date
+        id: cache_date
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache geo data
+        id: cache_geo
+        uses: actions/cache@v4
+        with:
+          path: /tmp/geo
+          key: geo-${{ steps.cache_date.outputs.date }}
+
+      - name: Download geo data
+        if: steps.cache_geo.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p /tmp/geo
+          cd /tmp/geo
+          curl -fL -sS --retry 3 -o geoip.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat &
+          curl -fL -sS --retry 3 -o geosite.dat \
+            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat &
+          curl -fL -sS --retry 3 -o geoip_IR.dat \
+            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat &
+          curl -fL -sS --retry 3 -o geosite_IR.dat \
+            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat &
+          curl -fL -sS --retry 3 -o geoip_RU.dat \
+            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat &
+          curl -fL -sS --retry 3 -o geosite_RU.dat \
+            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat &
+          wait
 
       - name: Cache Bootlin toolchain
         uses: actions/cache@v4
@@ -157,37 +226,11 @@ jobs:
           mkdir x-ui/bin
           cd x-ui/bin
 
-          # Download Xray
-          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/${{ steps.xray_version.outputs.version }}/"
-          declare -A XRAY_MAP=(
-            [amd64]="Xray-linux-64.zip"
-            [arm64]="Xray-linux-arm64-v8a.zip"
-            [armv7]="Xray-linux-arm32-v7a.zip"
-            [armv6]="Xray-linux-arm32-v6.zip"
-            [386]="Xray-linux-32.zip"
-            [armv5]="Xray-linux-arm32-v5.zip"
-            [s390x]="Xray-linux-s390x.zip"
-          )
-          XRAY_FILE="${XRAY_MAP[${{ matrix.platform }}]}"
-          [ -z "$XRAY_FILE" ] && { echo "Unknown platform: ${{ matrix.platform }}" >&2; exit 1; }
-          curl -fL -sS --retry 3 --retry-delay 5 -o "$XRAY_FILE" "${Xray_URL}${XRAY_FILE}"
-          unzip -q "$XRAY_FILE"
-          rm -f "$XRAY_FILE"
+          # Copy Xray from cache
+          cp /tmp/xray/xray .
 
-          # Download geo data in parallel
-          curl -fL -sS --retry 3 -o geoip.dat \
-            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat &
-          curl -fL -sS --retry 3 -o geosite.dat \
-            https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat &
-          curl -fL -sS --retry 3 -o geoip_IR.dat \
-            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat &
-          curl -fL -sS --retry 3 -o geosite_IR.dat \
-            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat &
-          curl -fL -sS --retry 3 -o geoip_RU.dat \
-            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat &
-          curl -fL -sS --retry 3 -o geosite_RU.dat \
-            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat &
-          wait
+          # Copy geo data from cache
+          cp /tmp/geo/* .
 
           mv xray xray-linux-${{ matrix.platform }}
           cd ../..
