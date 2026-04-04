@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v*.*.*"
+      - "v*.*"
   pull_request:
     paths:
       - '**.js'
@@ -86,6 +86,21 @@ jobs:
           go-version-file: go.mod
           check-latest: true
 
+      - name: Get latest Xray version
+        id: xray_version
+        run: |
+          LATEST=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | jq -r '.tag_name')
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest Xray version: $LATEST"
+
+      - name: Cache Bootlin toolchain
+        uses: actions/cache@v4
+        with:
+          path: /tmp/toolchain
+          key: bootlin-${{ matrix.platform }}-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            bootlin-${{ matrix.platform }}-
+
       - name: Build 3X-UI
         run: |
           export CGO_ENABLED=1
@@ -101,19 +116,28 @@ jobs:
             386) BOOTLIN_ARCH="x86-i686" ;;
             s390x) BOOTLIN_ARCH="s390x-z13" ;;
           esac
-          echo "Resolving Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
-          TARBALL_BASE="https://toolchains.bootlin.com/downloads/releases/toolchains/$BOOTLIN_ARCH/tarballs/"
-          TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
-          [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
-          echo "Downloading: $TARBALL_URL"
-          cd /tmp
-          curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
-          tar -xf "$(basename "$TARBALL_URL")"
-          TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
-          export PATH="$(realpath "$TOOLCHAIN_DIR")/bin:$PATH"
-          export CC=$(realpath "$(find "$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
-          [ -z "$CC" ] && { echo "No gcc.br_real found in $TOOLCHAIN_DIR/bin" >&2; exit 1; }
-          cd -
+
+          TOOLCHAIN_DIR=$(find /tmp/toolchain -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" 2>/dev/null | head -n1)
+
+          if [ -z "$TOOLCHAIN_DIR" ]; then
+            echo "Cache miss, downloading toolchain..."
+            mkdir -p /tmp/toolchain
+            TARBALL_BASE="https://toolchains.bootlin.com/downloads/releases/toolchains/$BOOTLIN_ARCH/tarballs/"
+            TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
+            [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
+            echo "Downloading: $TARBALL_URL"
+            cd /tmp/toolchain
+            curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
+            tar -xf "$(basename "$TARBALL_URL")"
+            TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+            cd -
+          else
+            echo "Using cached toolchain: $TOOLCHAIN_DIR"
+          fi
+
+          export PATH="$(realpath "/tmp/toolchain/$TOOLCHAIN_DIR")/bin:$PATH"
+          export CC=$(realpath "$(find "/tmp/toolchain/$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
+          [ -z "$CC" ] && { echo "No gcc.br_real found in /tmp/toolchain/$TOOLCHAIN_DIR/bin" >&2; exit 1; }
           go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o xui-release -v main.go
           file xui-release
           ldd xui-release || echo "Static binary confirmed"
@@ -129,7 +153,7 @@ jobs:
           cd x-ui/bin
 
           # Download dependencies
-          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/v26.2.6/"
+          Xray_URL="https://github.com/XTLS/Xray-core/releases/download/${{ steps.xray_version.outputs.version }}/"
           if [ "${{ matrix.platform }}" == "amd64" ]; then
             wget -q ${Xray_URL}Xray-linux-64.zip
             unzip Xray-linux-64.zip
