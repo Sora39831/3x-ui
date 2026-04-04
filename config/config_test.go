@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -127,5 +129,75 @@ func TestGetLogFolderCustom(t *testing.T) {
 	t.Setenv("XUI_LOG_FOLDER", "/custom/logs")
 	if GetLogFolder() != "/custom/logs" {
 		t.Errorf("log folder should be '/custom/logs', got %s", GetLogFolder())
+	}
+}
+
+func TestGetDBConfigFromJSONSupportsModulePurposeLayout(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	settings := map[string]any{
+		"_meta": map[string]any{
+			"layout": "按模块-用途来归类",
+		},
+		"databaseConnection": map[string]any{
+			"dbType":     "mariadb",
+			"dbHost":     "10.0.0.12",
+			"dbPort":     "3307",
+			"dbUser":     "panel",
+			"dbPassword": "secret",
+			"dbName":     "paneldb",
+		},
+	}
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent error: %v", err)
+	}
+	if err := os.WriteFile(GetSettingPath(), data, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	cfg := GetDBConfigFromJSON()
+	if cfg.Type != "mariadb" || cfg.Host != "10.0.0.12" || cfg.Port != "3307" || cfg.User != "panel" || cfg.Password != "secret" || cfg.Name != "paneldb" {
+		t.Fatalf("unexpected DB config: %+v", cfg)
+	}
+}
+
+func TestWriteSettingToJSONUsesModulePurposeGroup(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	initial := map[string]any{
+		"_meta": map[string]any{
+			"layout": "按模块-用途来归类",
+		},
+		"databaseConnection": map[string]any{},
+	}
+	data, err := json.MarshalIndent(initial, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent error: %v", err)
+	}
+	if err := os.WriteFile(GetSettingPath(), data, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	if err := WriteSettingToJSON("dbHost", "127.0.0.2"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+
+	updated, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(updated, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	group, ok := parsed["databaseConnection"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected databaseConnection group, got %T", parsed["databaseConnection"])
+	}
+	if got, ok := group["dbHost"].(string); !ok || got != "127.0.0.2" {
+		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
 	}
 }

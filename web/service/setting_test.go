@@ -158,8 +158,15 @@ func TestSettingsFileFormat(t *testing.T) {
 		t.Fatalf("settings file is not valid JSON: %v", err)
 	}
 
-	// Verify nested format: should contain group objects
-	for _, group := range []string{"web", "tgBot", "sub", "ldap", "other"} {
+	// Verify nested format: should contain group objects and metadata.
+	for _, group := range []string{
+		"_meta",
+		"panelNetwork", "panelTLS", "panelSecurity", "panelUX",
+		"telegramBot",
+		"subscriptionNetwork", "subscriptionBranding", "subscriptionRouting",
+		"ldapConnection", "ldapSync",
+		"systemIntegration", "databaseConnection",
+	} {
 		val, exists := parsed[group]
 		if !exists {
 			t.Errorf("expected group %q in nested JSON", group)
@@ -168,6 +175,13 @@ func TestSettingsFileFormat(t *testing.T) {
 		if _, isMap := val.(map[string]any); !isMap {
 			t.Errorf("expected group %q to be an object, got %T", group, val)
 		}
+	}
+	if meta, ok := parsed["_meta"].(map[string]any); ok {
+		if layout, ok := meta["layout"].(string); !ok || layout != "按模块-用途来归类" {
+			t.Errorf("expected _meta.layout to explain grouping, got %v", meta["layout"])
+		}
+	} else {
+		t.Error("expected _meta group in nested JSON")
 	}
 
 	// Verify pretty-printed (has newlines)
@@ -240,6 +254,52 @@ func TestLegacyFlatFormatBackwardCompat(t *testing.T) {
 	}
 }
 
+func TestLegacyNestedFormatBackwardCompat(t *testing.T) {
+	setupTestSettings(t)
+
+	legacy := map[string]any{
+		"web": map[string]any{
+			"port":     "8088",
+			"basePath": "/legacy/",
+		},
+		"tgBot": map[string]any{
+			"enable": "true",
+		},
+		"other": map[string]any{
+			"dbType": "mariadb",
+			"dbHost": "192.168.1.10",
+		},
+	}
+	data, err := json.MarshalIndent(legacy, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent error: %v", err)
+	}
+	path := config.GetSettingPath()
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	loaded, err := loadSettings()
+	if err != nil {
+		t.Fatalf("loadSettings error: %v", err)
+	}
+	if loaded["webPort"] != "8088" {
+		t.Errorf("expected webPort=8088, got %s", loaded["webPort"])
+	}
+	if loaded["webBasePath"] != "/legacy/" {
+		t.Errorf("expected webBasePath=/legacy/, got %s", loaded["webBasePath"])
+	}
+	if loaded["tgBotEnable"] != "true" {
+		t.Errorf("expected tgBotEnable=true, got %s", loaded["tgBotEnable"])
+	}
+	if loaded["dbType"] != "mariadb" {
+		t.Errorf("expected dbType=mariadb, got %s", loaded["dbType"])
+	}
+	if loaded["dbHost"] != "192.168.1.10" {
+		t.Errorf("expected dbHost=192.168.1.10, got %s", loaded["dbHost"])
+	}
+}
+
 func TestRoundTripNestedFormat(t *testing.T) {
 	setupTestSettings(t)
 
@@ -280,19 +340,19 @@ func TestRoundTripNestedFormat(t *testing.T) {
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("settings file is not valid JSON: %v", err)
 	}
-	if webGroup, ok := parsed["web"].(map[string]any); ok {
+	if webGroup, ok := parsed["panelNetwork"].(map[string]any); ok {
 		if port, ok := webGroup["port"].(string); !ok || port != "9090" {
-			t.Errorf("expected web.port=9090 in nested JSON, got %v", webGroup["port"])
+			t.Errorf("expected panelNetwork.port=9090 in nested JSON, got %v", webGroup["port"])
 		}
 	} else {
-		t.Error("expected 'web' group in nested JSON")
+		t.Error("expected 'panelNetwork' group in nested JSON")
 	}
-	if tgGroup, ok := parsed["tgBot"].(map[string]any); ok {
+	if tgGroup, ok := parsed["telegramBot"].(map[string]any); ok {
 		if enable, ok := tgGroup["enable"].(string); !ok || enable != "true" {
-			t.Errorf("expected tgBot.enable=true in nested JSON, got %v", tgGroup["enable"])
+			t.Errorf("expected telegramBot.enable=true in nested JSON, got %v", tgGroup["enable"])
 		}
 	} else {
-		t.Error("expected 'tgBot' group in nested JSON")
+		t.Error("expected 'telegramBot' group in nested JSON")
 	}
 }
 

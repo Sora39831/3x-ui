@@ -2220,9 +2220,9 @@ db_show_status() {
     if [ "$current_type" = "mariadb" ]; then
         local json_path="/etc/x-ui/x-ui.json"
         if command -v jq >/dev/null 2>&1; then
-            local host=$(jq -r '.other.dbHost // "127.0.0.1"' "$json_path" 2>/dev/null)
-            local port=$(jq -r '.other.dbPort // "3306"' "$json_path" 2>/dev/null)
-            local dbname=$(jq -r '.other.dbName // "3xui"' "$json_path" 2>/dev/null)
+            local host=$(jq -r '.databaseConnection.dbHost // .other.dbHost // "127.0.0.1"' "$json_path" 2>/dev/null)
+            local port=$(jq -r '.databaseConnection.dbPort // .other.dbPort // "3306"' "$json_path" 2>/dev/null)
+            local dbname=$(jq -r '.databaseConnection.dbName // .other.dbName // "3xui"' "$json_path" 2>/dev/null)
         else
             local host=$(grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
             local port=$(grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
