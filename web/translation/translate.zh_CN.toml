@@ -241,6 +241,7 @@
 "delDepletedClientsTitle" = "删除流量耗尽的客户端"
 "delDepletedClientsContent" = "确定要删除所有流量耗尽的客户端吗？"
 "email" = "电子邮件"
+"emailSelectPlaceholder" = "可输入邮箱，也可从用户列表中选择"
 "emailDesc" = "电子邮件必须完全唯一"
 "IPLimit" = "IP 限制"
 "IPLimitDesc" = "如果数量超过设置值，则禁用入站流量。（0 = 禁用）"

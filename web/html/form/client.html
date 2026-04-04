@@ -13,7 +13,19 @@
                 <a-icon type="sync" @click="client.email = RandomUtil.randomLowerAndNum(9)"></a-icon>
             </a-tooltip>
         </template>
-        <a-input v-model.trim="client.email"></a-input>
+        <a-select
+            v-model="client.email"
+            mode="combobox"
+            show-search
+            allow-clear
+            :filter-option="filterEmailOption"
+            :dropdown-class-name="themeSwitcher.currentTheme"
+            :not-found-content="emailOptions.length === 0 ? null : undefined"
+            :placeholder='{{ printf "%q" (i18n "pages.inbounds.emailSelectPlaceholder") }}'>
+            <a-select-option v-for="email in emailOptions" :key="email" :value="email">
+                [[ email ]]
+            </a-select-option>
+        </a-select>
     </a-form-item>
     <a-form-item v-if="inbound.protocol === Protocols.TROJAN || inbound.protocol === Protocols.SHADOWSOCKS">
         <template slot="label">

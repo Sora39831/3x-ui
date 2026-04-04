@@ -741,6 +741,9 @@
       showAlert: false,
       ipLimitEnable: false,
       pageSize: 0,
+      isAdmin: {{if .is_admin}}true{{else}}false{{end}},
+      currentUsername: {{ printf "%q" .current_username }},
+      clientEmailOptions: [],
     },
     methods: {
       loading(spinning = true) {
@@ -797,6 +800,18 @@
           this.datepicker = datepicker;
           this.ipLimitEnable = ipLimitEnable;
         }
+      },
+      async getClientEmailOptions() {
+        if (this.isAdmin) {
+          const msg = await HttpUtil.get('/panel/api/users/list');
+          if (msg.success && Array.isArray(msg.obj)) {
+            this.clientEmailOptions = msg.obj
+              .map(user => user?.username || '')
+              .filter(Boolean);
+            return;
+          }
+        }
+        this.clientEmailOptions = this.currentUsername ? [this.currentUsername] : [];
       },
       setInbounds(dbInbounds) {
         this.inbounds.splice(0);
@@ -1587,6 +1602,7 @@
       }
       this.loading();
       this.getDefaultSettings();
+      this.getClientEmailOptions();
       
       // Initial data fetch
       this.getDBInbounds().then(() => {

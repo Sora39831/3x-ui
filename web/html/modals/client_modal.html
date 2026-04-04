@@ -118,8 +118,20 @@
             set delayedExpireDays(days) {
                 this.client.expiryTime = -86400000 * days;
             },
+            get emailOptions() {
+                const options = Array.isArray(app.clientEmailOptions) ? [...app.clientEmailOptions] : [];
+                const email = this.client?.email;
+                if (email && !options.includes(email)) {
+                    options.unshift(email);
+                }
+                return options;
+            },
         },
         methods: {
+            filterEmailOption(input, option) {
+                const value = String(option.componentOptions?.propsData?.value || '').toLowerCase();
+                return value.includes(String(input || '').toLowerCase());
+            },
             async getDBClientIps(email) {
                 const msg = await HttpUtil.post(`/panel/api/inbounds/clientIps/${email}`);
                 if (!msg.success) {

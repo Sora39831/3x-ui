@@ -241,6 +241,7 @@
 "delDepletedClientsTitle" = "Delete Depleted Clients"
 "delDepletedClientsContent" = "Are you sure you want to delete all the depleted clients?"
 "email" = "Email"
+"emailSelectPlaceholder" = "Type an email or select a user from the list"
 "emailDesc" = "Please provide a unique email address."
 "IPLimit" = "IP Limit"
 "IPLimitDesc" = "Disables inbound if the count exceeds the set value. (0 = disable)"
