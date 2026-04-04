@@ -13,6 +13,7 @@
 "enable" = "启用"
 "protocol" = "协议"
 "search" = "搜索"
+"refresh" = "刷新"
 "filter" = "筛选"
 "loading" = "加载中..."
 "second" = "秒"
@@ -94,6 +95,7 @@
 "inbounds" = "入站列表"
 "settings" = "面板设置"
 "xray" = "Xray 设置"
+"users" = "用户管理"
 "logout" = "退出登录"
 "link" = "管理"
 
@@ -327,6 +329,45 @@
 "lastOnline" = "上次在线"
 "remained" = "剩余流量"
 "status" = "状态"
+
+[pages.users]
+"title" = "用户管理"
+"listTitle" = "用户列表"
+"createTitle" = "新增用户"
+"editTitle" = "编辑用户"
+"searchPlaceholder" = "按用户名或角色搜索"
+"usernamePlaceholder" = "请输入用户名"
+"passwordPlaceholder" = "留空表示不修改密码"
+"passwordRequiredPlaceholder" = "请输入密码"
+"passwordCreateHelp" = "密码长度需为 8-128 位。"
+"passwordEditHelp" = "如无需重置密码，可留空。"
+"role" = "角色"
+"deleteConfirm" = "确认删除用户"
+
+[pages.users.roles]
+"admin" = "管理员"
+"user" = "普通用户"
+
+[pages.users.validation]
+"usernameRequired" = "请输入用户名"
+"usernameLength" = "用户名长度必须为 3-64 个字符"
+"passwordRequired" = "请输入密码"
+"passwordLength" = "密码长度必须为 8-128 个字符"
+
+[pages.users.toasts]
+"obtain" = "获取用户列表成功"
+"create" = "创建用户成功"
+"update" = "更新用户成功"
+"delete" = "删除用户成功"
+"adminOnly" = "仅管理员可访问用户管理"
+
+[pages.users.errors]
+"userExists" = "用户名已存在"
+"invalidRole" = "角色无效"
+"userNotFound" = "用户不存在"
+"cannotDeleteSelf" = "不能删除当前登录用户"
+"lastAdminRequired" = "至少需要保留一个管理员账户"
+"cannotDemoteSelf" = "不能将当前登录用户降级为普通用户"
 
 [pages.settings]
 "title" = "面板设置"

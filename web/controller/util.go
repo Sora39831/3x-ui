@@ -8,6 +8,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/entity"
+	"github.com/mhsanaei/3x-ui/v2/web/session"
 
 	"github.com/gin-gonic/gin"
 )
@@ -84,6 +85,11 @@ func html(c *gin.Context, name string, title string, data gin.H) {
 	data["host"] = host
 	data["request_uri"] = c.Request.RequestURI
 	data["base_path"] = c.GetString("base_path")
+	if user := session.GetLoginUser(c); user != nil {
+		data["is_admin"] = user.Role == "admin"
+		data["current_user_id"] = user.Id
+		data["current_username"] = user.Username
+	}
 	c.HTML(http.StatusOK, name, getContext(data))
 }
 

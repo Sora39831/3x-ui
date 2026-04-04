@@ -64,6 +64,13 @@
                         icon: 'tool',
                         title: '{{ i18n "menu.xray"}}'
                     },
+                    {{if .is_admin}}
+                    {
+                        key: '{{ .base_path }}panel/users',
+                        icon: 'team',
+                        title: '{{ i18n "menu.users"}}'
+                    },
+                    {{end}}
                     {
                         key: '{{ .base_path }}logout/',
                         icon: 'logout',

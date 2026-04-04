@@ -13,6 +13,7 @@
 "enable" = "Enabled"
 "protocol" = "Protocol"
 "search" = "Search"
+"refresh" = "Refresh"
 "filter" = "Filter"
 "loading" = "Loading..."
 "second" = "Second"
@@ -94,6 +95,7 @@
 "inbounds" = "Inbounds"
 "settings" = "Panel Settings"
 "xray" = "Xray Configs"
+"users" = "Users"
 "logout" = "Log Out"
 "link" = "Manage"
 
@@ -327,6 +329,45 @@
 "lastOnline" = "Last Online"
 "remained" = "Remained"
 "status" = "Status"
+
+[pages.users]
+"title" = "User Management"
+"listTitle" = "Users"
+"createTitle" = "Create User"
+"editTitle" = "Edit User"
+"searchPlaceholder" = "Search by username or role"
+"usernamePlaceholder" = "Enter username"
+"passwordPlaceholder" = "Leave blank to keep current password"
+"passwordRequiredPlaceholder" = "Enter password"
+"passwordCreateHelp" = "Password length must be 8-128 characters."
+"passwordEditHelp" = "Leave blank if you do not want to reset the password."
+"role" = "Role"
+"deleteConfirm" = "Delete user"
+
+[pages.users.roles]
+"admin" = "Admin"
+"user" = "User"
+
+[pages.users.validation]
+"usernameRequired" = "Username is required"
+"usernameLength" = "Username must be 3-64 characters"
+"passwordRequired" = "Password is required"
+"passwordLength" = "Password must be 8-128 characters"
+
+[pages.users.toasts]
+"obtain" = "Users loaded successfully"
+"create" = "User created successfully"
+"update" = "User updated successfully"
+"delete" = "User deleted successfully"
+"adminOnly" = "Only administrators can access user management"
+
+[pages.users.errors]
+"userExists" = "Username already exists"
+"invalidRole" = "Invalid role"
+"userNotFound" = "User not found"
+"cannotDeleteSelf" = "You cannot delete the currently logged-in user"
+"lastAdminRequired" = "At least one administrator account must remain"
+"cannotDemoteSelf" = "You cannot change the current logged-in user to non-admin"
 
 [pages.settings]
 "title" = "Panel Settings"

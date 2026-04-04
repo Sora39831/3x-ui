@@ -17,11 +17,138 @@ import (
 
 // ErrUsernameAlreadyExists is returned when a user tries to register with a taken username.
 var ErrUsernameAlreadyExists = errors.New("username already exists")
+var ErrInvalidUserRole = errors.New("role must be admin or user")
+var ErrUserNotFound = errors.New("user not found")
+var ErrCannotDeleteSelf = errors.New("cannot delete current user")
+var ErrLastAdminRequired = errors.New("at least one admin user must remain")
+var ErrCannotDemoteSelf = errors.New("cannot change your own role to non-admin")
+
+// UserInfo is the sanitized user payload returned to the frontend.
+type UserInfo struct {
+	Id       int    `json:"id"`
+	Username string `json:"username"`
+	Role     string `json:"role"`
+}
 
 // UserService provides business logic for user management and authentication.
 // It handles user creation, login, password management, and 2FA operations.
 type UserService struct {
 	settingService SettingService
+}
+
+func normalizeManagedUserInput(username string, password string, role string, passwordRequired bool) (string, string, string, error) {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+	role = strings.ToLower(strings.TrimSpace(role))
+	if role == "" {
+		role = "user"
+	}
+
+	if username == "" {
+		return "", "", "", errors.New("username can not be empty")
+	}
+	if len(username) < 3 || len(username) > 64 {
+		return "", "", "", errors.New("username must be 3-64 characters")
+	}
+	if role != "admin" && role != "user" {
+		return "", "", "", ErrInvalidUserRole
+	}
+	if passwordRequired && password == "" {
+		return "", "", "", errors.New("password can not be empty")
+	}
+	if password != "" && (len(password) < 8 || len(password) > 128) {
+		return "", "", "", errors.New("password must be 8-128 characters")
+	}
+	return username, password, role, nil
+}
+
+func sanitizeUser(user *model.User) *UserInfo {
+	if user == nil {
+		return nil
+	}
+	return &UserInfo{
+		Id:       user.Id,
+		Username: user.Username,
+		Role:     user.Role,
+	}
+}
+
+func isUniqueConstraintError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errMsg := err.Error()
+	return strings.Contains(errMsg, "UNIQUE constraint failed") || strings.Contains(errMsg, "Duplicate")
+}
+
+func (s *UserService) countAdmins(tx *gorm.DB) (int64, error) {
+	var count int64
+	err := tx.Model(&model.User{}).Where("role = ?", "admin").Count(&count).Error
+	return count, err
+}
+
+func (s *UserService) addUserClientsToAllInbounds(tx *gorm.DB, username string, inboundService *InboundService) error {
+	inbounds, err := inboundService.GetAllInbounds()
+	if err != nil {
+		return err
+	}
+
+	for _, inbound := range inbounds {
+		clientID := uuid.New().String()
+		client := model.Client{
+			ID:      clientID,
+			Email:   username,
+			Enable:  false,
+			SubID:   uuid.New().String()[:8],
+			Comment: "auto-added on registration",
+		}
+
+		clientEntry := map[string]any{
+			"email":      client.Email,
+			"enable":     client.Enable,
+			"totalGB":    0,
+			"expiryTime": 0,
+			"limitIp":    0,
+			"subId":      client.SubID,
+			"comment":    client.Comment,
+			"created_at": 0,
+			"updated_at": 0,
+		}
+		switch inbound.Protocol {
+		case "trojan":
+			clientEntry["password"] = clientID
+		case "shadowsocks":
+			clientEntry["password"] = clientID
+		default:
+			clientEntry["id"] = clientID
+		}
+
+		var settings map[string]any
+		if err := json.Unmarshal([]byte(inbound.Settings), &settings); err != nil {
+			return err
+		}
+		clientsRaw, ok := settings["clients"].([]any)
+		if !ok {
+			clientsRaw = []any{}
+		}
+		clientsRaw = append(clientsRaw, clientEntry)
+		settings["clients"] = clientsRaw
+
+		newSettings, err := json.Marshal(settings)
+		if err != nil {
+			return err
+		}
+		inbound.Settings = string(newSettings)
+
+		if err := tx.Model(&model.Inbound{}).Where("id = ?", inbound.Id).Update("settings", inbound.Settings).Error; err != nil {
+			return err
+		}
+		if err := inboundService.AddClientStat(tx, inbound.Id, &client); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // GetFirstUser retrieves the first user from the database.
@@ -132,12 +259,147 @@ func (s *UserService) UpdateUser(id int, username string, password string) error
 		Error
 }
 
-func (s *UserService) RegisterUser(username string, password string, inboundService *InboundService) error {
-	if username == "" {
-		return errors.New("username can not be empty")
+// GetUsers returns all panel users without sensitive fields.
+func (s *UserService) GetUsers() ([]UserInfo, error) {
+	db := database.GetDB()
+	users := make([]UserInfo, 0)
+	err := db.Model(&model.User{}).
+		Select("id", "username", "role").
+		Order("id asc").
+		Find(&users).
+		Error
+	return users, err
+}
+
+// CreateUser creates a new managed user.
+func (s *UserService) CreateUser(username string, password string, role string, inboundService *InboundService) (*UserInfo, error) {
+	username, password, role, err := normalizeManagedUserInput(username, password, role, true)
+	if err != nil {
+		return nil, err
 	}
-	if password == "" {
-		return errors.New("password can not be empty")
+
+	hashedPassword, err := crypto.HashPasswordAsBcrypt(password)
+	if err != nil {
+		return nil, err
+	}
+
+	db := database.GetDB()
+	user := &model.User{
+		Username: username,
+		Password: hashedPassword,
+		Role:     role,
+	}
+
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			if isUniqueConstraintError(err) {
+				return ErrUsernameAlreadyExists
+			}
+			return err
+		}
+		if role == "user" {
+			if err := s.addUserClientsToAllInbounds(tx, username, inboundService); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeUser(user), nil
+}
+
+// UpdateManagedUser updates username, password, and role for a managed user.
+func (s *UserService) UpdateManagedUser(id int, username string, password string, role string, currentUserId int) (*UserInfo, error) {
+	username, password, role, err := normalizeManagedUserInput(username, password, role, false)
+	if err != nil {
+		return nil, err
+	}
+
+	db := database.GetDB()
+	user := &model.User{}
+	if err := db.Model(&model.User{}).Where("id = ?", id).First(user).Error; err != nil {
+		if database.IsNotFound(err) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+
+	if currentUserId == id && role != "admin" {
+		return nil, ErrCannotDemoteSelf
+	}
+
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if user.Role == "admin" && role != "admin" {
+			adminCount, err := s.countAdmins(tx)
+			if err != nil {
+				return err
+			}
+			if adminCount <= 1 {
+				return ErrLastAdminRequired
+			}
+		}
+
+		updates := map[string]any{
+			"username": username,
+			"role":     role,
+		}
+		if password != "" {
+			hashedPassword, err := crypto.HashPasswordAsBcrypt(password)
+			if err != nil {
+				return err
+			}
+			updates["password"] = hashedPassword
+		}
+
+		if err := tx.Model(&model.User{}).Where("id = ?", id).Updates(updates).Error; err != nil {
+			if isUniqueConstraintError(err) {
+				return ErrUsernameAlreadyExists
+			}
+			return err
+		}
+		return tx.Model(&model.User{}).Where("id = ?", id).First(user).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sanitizeUser(user), nil
+}
+
+// DeleteUser deletes a managed user.
+func (s *UserService) DeleteUser(id int, currentUserId int) error {
+	if id == currentUserId {
+		return ErrCannotDeleteSelf
+	}
+
+	db := database.GetDB()
+	user := &model.User{}
+	if err := db.Model(&model.User{}).Where("id = ?", id).First(user).Error; err != nil {
+		if database.IsNotFound(err) {
+			return ErrUserNotFound
+		}
+		return err
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		if user.Role == "admin" {
+			adminCount, err := s.countAdmins(tx)
+			if err != nil {
+				return err
+			}
+			if adminCount <= 1 {
+				return ErrLastAdminRequired
+			}
+		}
+		return tx.Delete(&model.User{}, id).Error
+	})
+}
+
+func (s *UserService) RegisterUser(username string, password string, inboundService *InboundService) error {
+	username, password, _, err := normalizeManagedUserInput(username, password, "user", true)
+	if err != nil {
+		return err
 	}
 
 	hashedPassword, err := crypto.HashPasswordAsBcrypt(password)
@@ -155,80 +417,12 @@ func (s *UserService) RegisterUser(username string, password string, inboundServ
 			Role:     "user",
 		}
 		if err := tx.Create(user).Error; err != nil {
-			errMsg := err.Error()
-			if strings.Contains(errMsg, "UNIQUE constraint failed") || strings.Contains(errMsg, "Duplicate") {
+			if isUniqueConstraintError(err) {
 				return ErrUsernameAlreadyExists
 			}
 			return err
 		}
-
-		// Add the new user as a disabled client to all existing inbounds
-		inbounds, err := inboundService.GetAllInbounds()
-		if err != nil {
-			return err
-		}
-
-		for _, inbound := range inbounds {
-			clientID := uuid.New().String()
-			client := model.Client{
-				ID:      clientID,
-				Email:   username,
-				Enable:  false,
-				SubID:   uuid.New().String()[:8],
-				Comment: "auto-added on registration",
-			}
-
-			// Build the client JSON entry based on protocol
-			clientEntry := map[string]any{
-				"email":      client.Email,
-				"enable":     client.Enable,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"limitIp":    0,
-				"subId":      client.SubID,
-				"comment":    client.Comment,
-				"created_at": 0,
-				"updated_at": 0,
-			}
-			switch inbound.Protocol {
-			case "trojan":
-				clientEntry["password"] = clientID
-			case "shadowsocks":
-				clientEntry["password"] = clientID
-			default:
-				clientEntry["id"] = clientID
-			}
-
-			// Parse inbound settings and append the new client
-			var settings map[string]any
-			if err := json.Unmarshal([]byte(inbound.Settings), &settings); err != nil {
-				return err
-			}
-			clientsRaw, ok := settings["clients"].([]any)
-			if !ok {
-				clientsRaw = []any{}
-			}
-			clientsRaw = append(clientsRaw, clientEntry)
-			settings["clients"] = clientsRaw
-
-			newSettings, err := json.Marshal(settings)
-			if err != nil {
-				return err
-			}
-			inbound.Settings = string(newSettings)
-
-			// Save the updated inbound settings
-			if err := tx.Model(&model.Inbound{}).Where("id = ?", inbound.Id).Update("settings", inbound.Settings).Error; err != nil {
-				return err
-			}
-
-			// Create ClientTraffic record for this inbound
-			if err := inboundService.AddClientStat(tx, inbound.Id, &client); err != nil {
-				return err
-			}
-		}
-
-		return nil
+		return s.addUserClientsToAllInbounds(tx, username, inboundService)
 	})
 }
 
