@@ -382,18 +382,28 @@ func (s *UserService) DeleteUser(id int, currentUserId int) error {
 		return err
 	}
 
-	return db.Transaction(func(tx *gorm.DB) error {
-		if user.Role == "admin" {
-			adminCount, err := s.countAdmins(tx)
-			if err != nil {
-				return err
-			}
-			if adminCount <= 1 {
-				return ErrLastAdminRequired
-			}
+	if user.Role == "admin" {
+		adminCount, err := s.countAdmins(db)
+		if err != nil {
+			return err
 		}
-		return tx.Delete(&model.User{}, id).Error
-	})
+		if adminCount <= 1 {
+			return ErrLastAdminRequired
+		}
+	}
+
+	inboundService := InboundService{}
+	inbounds, err := inboundService.GetInbounds(id)
+	if err != nil {
+		return err
+	}
+	for _, inbound := range inbounds {
+		if _, err := inboundService.DelInbound(inbound.Id); err != nil {
+			return err
+		}
+	}
+
+	return db.Delete(&model.User{}, id).Error
 }
 
 func (s *UserService) RegisterUser(username string, password string, inboundService *InboundService) error {
