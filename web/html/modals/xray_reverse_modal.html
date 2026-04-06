@@ -84,10 +84,9 @@
                     type: reverse.type,
                     domain: reverse.domain,
                 };
-                    reverse;
-                rules0 = rules.filter(r => r.domain != null);
+                let rules0 = rules.filter(r => r.domain != null);
                 if(rules0.length == 0) rules0 = [{ outboundTag: '', domain: ["full:" + this.reverse.domain], inboundTag: []}];
-                rules1 = rules.filter(r => r.domain == null);
+                let rules1 = rules.filter(r => r.domain == null);
                 if(rules1.length == 0) rules1 = [{ outboundTag: '', inboundTag: []}];
                 this.rules = [];
                 this.rules.push({

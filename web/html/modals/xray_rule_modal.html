@@ -147,7 +147,7 @@
     users: [],
     balancerTags: [],
     ok() {
-      newRule = ruleModal.getResult();
+      const newRule = ruleModal.getResult();
       ObjectUtil.execute(ruleModal.confirm, newRule);
     },
     show({
@@ -215,9 +215,9 @@
       ruleModal.confirmLoading = loading;
     },
     getResult() {
-      value = ruleModal.rule;
-      rule = {};
-      newRule = {};
+      const value = ruleModal.rule;
+      const rule = {};
+      const newRule = {};
       rule.type = "field";
       rule.domain = value.domain.length > 0 ? value.domain.split(',').map(s => s.trim()) : [];
       rule.ip = value.ip.length > 0 ? value.ip.split(',').map(s => s.trim()) : [];
