@@ -1018,23 +1018,29 @@
       },
       async openLogs() {
         logModal.loading = true;
-        const msg = await HttpUtil.post('/panel/api/server/logs/' + logModal.rows, { level: logModal.level, syslog: logModal.syslog });
-        if (!msg.success) {
-          return;
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/logs/' + logModal.rows, { level: logModal.level, syslog: logModal.syslog });
+          if (!msg.success) {
+            return;
+          }
+          logModal.show(msg.obj);
+          await PromiseUtil.sleep(500);
+        } finally {
+          logModal.loading = false;
         }
-        logModal.show(msg.obj);
-        await PromiseUtil.sleep(500);
-        logModal.loading = false;
       },
       async openXrayLogs() {
         xraylogModal.loading = true;
-        const msg = await HttpUtil.post('/panel/api/server/xraylogs/' + xraylogModal.rows, { filter: xraylogModal.filter, showDirect: xraylogModal.showDirect, showBlocked: xraylogModal.showBlocked, showProxy: xraylogModal.showProxy });
-        if (!msg.success) {
-          return;
+        try {
+          const msg = await HttpUtil.post('/panel/api/server/xraylogs/' + xraylogModal.rows, { filter: xraylogModal.filter, showDirect: xraylogModal.showDirect, showBlocked: xraylogModal.showBlocked, showProxy: xraylogModal.showProxy });
+          if (!msg.success) {
+            return;
+          }
+          xraylogModal.show(msg.obj);
+          await PromiseUtil.sleep(500);
+        } finally {
+          xraylogModal.loading = false;
         }
-        xraylogModal.show(msg.obj);
-        await PromiseUtil.sleep(500);
-        xraylogModal.loading = false;
       },
       downloadXrayLogs() {
         if (!Array.isArray(this.xraylogModal.logs) || this.xraylogModal.logs.length === 0) {

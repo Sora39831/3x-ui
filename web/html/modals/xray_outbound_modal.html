@@ -55,7 +55,7 @@
             }
         },
         toggleJson(jsonTab) {
-            textAreaObj = document.getElementById('outboundJson');
+            const textAreaObj = document.getElementById('outboundJson');
             if(jsonTab){
                 if(this.cm != null) {
                         this.cm.toTextArea();
@@ -64,7 +64,7 @@
                 textAreaObj.value = JSON.stringify(this.outbound.toJson(), null, 2);
                 this.cm = CodeMirror.fromTextArea(textAreaObj, app.cmOptions);
                 this.cm.on('change',editor => {
-                    value = editor.getValue();
+                    const value = editor.getValue();
                     if(this.isJsonString(value)){
                         this.outbound = Outbound.fromJson(JSON.parse(value));
                         this.check();
@@ -107,11 +107,11 @@
             canEnableTls() {
                 return this.outModal.outbound.canEnableTls();
             },
-            convertLink(){
-                newOutbound = Outbound.fromLink(outModal.link);
-                if(newOutbound){
-                    this.outModal.outbound = newOutbound;
-                    this.outModal.toggleJson(true);
+        convertLink(){
+            const newOutbound = Outbound.fromLink(outModal.link);
+            if(newOutbound){
+                this.outModal.outbound = newOutbound;
+                this.outModal.toggleJson(true);
                     this.outModal.check();
                     this.$message.success('Link imported successfully...');      
                     outModal.link = '';

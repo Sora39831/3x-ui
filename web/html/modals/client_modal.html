@@ -32,6 +32,9 @@
             }
         },
         show({ title = '', okText = '{{ i18n "sure" }}', index = null, dbInbound = null, confirm = () => { }, isEdit = false }) {
+            if (!dbInbound) {
+                return;
+            }
             this.visible = true;
             this.title = title;
             this.okText = okText;
@@ -42,14 +45,22 @@
             this.index = index === null ? this.clients.length : index;
             this.delayedStart = false;
             if (isEdit) {
-                if (this.clients[index].expiryTime < 0) {
+                const currentClient = this.clients[index];
+                if (!currentClient) {
+                    this.visible = false;
+                    return;
+                }
+                if (currentClient.expiryTime < 0) {
                     this.delayedStart = true;
                 }
-                this.oldClientId = this.getClientId(dbInbound.protocol, clients[index]);
+                this.oldClientId = this.getClientId(dbInbound.protocol, currentClient);
             } else {
                 this.addClient(this.inbound, this.clients);
             }
-            this.clientStats = this.dbInbound.clientStats.find(row => row.email === this.clients[this.index].email);
+            const activeClient = this.clients[this.index];
+            this.clientStats = Array.isArray(this.dbInbound.clientStats)
+                ? this.dbInbound.clientStats.find(row => row.email === activeClient?.email)
+                : null;
             this.confirm = confirm;
         },  
         getClientId(protocol, client) {
@@ -64,7 +75,7 @@
                 case Protocols.VMESS: return clients.push(new Inbound.VmessSettings.VMESS());
                 case Protocols.VLESS: return clients.push(new Inbound.VLESSSettings.VLESS());
                 case Protocols.TROJAN: return clients.push(new Inbound.TrojanSettings.Trojan());
-                case Protocols.SHADOWSOCKS: return clients.push(new Inbound.ShadowsocksSettings.Shadowsocks(clients[0].method, RandomUtil.randomShadowsocksPassword(inbound.settings.method)));
+                case Protocols.SHADOWSOCKS: return clients.push(new Inbound.ShadowsocksSettings.Shadowsocks(inbound.settings.method, RandomUtil.randomShadowsocksPassword(inbound.settings.method)));
                 default: return null;
             }
         },

@@ -398,8 +398,8 @@
             this.loadingStates.fetched = true
           }
 
-          result = JSON.parse(msg.obj);
-          xs = JSON.stringify(result.xraySetting, null, 2);
+          const result = JSON.parse(msg.obj);
+          const xs = JSON.stringify(result.xraySetting, null, 2);
           this.oldXraySetting = xs;
           this.xraySetting = xs;
           this.inboundTags = result.inboundTags;
@@ -1063,9 +1063,13 @@
       if (window.location.protocol !== "https:") {
         this.showAlert = true;
       }
-      await this.getXraySetting();
-      await this.getXrayResult();
-      await this.getOutboundsTraffic();
+      try {
+        await this.getXraySetting();
+        await this.getXrayResult();
+        await this.getOutboundsTraffic();
+      } finally {
+        this.loadingStates.fetched = true;
+      }
 
       if (window.wsClient) {
           window.wsClient.connect();
