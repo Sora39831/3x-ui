@@ -114,6 +114,14 @@
             set delayedExpireDays(days) {
                 this.client.expiryTime = -86400000 * days;
             },
+            get emailOptions() {
+                const options = Array.isArray(app.clientEmailOptions) ? [...app.clientEmailOptions] : [];
+                const email = this.client?.email;
+                if (email && !options.includes(email)) {
+                    options.unshift(email);
+                }
+                return options;
+            },
             get externalProxy() {
                 return this.inbound.stream.externalProxy.length > 0;
             },

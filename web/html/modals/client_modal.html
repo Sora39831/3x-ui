@@ -98,9 +98,9 @@
                 return app.datepicker;
             },
             get isTrafficExhausted() {
-                if (!clientStats) return false
-                if (clientStats.total <= 0) return false
-                if (clientStats.up + clientStats.down < clientStats.total) return false
+                if (!this.clientStats) return false
+                if (this.clientStats.total <= 0) return false
+                if (this.clientStats.up + this.clientStats.down < this.clientStats.total) return false
                 return true
             },
             get isExpiry() {
