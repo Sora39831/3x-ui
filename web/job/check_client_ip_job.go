@@ -26,8 +26,8 @@ type IPWithTimestamp struct {
 
 // CheckClientIpJob monitors client IP addresses from access logs and manages IP blocking based on configured limits.
 type CheckClientIpJob struct {
-	lastClear     int64
-	disAllowedIps []string
+	lastClear      int64
+	disAllowedIps  []string
 	fail2BanWarned bool
 }
 
