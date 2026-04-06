@@ -1022,7 +1022,9 @@ func (s *ServerService) ImportDB(file multipart.File) error {
 		return common.NewErrorf("Error migrating db: %v", err)
 	}
 
-	s.inboundService.MigrateDB()
+	if err := s.inboundService.MigrateDB(); err != nil {
+		return common.NewErrorf("Error finalizing imported db: %v", err)
+	}
 
 	// Start Xray
 	if err = s.RestartXrayService(); err != nil {

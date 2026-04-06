@@ -102,7 +102,7 @@ func (i *Inbound) GenXrayInboundConfig() *xray.InboundConfig {
 // Setting stores key-value configuration settings for the 3x-ui panel.
 type Setting struct {
 	Id    int    `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	Key   string `json:"key" form:"key"`
+	Key   string `json:"key" form:"key" gorm:"uniqueIndex"`
 	Value string `json:"value" form:"value"`
 }
 

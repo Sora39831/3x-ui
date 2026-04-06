@@ -1,8 +1,6 @@
 package model
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestGenXrayInboundConfig_EmptyListen(t *testing.T) {
 	in := &Inbound{

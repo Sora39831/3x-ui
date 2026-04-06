@@ -21,6 +21,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/util/reflect_util"
 	"github.com/mhsanaei/3x-ui/v2/web/entity"
 	"github.com/mhsanaei/3x-ui/v2/xray"
+	"gorm.io/gorm/clause"
 )
 
 //go:embed config.json
@@ -497,19 +498,13 @@ func getXrayTemplateConfigFromDB() (string, error) {
 // saveXrayTemplateConfigToDB writes xrayTemplateConfig directly to the database.
 func saveXrayTemplateConfigToDB(value string) error {
 	db := database.GetDB()
-	setting := &model.Setting{}
-	err := db.Model(model.Setting{}).Where("`key` = ?", "xrayTemplateConfig").First(setting).Error
-	if database.IsNotFound(err) {
-		return db.Create(&model.Setting{
-			Key:   "xrayTemplateConfig",
-			Value: value,
-		}).Error
-	}
-	if err != nil {
-		return err
-	}
-	setting.Value = value
-	return db.Save(setting).Error
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]any{"value": value}),
+	}).Create(&model.Setting{
+		Key:   "xrayTemplateConfig",
+		Value: value,
+	}).Error
 }
 
 // SettingService provides business logic for application settings management.

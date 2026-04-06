@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/database"
+	"github.com/mhsanaei/3x-ui/v2/database/model"
 )
 
 func setupTestSettings(t *testing.T) func() {
@@ -99,6 +101,31 @@ func TestSettingServiceSetAndGetString(t *testing.T) {
 	}
 	if val != "9090" {
 		t.Errorf("expected 9090, got %s", val)
+	}
+}
+
+func TestSaveXrayTemplateConfigToDB_UpdatesSingleRow(t *testing.T) {
+	setupTestSettings(t)
+	setupTestDB(t)
+
+	if err := saveXrayTemplateConfigToDB(`{"version":1}`); err != nil {
+		t.Fatalf("first save failed: %v", err)
+	}
+	if err := saveXrayTemplateConfigToDB(`{"version":2}`); err != nil {
+		t.Fatalf("second save failed: %v", err)
+	}
+
+	var settings []model.Setting
+	if err := database.GetDB().
+		Where("key = ?", "xrayTemplateConfig").
+		Find(&settings).Error; err != nil {
+		t.Fatalf("query settings failed: %v", err)
+	}
+	if len(settings) != 1 {
+		t.Fatalf("expected exactly one xrayTemplateConfig row, got %d", len(settings))
+	}
+	if settings[0].Value != `{"version":2}` {
+		t.Fatalf("expected latest config value to be persisted, got %s", settings[0].Value)
 	}
 }
 

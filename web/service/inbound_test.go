@@ -194,3 +194,61 @@ func TestUpdateInboundClient_DoesNotUpdateOtherInboundTraffic(t *testing.T) {
 		t.Fatalf("expected renamed email to stay isolated to inbound1, got %d rows in inbound2", got)
 	}
 }
+
+func TestMigrationRequirements_RollsBackOnAddClientStatFailure(t *testing.T) {
+	setupTestDB(t)
+
+	svc := &InboundService{}
+	inbound := model.Inbound{
+		UserId:   1,
+		Port:     12001,
+		Protocol: model.VLESS,
+		Tag:      "rollback-test",
+		Up:       10,
+		Down:     20,
+		Settings: mustMarshalInboundSettings(t, model.Client{
+			ID:         "client-rollback",
+			Email:      "rollback@example.com",
+			Enable:     true,
+			TotalGB:    100,
+			ExpiryTime: 200,
+		}),
+	}
+	if err := database.GetDB().Create(&inbound).Error; err != nil {
+		t.Fatalf("create inbound failed: %v", err)
+	}
+
+	if err := database.GetDB().Exec(`
+		CREATE TRIGGER fail_client_traffic_insert
+		BEFORE INSERT ON client_traffics
+		BEGIN
+			SELECT RAISE(FAIL, 'boom');
+		END;
+	`).Error; err != nil {
+		t.Fatalf("create trigger failed: %v", err)
+	}
+
+	err := svc.MigrationRequirements()
+	if err == nil {
+		t.Fatalf("expected migration requirements to return an error when client traffic insert fails")
+	}
+
+	var refreshed model.Inbound
+	if err := database.GetDB().First(&refreshed, inbound.Id).Error; err != nil {
+		t.Fatalf("reload inbound failed: %v", err)
+	}
+	if refreshed.AllTime != 0 {
+		t.Fatalf("expected inbound all_time rollback to keep 0, got %d", refreshed.AllTime)
+	}
+
+	var traffic xray.ClientTraffic
+	err = database.GetDB().
+		Where("inbound_id = ? AND email = ?", inbound.Id, "rollback@example.com").
+		First(&traffic).Error
+	if err == nil {
+		t.Fatalf("expected client traffic insert to roll back, but row exists: %+v", traffic)
+	}
+	if !database.IsNotFound(err) {
+		t.Fatalf("reload client traffic failed: %v", err)
+	}
+}
