@@ -3,6 +3,7 @@ package job
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -31,6 +32,7 @@ type CheckClientIpJob struct {
 	disAllowedIps      []string
 	fail2BanWarned     bool
 	fail2BanInstalled  bool
+	lastDisconnectOK   bool
 	lastDisconnectByID map[string]int64
 }
 
@@ -339,6 +341,7 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 
 	shouldCleanLog := false
 	j.disAllowedIps = []string{}
+	j.lastDisconnectOK = false
 
 	// Open log file
 	logIpFile, err := os.OpenFile(xray.GetIPLimitLogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -367,7 +370,7 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 		// Fallback enforcement path when Fail2Ban is unavailable:
 		// temporarily remove and re-add user to drop existing sessions.
 		if len(bannedIps) > 0 && !j.fail2BanInstalled {
-			j.disconnectClientTemporarily(inbound, clientEmail, clients)
+			j.lastDisconnectOK = j.disconnectClientTemporarily(inbound, clientEmail, clients)
 		}
 
 		// Update database with only the currently active (kept) IPs
@@ -389,8 +392,10 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 	if len(j.disAllowedIps) > 0 {
 		if j.fail2BanInstalled {
 			logger.Infof("[LIMIT_IP] Client %s: Kept %d current IPs, queued %d new IPs for fail2ban", clientEmail, limitIp, len(j.disAllowedIps))
-		} else {
+		} else if j.lastDisconnectOK {
 			logger.Infof("[LIMIT_IP] Client %s: Kept %d current IPs, disconnected session to enforce limit without fail2ban", clientEmail, limitIp)
+		} else {
+			logger.Warningf("[LIMIT_IP] Client %s: Kept %d current IPs, but failed to disconnect excess sessions without fail2ban", clientEmail, limitIp)
 		}
 	}
 
@@ -410,31 +415,27 @@ func (j *CheckClientIpJob) getInboundByEmail(clientEmail string) (*model.Inbound
 }
 
 // disconnectClientTemporarily removes and re-adds a client to force stale/excess sessions to drop.
-func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, clientEmail string, clients []model.Client) {
+func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, clientEmail string, clients []model.Client) bool {
 	if inbound == nil || inbound.Tag == "" {
-		return
+		return false
 	}
 
 	// Avoid thrashing the same account on every 10s cron tick.
 	now := time.Now().Unix()
 	if last, ok := j.lastDisconnectByID[clientEmail]; ok && now-last < 30 {
-		return
+		return true
 	}
 
 	var xrayAPI xray.XrayAPI
-	db := database.GetDB()
-
-	apiPort := 10085
-	var apiPortSetting model.Setting
-	if err := db.Where("key = ?", "xrayApiPort").First(&apiPortSetting).Error; err == nil {
-		if parsed, convErr := strconv.Atoi(apiPortSetting.Value); convErr == nil && parsed > 0 {
-			apiPort = parsed
-		}
+	apiPort, err := j.resolveXrayAPIPort()
+	if err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to resolve Xray API port for fallback disconnect: %v", err)
+		return false
 	}
 
 	if err := xrayAPI.Init(apiPort); err != nil {
 		logger.Warningf("[LIMIT_IP] Failed to init Xray API for fallback disconnect: %v", err)
-		return
+		return false
 	}
 	defer xrayAPI.Close()
 
@@ -448,19 +449,36 @@ func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, c
 		break
 	}
 	if clientConfig == nil {
-		return
+		return false
 	}
 
 	if err := xrayAPI.RemoveUser(inbound.Tag, clientEmail); err != nil {
 		logger.Warningf("[LIMIT_IP] Failed to remove user %s: %v", clientEmail, err)
-		return
+		return false
 	}
 
 	time.Sleep(150 * time.Millisecond)
 	if err := xrayAPI.AddUser(string(inbound.Protocol), inbound.Tag, clientConfig); err != nil {
 		logger.Warningf("[LIMIT_IP] Failed to re-add user %s: %v", clientEmail, err)
-		return
+		return false
 	}
 
 	j.lastDisconnectByID[clientEmail] = now
+	return true
+}
+
+func (j *CheckClientIpJob) resolveXrayAPIPort() (int, error) {
+	if apiPort, err := xray.GetAPIPortFromConfig(); err == nil && apiPort > 0 {
+		return apiPort, nil
+	}
+
+	db := database.GetDB()
+	var apiPortSetting model.Setting
+	if err := db.Where("key = ?", "xrayApiPort").First(&apiPortSetting).Error; err == nil {
+		if parsed, convErr := strconv.Atoi(apiPortSetting.Value); convErr == nil && parsed > 0 {
+			return parsed, nil
+		}
+	}
+
+	return 0, fmt.Errorf("no usable Xray API port found in config or settings")
 }
