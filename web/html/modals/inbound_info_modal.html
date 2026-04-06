@@ -650,7 +650,7 @@
       this.dbInbound = new DBInbound(dbInbound);
       this.clientSettings = this.inbound.clients ? this.inbound.clients[index] : null;
       this.isExpired = this.inbound.clients ? this.inbound.isExpiry(index) : this.dbInbound.isExpiry;
-      this.clientStats = (this.inbound.clients && this.clientSettings)
+      this.clientStats = (this.inbound.clients && this.clientSettings && Array.isArray(this.dbInbound.clientStats))
         ? (this.dbInbound.clientStats.find(row => row.email === this.clientSettings.email) || null)
         : null;
 

@@ -26,6 +26,15 @@
                 <a-spin tip='{{ i18n "loading" }}'></a-spin>
               </a-card>
             </a-row>
+            <a-row v-else-if="loadFailed">
+              <a-col>
+                <a-alert type="error" show-icon
+                  message="Failed to load settings"
+                  description="The current page data was not loaded. Refresh and retry before editing or saving."
+                  :style="{ marginTop: '10px' }">
+                </a-alert>
+              </a-col>
+            </a-row>
             <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
               <a-col>
                 <a-card hoverable>
@@ -119,6 +128,7 @@
       },
       oldAllSetting: new AllSetting(),
       allSetting: new AllSetting(),
+      loadFailed: false,
       saveBtnDisable: true,
       entryHost: null,
       entryPort: null,
@@ -266,15 +276,15 @@
         const msg = await HttpUtil.post("/panel/setting/all");
 
         if (msg.success) {
-          if (!this.loadingStates.fetched) {
-            this.loadingStates.fetched = true
-          }
-
           this.oldAllSetting = new AllSetting(msg.obj);
           this.allSetting = new AllSetting(msg.obj);
           app.changeRemarkSample();
           this.saveBtnDisable = true;
+          this.loadFailed = false;
+          return true;
         }
+        this.loadFailed = true;
+        return false;
       },
       async loadInboundTags() {
         const msg = await HttpUtil.get("/panel/api/inbounds/list");
@@ -622,11 +632,15 @@
       this.entryPort = window.location.port;
       this.entryProtocol = window.location.protocol;
       this.entryIsIP = this._isIp(this.entryHost);
+      let settingsLoaded = false;
       try {
-        await this.getAllSetting();
+        settingsLoaded = await this.getAllSetting();
         await this.loadInboundTags();
       } finally {
         this.loadingStates.fetched = true;
+      }
+      if (!settingsLoaded) {
+        return;
       }
       while (true) {
         await PromiseUtil.sleep(1000);

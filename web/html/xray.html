@@ -29,6 +29,15 @@
               <a-spin tip='{{ i18n "loading" }}'></a-spin>
             </a-card>
           </a-row>
+          <a-row v-else-if="loadFailed">
+            <a-col>
+              <a-alert type="error" show-icon
+                message="Failed to load Xray settings"
+                description="The current page data was not loaded. Refresh and retry before editing or saving."
+                :style="{ marginTop: '10px' }">
+              </a-alert>
+            </a-col>
+          </a-row>
           <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
             <a-col>
               <a-card hoverable>
@@ -253,6 +262,7 @@
       },
       oldXraySetting: '',
       xraySetting: '',
+      loadFailed: false,
       outboundTestUrl: 'https://www.google.com/generate_204',
       oldOutboundTestUrl: 'https://www.google.com/generate_204',
       inboundTags: [],
@@ -394,10 +404,6 @@
         const msg = await HttpUtil.post("/panel/xray/");
 
         if (msg.success) {
-          if (!this.loadingStates.fetched) {
-            this.loadingStates.fetched = true
-          }
-
           const result = JSON.parse(msg.obj);
           const xs = JSON.stringify(result.xraySetting, null, 2);
           this.oldXraySetting = xs;
@@ -406,7 +412,11 @@
           this.outboundTestUrl = result.outboundTestUrl || 'https://www.google.com/generate_204';
           this.oldOutboundTestUrl = this.outboundTestUrl;
           this.saveBtnDisable = true;
+          this.loadFailed = false;
+          return true;
         }
+        this.loadFailed = true;
+        return false;
       },
       async updateXraySetting() {
         this.loading(true);
@@ -1064,12 +1074,16 @@
       if (window.location.protocol !== "https:") {
         this.showAlert = true;
       }
+      let settingsLoaded = false;
       try {
-        await this.getXraySetting();
+        settingsLoaded = await this.getXraySetting();
         await this.getXrayResult();
         await this.getOutboundsTraffic();
       } finally {
         this.loadingStates.fetched = true;
+      }
+      if (!settingsLoaded) {
+        return;
       }
 
       if (window.wsClient) {
