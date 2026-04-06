@@ -33,6 +33,14 @@ func (s *XrayService) IsXrayRunning() bool {
 	return p != nil && p.IsRunning()
 }
 
+// GetAPIPort returns the currently configured Xray API port.
+func (s *XrayService) GetAPIPort() int {
+	if p == nil {
+		return 0
+	}
+	return p.GetAPIPort()
+}
+
 // GetXrayErr returns the error from the Xray process, if any.
 func (s *XrayService) GetXrayErr() error {
 	if p == nil {

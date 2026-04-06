@@ -3,18 +3,18 @@ package job
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"regexp"
-	"runtime"
 	"sort"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
+	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 )
 
@@ -26,15 +26,25 @@ type IPWithTimestamp struct {
 
 // CheckClientIpJob monitors client IP addresses from access logs and manages IP blocking based on configured limits.
 type CheckClientIpJob struct {
-	lastClear     int64
-	disAllowedIps []string
+	lastClear       int64
+	tempBansByEmail map[string]int64
+	inboundService  service.InboundService
+	xrayService     *service.XrayService
 }
 
 var job *CheckClientIpJob
 
+const (
+	ipLimitWindowDuration = 3 * time.Minute
+	ipLimitBanDuration    = 3 * time.Minute
+)
+
 // NewCheckClientIpJob creates a new client IP monitoring job instance.
-func NewCheckClientIpJob() *CheckClientIpJob {
-	job = new(CheckClientIpJob)
+func NewCheckClientIpJob(xrayService *service.XrayService) *CheckClientIpJob {
+	job = &CheckClientIpJob{
+		tempBansByEmail: map[string]int64{},
+		xrayService:     xrayService,
+	}
 	return job
 }
 
@@ -45,24 +55,13 @@ func (j *CheckClientIpJob) Run() {
 
 	shouldClearAccessLog := false
 	iplimitActive := j.hasLimitIp()
-	f2bInstalled := j.checkFail2BanInstalled()
 	isAccessLogAvailable := j.checkAccessLogAvailable(iplimitActive)
 
+	j.restoreExpiredClientAccess()
+
 	if isAccessLogAvailable {
-		if runtime.GOOS == "windows" {
-			if iplimitActive {
-				shouldClearAccessLog = j.processLogFile()
-			}
-		} else {
-			if iplimitActive {
-				if f2bInstalled {
-					shouldClearAccessLog = j.processLogFile()
-				} else {
-					if !f2bInstalled {
-						logger.Warning("[LimitIP] Fail2Ban is not installed, Please install Fail2Ban from the x-ui bash menu.")
-					}
-				}
-			}
+		if iplimitActive {
+			shouldClearAccessLog = j.processLogFile()
 		}
 	}
 
@@ -199,13 +198,6 @@ func (j *CheckClientIpJob) processLogFile() bool {
 	return shouldCleanLog
 }
 
-func (j *CheckClientIpJob) checkFail2BanInstalled() bool {
-	cmd := "fail2ban-client"
-	args := []string{"-h"}
-	err := exec.Command(cmd, args...).Run()
-	return err == nil
-}
-
 func (j *CheckClientIpJob) checkAccessLogAvailable(iplimitActive bool) bool {
 	accessLogPath, err := xray.GetAccessLogPath()
 	if err != nil {
@@ -329,7 +321,6 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 	})
 
 	shouldCleanLog := false
-	j.disAllowedIps = []string{}
 
 	// Open log file
 	logIpFile, err := os.OpenFile(xray.GetIPLimitLogPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -341,27 +332,23 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 	log.SetOutput(logIpFile)
 	log.SetFlags(log.LstdFlags)
 
-	// Check if we exceed the limit
-	if len(allIps) > limitIp {
+	recentIps := j.filterRecentIPs(allIps, time.Now().Add(-ipLimitWindowDuration).Unix())
+
+	jsonIps, _ := json.Marshal(recentIps)
+	inboundClientIps.Ips = string(jsonIps)
+
+	// Check if the recent 3-minute window exceeds the limit.
+	if len(recentIps) > limitIp {
 		shouldCleanLog = true
-
-		// Keep the oldest IPs (currently active connections) and ban the new excess ones.
-		keptIps := allIps[:limitIp]
-		bannedIps := allIps[limitIp:]
-
-		// Log banned IPs in the format fail2ban filters expect: [LIMIT_IP] Email = X || Disconnecting OLD IP = Y || Timestamp = Z
-		for _, ipTime := range bannedIps {
-			j.disAllowedIps = append(j.disAllowedIps, ipTime.IP)
-			log.Printf("[LIMIT_IP] Email = %s || Disconnecting OLD IP = %s || Timestamp = %d", clientEmail, ipTime.IP, ipTime.Timestamp)
+		for _, ipTime := range recentIps {
+			log.Printf("[LIMIT_IP] Email = %s || Recent IP = %s || Timestamp = %d", clientEmail, ipTime.IP, ipTime.Timestamp)
 		}
 
-		// Update database with only the currently active (kept) IPs
-		jsonIps, _ := json.Marshal(keptIps)
-		inboundClientIps.Ips = string(jsonIps)
-	} else {
-		// Under limit, save all IPs
-		jsonIps, _ := json.Marshal(allIps)
-		inboundClientIps.Ips = string(jsonIps)
+		if err := j.disableClientTemporarily(clientEmail, ipLimitBanDuration); err != nil {
+			logger.Warningf("[LIMIT_IP] Failed to temporarily disable client %s: %v", clientEmail, err)
+		} else {
+			logger.Infof("[LIMIT_IP] Client %s: observed %d IPs in the last 3 minutes (limit=%d), temporarily disabled for 3 minutes", clientEmail, len(recentIps), limitIp)
+		}
 	}
 
 	db := database.GetDB()
@@ -369,10 +356,6 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 	if err != nil {
 		logger.Error("failed to save inboundClientIps:", err)
 		return false
-	}
-
-	if len(j.disAllowedIps) > 0 {
-		logger.Infof("[LIMIT_IP] Client %s: Kept %d current IPs, queued %d new IPs for fail2ban", clientEmail, limitIp, len(j.disAllowedIps))
 	}
 
 	return shouldCleanLog
@@ -388,4 +371,58 @@ func (j *CheckClientIpJob) getInboundByEmail(clientEmail string) (*model.Inbound
 	}
 
 	return inbound, nil
+}
+
+func (j *CheckClientIpJob) disableClientTemporarily(clientEmail string, duration time.Duration) error {
+	now := time.Now().Unix()
+	if until, ok := j.tempBansByEmail[clientEmail]; ok && until > now {
+		return nil
+	}
+
+	changed, needRestart, err := j.inboundService.SetClientEnableByEmail(clientEmail, false)
+	if err != nil {
+		return err
+	}
+	if needRestart && j.xrayService != nil {
+		j.xrayService.SetToNeedRestart()
+	}
+	if !changed {
+		return fmt.Errorf("client %s was not disabled", clientEmail)
+	}
+
+	j.tempBansByEmail[clientEmail] = time.Now().Add(duration).Unix()
+	return nil
+}
+
+func (j *CheckClientIpJob) restoreExpiredClientAccess() {
+	now := time.Now().Unix()
+	for clientEmail, until := range j.tempBansByEmail {
+		if until > now {
+			continue
+		}
+
+		changed, needRestart, err := j.inboundService.SetClientEnableByEmail(clientEmail, true)
+		if err != nil {
+			logger.Warningf("[LIMIT_IP] Failed to restore client %s after temporary disable: %v", clientEmail, err)
+			continue
+		}
+		if needRestart && j.xrayService != nil {
+			j.xrayService.SetToNeedRestart()
+		}
+
+		delete(j.tempBansByEmail, clientEmail)
+		if changed {
+			logger.Infof("[LIMIT_IP] Client %s: temporary 3-minute disable expired, access restored", clientEmail)
+		}
+	}
+}
+
+func (j *CheckClientIpJob) filterRecentIPs(ips []IPWithTimestamp, minTimestamp int64) []IPWithTimestamp {
+	recent := make([]IPWithTimestamp, 0, len(ips))
+	for _, ipTime := range ips {
+		if ipTime.Timestamp >= minTimestamp {
+			recent = append(recent, ipTime)
+		}
+	}
+	return recent
 }

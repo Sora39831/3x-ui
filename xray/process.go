@@ -93,6 +93,49 @@ func GetAccessLogPath() (string, error) {
 	return "", err
 }
 
+// GetAPIPortFromConfig reads the Xray config and returns the API inbound port.
+func GetAPIPortFromConfig() (int, error) {
+	config, err := os.ReadFile(GetConfigPath())
+	if err != nil {
+		logger.Warningf("Failed to read configuration file: %s", err)
+		return 0, err
+	}
+
+	jsonConfig := map[string]any{}
+	if err := json.Unmarshal(config, &jsonConfig); err != nil {
+		logger.Warningf("Failed to parse JSON configuration: %s", err)
+		return 0, err
+	}
+
+	rawInbounds, ok := jsonConfig["inbounds"].([]any)
+	if !ok {
+		return 0, fmt.Errorf("xray config does not contain inbounds")
+	}
+
+	for _, rawInbound := range rawInbounds {
+		inbound, ok := rawInbound.(map[string]any)
+		if !ok {
+			continue
+		}
+		if inbound["tag"] != "api" {
+			continue
+		}
+
+		switch port := inbound["port"].(type) {
+		case float64:
+			if port > 0 {
+				return int(port), nil
+			}
+		case int:
+			if port > 0 {
+				return port, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("api inbound port not found in xray config")
+}
+
 // stopProcess calls Stop on the given Process instance.
 func stopProcess(p *Process) {
 	p.Stop()

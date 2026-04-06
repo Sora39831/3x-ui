@@ -487,7 +487,7 @@ func saveSettings(settings map[string]string) error {
 func getXrayTemplateConfigFromDB() (string, error) {
 	db := database.GetDB()
 	setting := &model.Setting{}
-	err := db.Model(model.Setting{}).Where("key = ?", "xrayTemplateConfig").First(setting).Error
+	err := db.Model(model.Setting{}).Where("`key` = ?", "xrayTemplateConfig").First(setting).Error
 	if err != nil {
 		return "", err
 	}
@@ -498,7 +498,7 @@ func getXrayTemplateConfigFromDB() (string, error) {
 func saveXrayTemplateConfigToDB(value string) error {
 	db := database.GetDB()
 	setting := &model.Setting{}
-	err := db.Model(model.Setting{}).Where("key = ?", "xrayTemplateConfig").First(setting).Error
+	err := db.Model(model.Setting{}).Where("`key` = ?", "xrayTemplateConfig").First(setting).Error
 	if database.IsNotFound(err) {
 		return db.Create(&model.Setting{
 			Key:   "xrayTemplateConfig",
