@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database"
@@ -26,16 +27,20 @@ type IPWithTimestamp struct {
 
 // CheckClientIpJob monitors client IP addresses from access logs and manages IP blocking based on configured limits.
 type CheckClientIpJob struct {
-	lastClear      int64
-	disAllowedIps  []string
-	fail2BanWarned bool
+	lastClear          int64
+	disAllowedIps      []string
+	fail2BanWarned     bool
+	fail2BanInstalled  bool
+	lastDisconnectByID map[string]int64
 }
 
 var job *CheckClientIpJob
 
 // NewCheckClientIpJob creates a new client IP monitoring job instance.
 func NewCheckClientIpJob() *CheckClientIpJob {
-	job = new(CheckClientIpJob)
+	job = &CheckClientIpJob{
+		lastDisconnectByID: map[string]int64{},
+	}
 	return job
 }
 
@@ -56,13 +61,14 @@ func (j *CheckClientIpJob) Run() {
 		} else {
 			if iplimitActive {
 				// Always process and persist client IP records. Fail2Ban is optional.
-				shouldClearAccessLog = j.processLogFile()
 				f2bInstalled := j.checkFail2BanInstalled()
-				if !f2bInstalled && !j.fail2BanWarned {
+				j.fail2BanInstalled = f2bInstalled
+				shouldClearAccessLog = j.processLogFile()
+				if !j.fail2BanInstalled && !j.fail2BanWarned {
 					logger.Warning("[LimitIP] Fail2Ban is not installed, IP records will continue to work but automatic banning is disabled.")
 					j.fail2BanWarned = true
 				}
-				if f2bInstalled {
+				if j.fail2BanInstalled {
 					j.fail2BanWarned = false
 				}
 			}
@@ -358,6 +364,12 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 			log.Printf("[LIMIT_IP] Email = %s || Disconnecting OLD IP = %s || Timestamp = %d", clientEmail, ipTime.IP, ipTime.Timestamp)
 		}
 
+		// Fallback enforcement path when Fail2Ban is unavailable:
+		// temporarily remove and re-add user to drop existing sessions.
+		if len(bannedIps) > 0 && !j.fail2BanInstalled {
+			j.disconnectClientTemporarily(inbound, clientEmail, clients)
+		}
+
 		// Update database with only the currently active (kept) IPs
 		jsonIps, _ := json.Marshal(keptIps)
 		inboundClientIps.Ips = string(jsonIps)
@@ -375,7 +387,11 @@ func (j *CheckClientIpJob) updateInboundClientIps(inboundClientIps *model.Inboun
 	}
 
 	if len(j.disAllowedIps) > 0 {
-		logger.Infof("[LIMIT_IP] Client %s: Kept %d current IPs, queued %d new IPs for fail2ban", clientEmail, limitIp, len(j.disAllowedIps))
+		if j.fail2BanInstalled {
+			logger.Infof("[LIMIT_IP] Client %s: Kept %d current IPs, queued %d new IPs for fail2ban", clientEmail, limitIp, len(j.disAllowedIps))
+		} else {
+			logger.Infof("[LIMIT_IP] Client %s: Kept %d current IPs, disconnected session to enforce limit without fail2ban", clientEmail, limitIp)
+		}
 	}
 
 	return shouldCleanLog
@@ -391,4 +407,60 @@ func (j *CheckClientIpJob) getInboundByEmail(clientEmail string) (*model.Inbound
 	}
 
 	return inbound, nil
+}
+
+// disconnectClientTemporarily removes and re-adds a client to force stale/excess sessions to drop.
+func (j *CheckClientIpJob) disconnectClientTemporarily(inbound *model.Inbound, clientEmail string, clients []model.Client) {
+	if inbound == nil || inbound.Tag == "" {
+		return
+	}
+
+	// Avoid thrashing the same account on every 10s cron tick.
+	now := time.Now().Unix()
+	if last, ok := j.lastDisconnectByID[clientEmail]; ok && now-last < 30 {
+		return
+	}
+
+	var xrayAPI xray.XrayAPI
+	db := database.GetDB()
+
+	apiPort := 10085
+	var apiPortSetting model.Setting
+	if err := db.Where("key = ?", "xrayApiPort").First(&apiPortSetting).Error; err == nil {
+		if parsed, convErr := strconv.Atoi(apiPortSetting.Value); convErr == nil && parsed > 0 {
+			apiPort = parsed
+		}
+	}
+
+	if err := xrayAPI.Init(apiPort); err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to init Xray API for fallback disconnect: %v", err)
+		return
+	}
+	defer xrayAPI.Close()
+
+	var clientConfig map[string]any
+	for _, client := range clients {
+		if client.Email != clientEmail {
+			continue
+		}
+		clientBytes, _ := json.Marshal(client)
+		_ = json.Unmarshal(clientBytes, &clientConfig)
+		break
+	}
+	if clientConfig == nil {
+		return
+	}
+
+	if err := xrayAPI.RemoveUser(inbound.Tag, clientEmail); err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to remove user %s: %v", clientEmail, err)
+		return
+	}
+
+	time.Sleep(150 * time.Millisecond)
+	if err := xrayAPI.AddUser(string(inbound.Protocol), inbound.Tag, clientConfig); err != nil {
+		logger.Warningf("[LIMIT_IP] Failed to re-add user %s: %v", clientEmail, err)
+		return
+	}
+
+	j.lastDisconnectByID[clientEmail] = now
 }
