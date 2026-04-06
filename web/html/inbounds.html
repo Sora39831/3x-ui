@@ -646,6 +646,11 @@
     width: 50,
     scopedSlots: { customRender: 'clients' },
   }, {
+    title: '{{ i18n "pages.inbounds.deviceLimit" }}',
+    align: 'center',
+    width: 45,
+    dataIndex: "deviceLimit",
+  }, {
     title: '{{ i18n "pages.inbounds.traffic" }}',
     align: 'center',
     width: 90,
@@ -1030,6 +1035,7 @@
           remark: dbInbound.remark + " - Cloned",
           enable: dbInbound.enable,
           expiryTime: dbInbound.expiryTime,
+          deviceLimit: dbInbound.deviceLimit,
           trafficReset: dbInbound.trafficReset,
           lastTrafficResetTime: dbInbound.lastTrafficResetTime,
 
@@ -1076,6 +1082,7 @@
           remark: dbInbound.remark,
           enable: dbInbound.enable,
           expiryTime: dbInbound.expiryTime,
+          deviceLimit: dbInbound.deviceLimit,
           trafficReset: dbInbound.trafficReset,
           lastTrafficResetTime: dbInbound.lastTrafficResetTime,
 
@@ -1101,6 +1108,7 @@
           remark: dbInbound.remark,
           enable: dbInbound.enable,
           expiryTime: dbInbound.expiryTime,
+          deviceLimit: dbInbound.deviceLimit,
           trafficReset: dbInbound.trafficReset,
           lastTrafficResetTime: dbInbound.lastTrafficResetTime,
 
