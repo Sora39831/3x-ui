@@ -37,6 +37,17 @@ type CheckDeviceLimitJob struct {
 	violationStartTime map[string]time.Time
 	violationMu        sync.Mutex
 	running            atomic.Bool
+
+	isXrayRunning    func() bool
+	getAPIPort       func() int
+	loadAllInbounds  func() ([]*model.Inbound, error)
+	getClientTraffic func(email string) (*xray.ClientTraffic, error)
+	getClientByEmail func(email string) (*xray.ClientTraffic, *model.Client, error)
+	apiInit          func(apiPort int) error
+	apiClose         func()
+	removeUser       func(inboundTag, email string) error
+	addUser          func(protocol, inboundTag string, user map[string]any) error
+	sleep            func(time.Duration)
 }
 
 type deviceInboundInfo struct {
@@ -47,10 +58,37 @@ type deviceInboundInfo struct {
 }
 
 func NewCheckDeviceLimitJob(xrayService *service.XrayService) *CheckDeviceLimitJob {
-	return &CheckDeviceLimitJob{
+	j := &CheckDeviceLimitJob{
 		xrayService:        xrayService,
 		violationStartTime: make(map[string]time.Time),
 	}
+	j.isXrayRunning = func() bool {
+		return j.xrayService != nil && j.xrayService.IsXrayRunning()
+	}
+	j.getAPIPort = func() int {
+		if j.xrayService == nil {
+			return 0
+		}
+		return j.xrayService.GetAPIPort()
+	}
+	j.loadAllInbounds = func() ([]*model.Inbound, error) {
+		db := database.GetDB()
+		var inbounds []*model.Inbound
+		err := db.Find(&inbounds).Error
+		return inbounds, err
+	}
+	j.getClientTraffic = func(email string) (*xray.ClientTraffic, error) {
+		return j.inboundService.GetClientTrafficByEmail(email)
+	}
+	j.getClientByEmail = func(email string) (*xray.ClientTraffic, *model.Client, error) {
+		return j.inboundService.GetClientByEmail(email)
+	}
+	j.apiInit = j.xrayAPI.Init
+	j.apiClose = j.xrayAPI.Close
+	j.removeUser = j.xrayAPI.RemoveUser
+	j.addUser = j.xrayAPI.AddUser
+	j.sleep = time.Sleep
+	return j
 }
 
 func (j *CheckDeviceLimitJob) Run() {
@@ -60,7 +98,7 @@ func (j *CheckDeviceLimitJob) Run() {
 	}
 	defer j.running.Store(false)
 
-	if j.xrayService == nil || !j.xrayService.IsXrayRunning() {
+	if j.isXrayRunning == nil || !j.isXrayRunning() {
 		return
 	}
 	j.cleanupExpiredIPs()
@@ -142,20 +180,22 @@ func (j *CheckDeviceLimitJob) parseAccessLog() {
 }
 
 func (j *CheckDeviceLimitJob) checkAllClientsLimit() {
-	db := database.GetDB()
-	var allInbounds []*model.Inbound
-	if err := db.Find(&allInbounds).Error; err != nil || len(allInbounds) == 0 {
+	if j.loadAllInbounds == nil {
+		return
+	}
+	allInbounds, err := j.loadAllInbounds()
+	if err != nil || len(allInbounds) == 0 {
 		return
 	}
 
-	apiPort := j.xrayService.GetAPIPort()
+	apiPort := j.getAPIPort()
 	if apiPort == 0 {
 		return
 	}
-	if err := j.xrayAPI.Init(apiPort); err != nil {
+	if err := j.apiInit(apiPort); err != nil {
 		return
 	}
-	defer j.xrayAPI.Close()
+	defer j.apiClose()
 
 	inboundInfoMap := make(map[int]deviceInboundInfo, len(allInbounds))
 	for _, inbound := range allInbounds {
@@ -184,7 +224,7 @@ func (j *CheckDeviceLimitJob) checkAllClientsLimit() {
 	clientStatusMu.RUnlock()
 
 	for email, activeIPCount := range activeCounts {
-		traffic, err := j.inboundService.GetClientTrafficByEmail(email)
+		traffic, err := j.getClientTraffic(email)
 		if err != nil || traffic == nil {
 			continue
 		}
@@ -244,7 +284,7 @@ func (j *CheckDeviceLimitJob) checkAllClientsLimit() {
 		if _, online := activeCounts[email]; online {
 			continue
 		}
-		traffic, err := j.inboundService.GetClientTrafficByEmail(email)
+		traffic, err := j.getClientTraffic(email)
 		if err != nil || traffic == nil {
 			continue
 		}
@@ -267,14 +307,14 @@ func (j *CheckDeviceLimitJob) checkAllClientsLimit() {
 }
 
 func (j *CheckDeviceLimitJob) banUser(email string, activeIPCount int, info deviceInboundInfo) {
-	_, client, err := j.inboundService.GetClientByEmail(email)
+	_, client, err := j.getClientByEmail(email)
 	if err != nil || client == nil {
 		return
 	}
 
 	logger.Infof("[DeviceLimit] banning email=%s limit=%d current=%d", email, info.Limit, activeIPCount)
-	_ = j.xrayAPI.RemoveUser(info.Tag, email)
-	time.Sleep(5 * time.Second)
+	_ = j.removeUser(info.Tag, email)
+	j.sleep(5 * time.Second)
 
 	tempClient := *client
 	if tempClient.ID != "" {
@@ -288,7 +328,7 @@ func (j *CheckDeviceLimitJob) banUser(email string, activeIPCount int, info devi
 	clientJSON, _ := json.Marshal(tempClient)
 	_ = json.Unmarshal(clientJSON, &clientMap)
 
-	if err = j.xrayAPI.AddUser(string(info.Protocol), info.Tag, clientMap); err != nil {
+	if err = j.addUser(string(info.Protocol), info.Tag, clientMap); err != nil {
 		logger.Warningf("[DeviceLimit] failed to ban user %s: %v", email, err)
 		return
 	}
@@ -296,20 +336,20 @@ func (j *CheckDeviceLimitJob) banUser(email string, activeIPCount int, info devi
 }
 
 func (j *CheckDeviceLimitJob) unbanUser(email string, activeIPCount int, info deviceInboundInfo) {
-	_, client, err := j.inboundService.GetClientByEmail(email)
+	_, client, err := j.getClientByEmail(email)
 	if err != nil || client == nil {
 		return
 	}
 
 	logger.Infof("[DeviceLimit] unbanning email=%s limit=%d current=%d", email, info.Limit, activeIPCount)
-	_ = j.xrayAPI.RemoveUser(info.Tag, email)
-	time.Sleep(5 * time.Second)
+	_ = j.removeUser(info.Tag, email)
+	j.sleep(5 * time.Second)
 
 	clientMap := map[string]any{}
 	clientJSON, _ := json.Marshal(client)
 	_ = json.Unmarshal(clientJSON, &clientMap)
 
-	if err = j.xrayAPI.AddUser(string(info.Protocol), info.Tag, clientMap); err != nil {
+	if err = j.addUser(string(info.Protocol), info.Tag, clientMap); err != nil {
 		logger.Warningf("[DeviceLimit] failed to restore user %s: %v", email, err)
 		return
 	}
