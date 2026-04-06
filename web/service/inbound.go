@@ -389,6 +389,85 @@ func (s *InboundService) GetInbound(id int) (*model.Inbound, error) {
 	return inbound, nil
 }
 
+func (s *InboundService) getInboundQueryForUser(userID int, isAdmin bool) *gorm.DB {
+	db := database.GetDB().Model(model.Inbound{})
+	if !isAdmin {
+		db = db.Where("user_id = ?", userID)
+	}
+	return db
+}
+
+func (s *InboundService) GetInboundForUser(userID int, isAdmin bool, id int) (*model.Inbound, error) {
+	inbound := &model.Inbound{}
+	if err := s.getInboundQueryForUser(userID, isAdmin).First(inbound, id).Error; err != nil {
+		return nil, err
+	}
+	return inbound, nil
+}
+
+func (s *InboundService) UpdateInboundForUser(userID int, isAdmin bool, inbound *model.Inbound) (*model.Inbound, bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, inbound.Id); err != nil {
+		return inbound, false, err
+	}
+	return s.UpdateInbound(inbound)
+}
+
+func (s *InboundService) DelInboundForUser(userID int, isAdmin bool, id int) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, id); err != nil {
+		return false, err
+	}
+	return s.DelInbound(id)
+}
+
+func (s *InboundService) AddInboundClientForUser(userID int, isAdmin bool, data *model.Inbound) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, data.Id); err != nil {
+		return false, err
+	}
+	return s.AddInboundClient(data)
+}
+
+func (s *InboundService) DelInboundClientForUser(userID int, isAdmin bool, inboundID int, clientID string) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, inboundID); err != nil {
+		return false, err
+	}
+	return s.DelInboundClient(inboundID, clientID)
+}
+
+func (s *InboundService) UpdateInboundClientForUser(userID int, isAdmin bool, data *model.Inbound, clientID string) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, data.Id); err != nil {
+		return false, err
+	}
+	return s.UpdateInboundClient(data, clientID)
+}
+
+func (s *InboundService) ResetClientTrafficForUser(userID int, isAdmin bool, inboundID int, clientEmail string) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, inboundID); err != nil {
+		return false, err
+	}
+	return s.ResetClientTraffic(inboundID, clientEmail)
+}
+
+func (s *InboundService) ResetAllClientTrafficsForUser(userID int, isAdmin bool, id int) error {
+	if _, err := s.GetInboundForUser(userID, isAdmin, id); err != nil {
+		return err
+	}
+	return s.ResetAllClientTraffics(id)
+}
+
+func (s *InboundService) DelDepletedClientsForUser(userID int, isAdmin bool, id int) error {
+	if _, err := s.GetInboundForUser(userID, isAdmin, id); err != nil {
+		return err
+	}
+	return s.DelDepletedClients(id)
+}
+
+func (s *InboundService) DelInboundClientByEmailForUser(userID int, isAdmin bool, inboundID int, email string) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, inboundID); err != nil {
+		return false, err
+	}
+	return s.DelInboundClientByEmail(inboundID, email)
+}
+
 // UpdateInbound modifies an existing inbound configuration.
 // It validates changes, updates the database, and syncs with the running Xray instance.
 // Returns the updated inbound, whether Xray needs restart, and any error.

@@ -43,10 +43,14 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 
 	// Inbounds API
 	inbounds := api.Group("/inbounds")
-	a.inboundController = NewInboundController(inbounds)
+	a.inboundController = &InboundController{}
+	inbounds.GET("/userInfo", a.inboundController.getUserInfo)
+	inbounds.Use(a.checkAdmin)
+	a.inboundController.initRouter(inbounds)
 
 	// Server API
 	server := api.Group("/server")
+	server.Use(a.checkAdmin)
 	a.serverController = NewServerController(server)
 
 	// Users API
@@ -55,7 +59,7 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 	a.userController = NewUserController(users)
 
 	// Extra routes
-	api.GET("/backuptotgbot", a.BackuptoTgbot)
+	api.GET("/backuptotgbot", a.checkAdmin, a.BackuptoTgbot)
 }
 
 // BackuptoTgbot sends a backup of the panel data to Telegram bot admins.

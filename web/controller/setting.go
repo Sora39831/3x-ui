@@ -24,6 +24,7 @@ type updateUserForm struct {
 
 // SettingController handles settings and user management operations.
 type SettingController struct {
+	BaseController
 	settingService service.SettingService
 	userService    service.UserService
 	panelService   service.PanelService
@@ -39,6 +40,7 @@ func NewSettingController(g *gin.RouterGroup) *SettingController {
 // initRouter sets up the routes for settings management.
 func (a *SettingController) initRouter(g *gin.RouterGroup) {
 	g = g.Group("/setting")
+	g.Use(a.checkAdmin)
 
 	g.POST("/all", a.getAllSetting)
 	g.POST("/defaultSettings", a.getDefaultSettings)
