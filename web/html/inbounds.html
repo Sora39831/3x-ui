@@ -19,6 +19,15 @@
               <a-spin tip='{{ i18n "loading" }}'></a-spin>
             </a-card>
           </a-row>
+          <a-row v-else-if="loadFailed">
+            <a-col>
+              <a-alert type="error" show-icon
+                message="Failed to load inbounds"
+                description="The current page data was not loaded. Refresh and retry before editing or operating on inbounds."
+                :style="{ marginTop: '10px' }">
+              </a-alert>
+            </a-col>
+          </a-row>
           <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
             <a-col>
               <a-card size="small" :style="{ padding: '16px' }" hoverable>
@@ -749,6 +758,7 @@
       isAdmin: {{if .is_admin}}true{{else}}false{{end}},
       currentUsername: {{ printf "%q" .current_username }},
       clientEmailOptions: [],
+      loadFailed: false,
     },
     methods: {
       loading(spinning = true) {
@@ -759,16 +769,19 @@
         const msg = await HttpUtil.get('/panel/api/inbounds/list');
         if (!msg.success) {
           this.refreshing = false;
-          return;
+          this.loadFailed = true;
+          return false;
         }
 
         await this.getLastOnlineMap();
         await this.getOnlineUsers();
 
+        this.loadFailed = false;
         this.setInbounds(msg.obj);
         setTimeout(() => {
           this.refreshing = false;
         }, 500);
+        return true;
       },
       async getOnlineUsers() {
         const msg = await HttpUtil.post('/panel/api/inbounds/onlines');
@@ -1633,9 +1646,11 @@
       // Initial data fetch
       this.getDBInbounds()
         .catch((e) => {
+          this.loadFailed = true;
           console.error(e);
         })
         .finally(() => {
+          this.loadingStates.fetched = true;
           this.loading(false);
         });
 

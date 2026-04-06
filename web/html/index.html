@@ -19,6 +19,14 @@
                 <a-spin tip='{{ i18n "loading" }}'></a-spin>
               </a-card>
             </a-row>
+            <a-row v-else-if="loadFailed">
+              <a-col>
+                <a-alert type="error" show-icon class="mb-10"
+                  message="Failed to load dashboard status"
+                  description="The current page data was not loaded. Refresh and retry before relying on this dashboard.">
+                </a-alert>
+              </a-col>
+            </a-row>
             <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
               <a-col>
                 <a-card hoverable>
@@ -882,6 +890,7 @@
         fetched: false,
         spinning: false
       },
+      loadFailed: false,
       status: new Status(),
   cpuHistory: [], // small live widget history
   cpuHistoryLong: [], // aggregated points from backend
@@ -905,15 +914,15 @@
         try {
           const msg = await HttpUtil.get('/panel/api/server/status');
           if (msg.success) {
-            if (!this.loadingStates.fetched) {
-              this.loadingStates.fetched = true;
-            }
-
+            this.loadFailed = false;
             this.setStatus(msg.obj, true);
+            return true;
           }
         } catch (e) {
           console.error("Failed to get status:", e);
         }
+        this.loadFailed = true;
+        return false;
       },
       setStatus(data) {
         this.status = new Status(data);
@@ -1134,7 +1143,11 @@
       }
 
       // Initial status fetch
-      await this.getStatus();
+      try {
+        await this.getStatus();
+      } finally {
+        this.loadingStates.fetched = true;
+      }
 
       // Setup WebSocket for real-time updates
       if (window.wsClient) {
