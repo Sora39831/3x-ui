@@ -28,6 +28,7 @@ type IPWithTimestamp struct {
 type CheckClientIpJob struct {
 	lastClear     int64
 	disAllowedIps []string
+	fail2BanWarned bool
 }
 
 var job *CheckClientIpJob
@@ -45,7 +46,6 @@ func (j *CheckClientIpJob) Run() {
 
 	shouldClearAccessLog := false
 	iplimitActive := j.hasLimitIp()
-	f2bInstalled := j.checkFail2BanInstalled()
 	isAccessLogAvailable := j.checkAccessLogAvailable(iplimitActive)
 
 	if isAccessLogAvailable {
@@ -55,12 +55,15 @@ func (j *CheckClientIpJob) Run() {
 			}
 		} else {
 			if iplimitActive {
+				// Always process and persist client IP records. Fail2Ban is optional.
+				shouldClearAccessLog = j.processLogFile()
+				f2bInstalled := j.checkFail2BanInstalled()
+				if !f2bInstalled && !j.fail2BanWarned {
+					logger.Warning("[LimitIP] Fail2Ban is not installed, IP records will continue to work but automatic banning is disabled.")
+					j.fail2BanWarned = true
+				}
 				if f2bInstalled {
-					shouldClearAccessLog = j.processLogFile()
-				} else {
-					if !f2bInstalled {
-						logger.Warning("[LimitIP] Fail2Ban is not installed, Please install Fail2Ban from the x-ui bash menu.")
-					}
+					j.fail2BanWarned = false
 				}
 			}
 		}
