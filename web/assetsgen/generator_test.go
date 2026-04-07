@@ -91,6 +91,38 @@ func TestGenerateClampsHashLenToSha256HexLength(t *testing.T) {
 	}
 }
 
+func TestGeneratePreservesNestedDirectories(t *testing.T) {
+	src := t.TempDir()
+	dst := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(src, "css"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "css", "custom.min.css"), []byte("body{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, err := Generate(Options{
+		SourceDir: src,
+		OutputDir: filepath.Join(dst, "assets"),
+		HashLen:   8,
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	got := manifest["css/custom.min.css"]
+	if got == "" {
+		t.Fatalf("missing css/custom.min.css entry: %#v", manifest)
+	}
+	if filepath.Dir(got) != "css" {
+		t.Fatalf("expected nested output directory, got %q", got)
+	}
+	if filepath.Ext(got) != ".css" {
+		t.Fatalf("expected css extension, got %q", got)
+	}
+}
+
 func TestGenerateFingerprintsDotfilesWithoutLeadingExtension(t *testing.T) {
 	src := t.TempDir()
 	dst := t.TempDir()
