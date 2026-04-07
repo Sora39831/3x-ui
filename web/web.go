@@ -111,6 +111,16 @@ func EmbeddedAssets() embed.FS {
 	return assetsFS
 }
 
+// EmbeddedPublicAssets returns the embedded fingerprinted assets filesystem for reuse by other servers.
+func EmbeddedPublicAssets() embed.FS {
+	return publicAssetsFS
+}
+
+// EmbeddedAssetsManifest returns the embedded fingerprinted asset manifest bytes.
+func EmbeddedAssetsManifest() []byte {
+	return append([]byte(nil), assetsManifestRaw...)
+}
+
 // Server represents the main web server for the 3x-ui panel with controllers, services, and scheduled jobs.
 type Server struct {
 	httpServer *http.Server

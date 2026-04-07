@@ -5,12 +5,15 @@ package sub
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -26,6 +29,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type subscriptionAssetManifest map[string]string
+
 // setEmbeddedTemplates parses and sets embedded templates on the engine
 func setEmbeddedTemplates(engine *gin.Engine) error {
 	t, err := template.New("").Funcs(engine.FuncMap).ParseFS(
@@ -39,6 +44,50 @@ func setEmbeddedTemplates(engine *gin.Engine) error {
 	}
 	engine.SetHTMLTemplate(t)
 	return nil
+}
+
+func subscriptionTemplateFuncMap(basePath string, manifest subscriptionAssetManifest) template.FuncMap {
+	i18nWebFunc := func(key string, params ...string) string {
+		return locale.I18n(locale.Web, key, params...)
+	}
+	assetFunc := func(logical string) string {
+		target := logical
+		if manifest != nil {
+			if hashed, ok := manifest[logical]; ok {
+				target = hashed
+			}
+		}
+		return path.Join(basePath, "assets", target)
+	}
+	return template.FuncMap{
+		"i18n":  i18nWebFunc,
+		"asset": assetFunc,
+	}
+}
+
+func loadSubscriptionAssetManifest() (subscriptionAssetManifest, error) {
+	if raw, err := os.ReadFile("web/public/assets-manifest.json"); err == nil {
+		return decodeSubscriptionAssetManifest(raw)
+	} else if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	return decodeSubscriptionAssetManifest(webpkg.EmbeddedAssetsManifest())
+}
+
+func decodeSubscriptionAssetManifest(raw []byte) (subscriptionAssetManifest, error) {
+	if len(raw) == 0 {
+		return nil, fmt.Errorf("subscription asset manifest is empty")
+	}
+
+	var manifest subscriptionAssetManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return nil, err
+	}
+	if len(manifest) == 0 {
+		return nil, fmt.Errorf("subscription asset manifest has no entries")
+	}
+	return manifest, nil
 }
 
 // Server represents the subscription server that serves subscription links and JSON configurations.
@@ -181,11 +230,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// set per-request localizer from headers/cookies
 	engine.Use(locale.LocalizerMiddleware())
 
-	// register i18n function similar to web server
-	i18nWebFunc := func(key string, params ...string) string {
-		return locale.I18n(locale.Web, key, params...)
+	assetManifest, err := loadSubscriptionAssetManifest()
+	if err != nil {
+		return nil, err
 	}
-	engine.SetFuncMap(map[string]any{"i18n": i18nWebFunc})
+
+	engine.SetFuncMap(subscriptionTemplateFuncMap(basePath, assetManifest))
 
 	// Templates: prefer embedded; fallback to disk if necessary
 	if err := setEmbeddedTemplates(engine); err != nil {
@@ -212,10 +262,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 	// Mount assets in multiple paths to handle different URL patterns
 	var assetsFS http.FileSystem
-	if _, err := os.Stat("web/assets"); err == nil {
-		assetsFS = http.FS(os.DirFS("web/assets"))
+	if _, err := os.Stat("web/public/assets"); err == nil {
+		assetsFS = http.FS(os.DirFS("web/public/assets"))
 	} else {
-		if subFS, err := fs.Sub(webpkg.EmbeddedAssets(), "assets"); err == nil {
+		if subFS, err := fs.Sub(webpkg.EmbeddedPublicAssets(), "public/assets"); err == nil {
 			assetsFS = http.FS(subFS)
 		} else {
 			logger.Error("sub: failed to mount embedded assets:", err)
@@ -277,7 +327,7 @@ func (s *Server) getHtmlFiles() ([]string, error) {
 		files = append(files, theme)
 	}
 	// page itself
-	page := filepath.Join(dir, "web", "html", "subpage.html")
+	page := filepath.Join(dir, "web", "html", "settings", "panel", "subscription", "subpage.html")
 	if _, err := os.Stat(page); err == nil {
 		files = append(files, page)
 	} else {

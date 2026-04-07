@@ -27,6 +27,18 @@ func TestAssetResolverReturnsLogicalPathInDebug(t *testing.T) {
 	}
 }
 
+func TestAssetResolverPreservesBasePathWithoutDoubleSlash(t *testing.T) {
+	resolver := newAssetResolver("/xui/", false, assetManifest{
+		"css/custom.min.css": "css/custom.min.11111111.css",
+	})
+
+	got := resolver.URL("css/custom.min.css")
+	want := "/xui/assets/css/custom.min.11111111.css"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestAssetResolverPanicsOnMissingProductionAsset(t *testing.T) {
 	resolver := newAssetResolver("/", false, assetManifest{})
 

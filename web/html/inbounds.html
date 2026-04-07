@@ -601,11 +601,11 @@
   </a-layout>
 </a-layout>
 {{template "page/body_scripts" .}}
-<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/uri/URI.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/reality_targets.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/inbound.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/dbinbound.js?{{ .cur_ver }}"></script>
+<script src="{{ asset "qrcode/qrious2.min.js" }}"></script>
+<script src="{{ asset "uri/URI.min.js" }}"></script>
+<script src="{{ asset "js/model/reality_targets.js" }}"></script>
+<script src="{{ asset "js/model/inbound.js" }}"></script>
+<script src="{{ asset "js/model/dbinbound.js" }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 {{template "component/aCustomStatistic" .}}
