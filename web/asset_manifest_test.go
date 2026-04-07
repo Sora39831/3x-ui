@@ -85,3 +85,11 @@ func TestAssetRequestCacheControlDoesNotMarkMissingFingerprintPathImmutable(t *t
 		t.Fatalf("expected missing asset path to avoid immutable cache-control, got %q", got)
 	}
 }
+
+func TestAssetCacheControlForLogicalPathIsShortLived(t *testing.T) {
+	got := assetCacheControl("js/websocket.js")
+	want := "public, max-age=300"
+	if got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}

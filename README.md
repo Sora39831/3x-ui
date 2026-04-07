@@ -30,6 +30,17 @@ bash <(curl -Ls https://raw.githubusercontent.com/Sora39831/3x-ui/master/install
 
 For full documentation, please visit the [project Wiki](https://github.com/Sora39831/3x-ui/wiki).
 
+## Building from source
+
+Generate fingerprinted frontend assets before compiling:
+
+```bash
+go run ./cmd/genassets
+go build -ldflags "-w -s" -o build/x-ui main.go
+```
+
+Production builds embed files from `web/public/assets` and `web/public/assets-manifest.json`.
+
 ## A Special Thanks to
 
 - [alireza0](https://github.com/alireza0/)
