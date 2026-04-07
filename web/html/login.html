@@ -117,23 +117,23 @@
                             <a-icon slot="prefix" type="lock" class="fs-1rem"></a-icon>
                           </a-input-password>
                         </a-form-item>
-                        <a-form-item>
-                          <div class="cf-turnstile-wrapper">
-                            <div class="cf-turnstile" id="turnstile-widget"></div>
-                          </div>
-                        </a-form-item>
-                        <a-form-item>
-                          <a-row justify="center" class="centered">
-                            <div class="wave-btn-bg wave-btn-bg-cl h-50px mt-1rem"
-                              :style="loadingStates.registerSpinning ? 'width: 52px' : 'display: inline-block'">
-                              <a-button class="ant-btn-primary-login" type="primary" :loading="loadingStates.registerSpinning"
-                                :icon="loadingStates.registerSpinning ? 'poweroff' : undefined" html-type="submit">
-                                [[ loadingStates.registerSpinning ? '' : '{{ i18n "pages.login.registerTab" }}' ]]
-                              </a-button>
-                            </div>
-                          </a-row>
-                        </a-form-item>
                       </a-space>
+                      <a-form-item style="display:flex; justify-content:center; margin-top: 16px;">
+                        <div class="cf-turnstile-wrapper" style="display:inline-flex; max-width:100%; overflow-x:auto;">
+                          <div class="cf-turnstile" id="turnstile-widget"></div>
+                        </div>
+                      </a-form-item>
+                      <a-form-item>
+                        <a-row justify="center" class="centered">
+                          <div class="wave-btn-bg wave-btn-bg-cl h-50px mt-1rem"
+                            :style="loadingStates.registerSpinning ? 'width: 52px' : 'display: inline-block'">
+                            <a-button class="ant-btn-primary-login" type="primary" :loading="loadingStates.registerSpinning"
+                              :icon="loadingStates.registerSpinning ? 'poweroff' : undefined" html-type="submit">
+                              [[ loadingStates.registerSpinning ? '' : '{{ i18n "pages.login.registerTab" }}' ]]
+                            </a-button>
+                          </div>
+                        </a-row>
+                      </a-form-item>
                     </a-form>
                   </a-tab-pane>
                 </a-tabs>
