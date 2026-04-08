@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +38,12 @@ import (
 //go:embed assets
 var assetsFS embed.FS
 
+//go:embed public/assets
+var publicAssetsFS embed.FS
+
+//go:embed public/assets-manifest.json
+var assetsManifestRaw []byte
+
 //go:embed html/*
 var htmlFS embed.FS
 
@@ -44,13 +51,15 @@ var htmlFS embed.FS
 var i18nFS embed.FS
 
 var startTime = time.Now()
+var productionAssetManifest assetManifest
 
 type wrapAssetsFS struct {
 	embed.FS
+	root string
 }
 
 func (f *wrapAssetsFS) Open(name string) (fs.File, error) {
-	file, err := f.FS.Open("assets/" + name)
+	file, err := f.FS.Open(path.Join(f.root, name))
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +90,17 @@ func (f *wrapAssetsFileInfo) ModTime() time.Time {
 	return startTime
 }
 
+func init() {
+	if config.IsDebug() {
+		return
+	}
+	manifest, err := loadAssetManifest(assetsManifestRaw)
+	if err != nil {
+		panic(err)
+	}
+	productionAssetManifest = manifest
+}
+
 // EmbeddedHTML returns the embedded HTML templates filesystem for reuse by other servers.
 func EmbeddedHTML() embed.FS {
 	return htmlFS
@@ -89,6 +109,16 @@ func EmbeddedHTML() embed.FS {
 // EmbeddedAssets returns the embedded assets filesystem for reuse by other servers.
 func EmbeddedAssets() embed.FS {
 	return assetsFS
+}
+
+// EmbeddedPublicAssets returns the embedded fingerprinted assets filesystem for reuse by other servers.
+func EmbeddedPublicAssets() embed.FS {
+	return publicAssetsFS
+}
+
+// EmbeddedAssetsManifest returns the embedded fingerprinted asset manifest bytes.
+func EmbeddedAssetsManifest() []byte {
+	return append([]byte(nil), assetsManifestRaw...)
 }
 
 // Server represents the main web server for the 3x-ui panel with controllers, services, and scheduled jobs.
@@ -202,6 +232,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 	assetsBasePath := basePath + "assets/"
+	assetResolver := newAssetResolver(basePath, config.IsDebug(), productionAssetManifest)
+	var staticAssetsFS fs.FS
 
 	store := cookie.NewStore(secret)
 	// Configure default session cookie options, including expiration (MaxAge)
@@ -218,9 +250,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		c.Set("base_path", basePath)
 	})
 	engine.Use(func(c *gin.Context) {
-		uri := c.Request.RequestURI
+		uri := c.Request.URL.Path
 		if strings.HasPrefix(uri, assetsBasePath) {
-			c.Header("Cache-Control", "max-age=31536000")
+			assetPath := strings.TrimPrefix(uri, assetsBasePath)
+			c.Header("Cache-Control", assetRequestCacheControl(uri, assetExists(staticAssetsFS, assetPath)))
 		}
 	})
 
@@ -236,7 +269,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 	// Register template functions before loading templates
 	funcMap := template.FuncMap{
-		"i18n": i18nWebFunc,
+		"i18n":  i18nWebFunc,
+		"asset": assetResolver.URL,
 	}
 	engine.SetFuncMap(funcMap)
 	engine.Use(locale.LocalizerMiddleware())
@@ -250,7 +284,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		}
 		// Use the registered func map with the loaded templates
 		engine.LoadHTMLFiles(files...)
-		engine.StaticFS(basePath+"assets", http.FS(os.DirFS("web/assets")))
+		staticAssetsFS = os.DirFS("web/assets")
+		engine.StaticFS(basePath+"assets", http.FS(staticAssetsFS))
 	} else {
 		// for production
 		template, err := s.getHtmlTemplate(funcMap)
@@ -258,7 +293,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			return nil, err
 		}
 		engine.SetHTMLTemplate(template)
-		engine.StaticFS(basePath+"assets", http.FS(&wrapAssetsFS{FS: assetsFS}))
+		staticAssetsFS = &wrapAssetsFS{FS: publicAssetsFS, root: "public/assets"}
+		engine.StaticFS(basePath+"assets", http.FS(staticAssetsFS))
 	}
 
 	// Apply the redirect middleware (`/xui` to `/panel`)

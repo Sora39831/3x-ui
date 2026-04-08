@@ -212,3 +212,47 @@ func TestInitUser_OnlyOnce(t *testing.T) {
 		t.Errorf("expected 1 user, got %d", count)
 	}
 }
+
+func TestRunSeeders_DoesNotRecordHistoryWhenPasswordUpdateFails(t *testing.T) {
+	setupTestDB(t)
+
+	if err := db.Exec("DELETE FROM history_of_seeders").Error; err != nil {
+		t.Fatalf("clear seeders history failed: %v", err)
+	}
+
+	if err := db.Exec(`
+		CREATE TRIGGER fail_user_password_update
+		BEFORE UPDATE OF password ON users
+		BEGIN
+			SELECT RAISE(FAIL, 'boom');
+		END;
+	`).Error; err != nil {
+		t.Fatalf("create trigger failed: %v", err)
+	}
+
+	err := runSeeders(false)
+	if err == nil {
+		t.Fatalf("expected runSeeders to fail when user password update fails")
+	}
+
+	var count int64
+	if err := db.Model(&model.HistoryOfSeeders{}).
+		Where("seeder_name = ?", "UserPasswordHash").
+		Count(&count).Error; err != nil {
+		t.Fatalf("count seeder history failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no UserPasswordHash history row after failed seeder, got %d", count)
+	}
+}
+
+func TestSettingKey_IsUnique(t *testing.T) {
+	setupTestDB(t)
+
+	if err := db.Create(&model.Setting{Key: "dup", Value: "one"}).Error; err != nil {
+		t.Fatalf("first insert failed: %v", err)
+	}
+	if err := db.Create(&model.Setting{Key: "dup", Value: "two"}).Error; err == nil {
+		t.Fatal("expected duplicate setting key insert to fail")
+	}
+}

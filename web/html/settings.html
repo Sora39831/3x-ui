@@ -26,6 +26,15 @@
                 <a-spin tip='{{ i18n "loading" }}'></a-spin>
               </a-card>
             </a-row>
+            <a-row v-else-if="loadFailed">
+              <a-col>
+                <a-alert type="error" show-icon
+                  message="Failed to load settings"
+                  description="The current page data was not loaded. Refresh and retry before editing or saving."
+                  :style="{ marginTop: '10px' }">
+                </a-alert>
+              </a-col>
+            </a-row>
             <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
               <a-col>
                 <a-card hoverable>
@@ -99,9 +108,9 @@
   </a-layout>
 </a-layout>
 {{template "page/body_scripts" .}}
-<script src="{{ .base_path }}assets/qrcode/qrious2.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/otpauth/otpauth.umd.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/js/model/setting.js?{{ .cur_ver }}"></script>
+<script src="{{ asset "qrcode/qrious2.min.js" }}"></script>
+<script src="{{ asset "otpauth/otpauth.umd.min.js" }}"></script>
+<script src="{{ asset "js/model/setting.js" }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 {{template "component/aSettingListItem" .}}
@@ -119,6 +128,7 @@
       },
       oldAllSetting: new AllSetting(),
       allSetting: new AllSetting(),
+      loadFailed: false,
       saveBtnDisable: true,
       entryHost: null,
       entryPort: null,
@@ -206,11 +216,11 @@
         { label: 'Google', value: 'geosite:google' },
       ],
       get remarkModel() {
-        rm = this.allSetting.remarkModel;
+        const rm = this.allSetting.remarkModel;
         return rm.length > 1 ? rm.substring(1).split('') : [];
       },
       set remarkModel(value) {
-        rs = this.allSetting.remarkModel[0];
+        const rs = this.allSetting.remarkModel[0];
         this.allSetting.remarkModel = rs + value.join('');
         this.changeRemarkSample();
       },
@@ -228,7 +238,7 @@
         this.allSetting.datepicker = value;
       },
       changeRemarkSample() {
-        sample = []
+        const sample = [];
         this.remarkModel.forEach(r => sample.push(this.remarkModels[r]));
         this.remarkSample = sample.length == 0 ? '' : sample.join(this.remarkSeparator);
       }
@@ -266,15 +276,15 @@
         const msg = await HttpUtil.post("/panel/setting/all");
 
         if (msg.success) {
-          if (!this.loadingStates.fetched) {
-            this.loadingStates.fetched = true
-          }
-
           this.oldAllSetting = new AllSetting(msg.obj);
           this.allSetting = new AllSetting(msg.obj);
           app.changeRemarkSample();
           this.saveBtnDisable = true;
+          this.loadFailed = false;
+          return true;
         }
+        this.loadFailed = true;
+        return false;
       },
       async loadInboundTags() {
         const msg = await HttpUtil.get("/panel/api/inbounds/list");
@@ -355,12 +365,8 @@
           return;
         }
 
-        let finalHost = this.entryHost;
+        const finalHost = webDomain && this._isIp(webDomain) ? webDomain : this.entryHost;
         let finalPort = this.entryPort || "";
-
-        if (webDomain && this._isIp(webDomain)) {
-          finalHost = webDomain;
-        }
 
         if (webPort && Number(webPort) !== Number(this.entryPort)) {
           finalPort = String(webPort);
@@ -457,7 +463,7 @@
         get: function () { return this.fragment ? JSON.parse(this.allSetting.subJsonFragment).settings.fragment.packets : ""; },
         set: function (v) {
           if (v != "") {
-            newFragment = JSON.parse(this.allSetting.subJsonFragment);
+            const newFragment = JSON.parse(this.allSetting.subJsonFragment);
             newFragment.settings.fragment.packets = v;
             this.allSetting.subJsonFragment = JSON.stringify(newFragment);
           }
@@ -467,7 +473,7 @@
         get: function () { return this.fragment ? JSON.parse(this.allSetting.subJsonFragment).settings.fragment.length : ""; },
         set: function (v) {
           if (v != "") {
-            newFragment = JSON.parse(this.allSetting.subJsonFragment);
+            const newFragment = JSON.parse(this.allSetting.subJsonFragment);
             newFragment.settings.fragment.length = v;
             this.allSetting.subJsonFragment = JSON.stringify(newFragment);
           }
@@ -477,7 +483,7 @@
         get: function () { return this.fragment ? JSON.parse(this.allSetting.subJsonFragment).settings.fragment.interval : ""; },
         set: function (v) {
           if (v != "") {
-            newFragment = JSON.parse(this.allSetting.subJsonFragment);
+            const newFragment = JSON.parse(this.allSetting.subJsonFragment);
             newFragment.settings.fragment.interval = v;
             this.allSetting.subJsonFragment = JSON.stringify(newFragment);
           }
@@ -487,7 +493,7 @@
         get: function () { return this.fragment ? JSON.parse(this.allSetting.subJsonFragment).settings.fragment.maxSplit : ""; },
         set: function (v) {
           if (v != "") {
-            newFragment = JSON.parse(this.allSetting.subJsonFragment);
+            const newFragment = JSON.parse(this.allSetting.subJsonFragment);
             newFragment.settings.fragment.maxSplit = v;
             this.allSetting.subJsonFragment = JSON.stringify(newFragment);
           }
@@ -526,7 +532,7 @@
       muxConcurrency: {
         get: function () { return this.enableMux ? JSON.parse(this.allSetting.subJsonMux).concurrency : -1; },
         set: function (v) {
-          newMux = JSON.parse(this.allSetting.subJsonMux);
+          const newMux = JSON.parse(this.allSetting.subJsonMux);
           newMux.concurrency = v;
           this.allSetting.subJsonMux = JSON.stringify(newMux);
         }
@@ -534,7 +540,7 @@
       muxXudpConcurrency: {
         get: function () { return this.enableMux ? JSON.parse(this.allSetting.subJsonMux).xudpConcurrency : -1; },
         set: function (v) {
-          newMux = JSON.parse(this.allSetting.subJsonMux);
+          const newMux = JSON.parse(this.allSetting.subJsonMux);
           newMux.xudpConcurrency = v;
           this.allSetting.subJsonMux = JSON.stringify(newMux);
         }
@@ -542,7 +548,7 @@
       muxXudpProxyUDP443: {
         get: function () { return this.enableMux ? JSON.parse(this.allSetting.subJsonMux).xudpProxyUDP443 : "reject"; },
         set: function (v) {
-          newMux = JSON.parse(this.allSetting.subJsonMux);
+          const newMux = JSON.parse(this.allSetting.subJsonMux);
           newMux.xudpProxyUDP443 = v;
           this.allSetting.subJsonMux = JSON.stringify(newMux);
         }
@@ -607,14 +613,14 @@
           var alerts = []
           if (window.location.protocol !== "https:") alerts.push('{{ i18n "secAlertSSL" }}');
           if (this.allSetting.webPort === 2053) alerts.push('{{ i18n "secAlertPanelPort" }}');
-          panelPath = window.location.pathname.split('/').length < 4
+          const panelPath = window.location.pathname.split('/').length < 4
           if (panelPath && this.allSetting.webBasePath == '/') alerts.push('{{ i18n "secAlertPanelURI" }}');
           if (this.allSetting.subEnable) {
-            subPath = this.allSetting.subURI.length > 0 ? new URL(this.allSetting.subURI).pathname : this.allSetting.subPath;
+            const subPath = this.allSetting.subURI.length > 0 ? new URL(this.allSetting.subURI).pathname : this.allSetting.subPath;
             if (subPath == '/sub/') alerts.push('{{ i18n "secAlertSubURI" }}');
           }
           if (this.allSetting.subJsonEnable) {
-            subJsonPath = this.allSetting.subJsonURI.length > 0 ? new URL(this.allSetting.subJsonURI).pathname : this.allSetting.subJsonPath;
+            const subJsonPath = this.allSetting.subJsonURI.length > 0 ? new URL(this.allSetting.subJsonURI).pathname : this.allSetting.subJsonPath;
             if (subJsonPath == '/json/') alerts.push('{{ i18n "secAlertSubJsonURI" }}');
           }
           return alerts
@@ -626,8 +632,16 @@
       this.entryPort = window.location.port;
       this.entryProtocol = window.location.protocol;
       this.entryIsIP = this._isIp(this.entryHost);
-      await this.getAllSetting();
-      await this.loadInboundTags();
+      let settingsLoaded = false;
+      try {
+        settingsLoaded = await this.getAllSetting();
+        await this.loadInboundTags();
+      } finally {
+        this.loadingStates.fetched = true;
+      }
+      if (!settingsLoaded) {
+        return;
+      }
       while (true) {
         await PromiseUtil.sleep(1000);
         this.saveBtnDisable = this.oldAllSetting.equals(this.allSetting);

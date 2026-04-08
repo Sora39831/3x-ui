@@ -1,11 +1,11 @@
 {{ template "page/head_start" .}}
 <link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/codemirror.min.css?{{ .cur_ver }}">
+  href="{{ asset "codemirror/codemirror.min.css" }}">
 <link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/fold/foldgutter.css">
+  href="{{ asset "codemirror/fold/foldgutter.css" }}">
 <link rel="stylesheet"
-  href="{{ .base_path }}assets/codemirror/xq.min.css?{{ .cur_ver }}">
-<link rel="stylesheet" href="{{ .base_path }}assets/codemirror/lint/lint.css">
+  href="{{ asset "codemirror/xq.min.css" }}">
+<link rel="stylesheet" href="{{ asset "codemirror/lint/lint.css" }}">
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -28,6 +28,15 @@
               :style="{ textAlign: 'center', padding: '30px 0', marginTop: '10px', background: 'transparent', border: 'none' }">
               <a-spin tip='{{ i18n "loading" }}'></a-spin>
             </a-card>
+          </a-row>
+          <a-row v-else-if="loadFailed">
+            <a-col>
+              <a-alert type="error" show-icon
+                message="Failed to load Xray settings"
+                description="The current page data was not loaded. Refresh and retry before editing or saving."
+                :style="{ marginTop: '10px' }">
+              </a-alert>
+            </a-col>
           </a-row>
           <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 0 : 12]" v-else>
             <a-col>
@@ -140,20 +149,20 @@
 </a-layout>
 {{template "page/body_scripts" .}}
 <script
-  src="{{ .base_path }}assets/js/model/outbound.js?{{ .cur_ver }}"></script>
+  src="{{ asset "js/model/outbound.js" }}"></script>
 <script
-  src="{{ .base_path }}assets/codemirror/codemirror.min.js?{{ .cur_ver }}"></script>
-<script src="{{ .base_path }}assets/codemirror/javascript.js"></script>
-<script src="{{ .base_path }}assets/codemirror/jshint.js"></script>
-<script src="{{ .base_path }}assets/codemirror/jsonlint.js"></script>
-<script src="{{ .base_path }}assets/codemirror/lint/lint.js"></script>
+  src="{{ asset "codemirror/codemirror.min.js" }}"></script>
+<script src="{{ asset "codemirror/javascript.js" }}"></script>
+<script src="{{ asset "codemirror/jshint.js" }}"></script>
+<script src="{{ asset "codemirror/jsonlint.js" }}"></script>
+<script src="{{ asset "codemirror/lint/lint.js" }}"></script>
 <script
-  src="{{ .base_path }}assets/codemirror/lint/javascript-lint.js"></script>
+  src="{{ asset "codemirror/lint/javascript-lint.js" }}"></script>
 <script
-  src="{{ .base_path }}assets/codemirror/hint/javascript-hint.js"></script>
-<script src="{{ .base_path }}assets/codemirror/fold/foldcode.js"></script>
-<script src="{{ .base_path }}assets/codemirror/fold/foldgutter.js"></script>
-<script src="{{ .base_path }}assets/codemirror/fold/brace-fold.js"></script>
+  src="{{ asset "codemirror/hint/javascript-hint.js" }}"></script>
+<script src="{{ asset "codemirror/fold/foldcode.js" }}"></script>
+<script src="{{ asset "codemirror/fold/foldgutter.js" }}"></script>
+<script src="{{ asset "codemirror/fold/brace-fold.js" }}"></script>
 {{template "component/aSidebar" .}}
 {{template "component/aThemeSwitch" .}}
 {{template "component/aTableSortable" .}}
@@ -253,6 +262,7 @@
       },
       oldXraySetting: '',
       xraySetting: '',
+      loadFailed: false,
       outboundTestUrl: 'https://www.google.com/generate_204',
       oldOutboundTestUrl: 'https://www.google.com/generate_204',
       inboundTags: [],
@@ -394,19 +404,19 @@
         const msg = await HttpUtil.post("/panel/xray/");
 
         if (msg.success) {
-          if (!this.loadingStates.fetched) {
-            this.loadingStates.fetched = true
-          }
-
-          result = JSON.parse(msg.obj);
-          xs = JSON.stringify(result.xraySetting, null, 2);
+          const result = JSON.parse(msg.obj);
+          const xs = JSON.stringify(result.xraySetting, null, 2);
           this.oldXraySetting = xs;
           this.xraySetting = xs;
           this.inboundTags = result.inboundTags;
           this.outboundTestUrl = result.outboundTestUrl || 'https://www.google.com/generate_204';
           this.oldOutboundTestUrl = this.outboundTestUrl;
           this.saveBtnDisable = true;
+          this.loadFailed = false;
+          return true;
         }
+        this.loadFailed = true;
+        return false;
       },
       async updateXraySetting() {
         this.loading(true);
@@ -483,7 +493,7 @@
         const { data, property, outboundTag } = routeSettings;
         const oldTemplateSettings = this.templateSettings;
         const newTemplateSettings = oldTemplateSettings;
-        currentProperty = this.templateRuleGetter({ outboundTag, property })
+        const currentProperty = this.templateRuleGetter({ outboundTag, property })
         if (currentProperty.length == 0) {
           const propertyRule = {
             type: "field",
@@ -494,7 +504,7 @@
         }
         else {
           const newRules = [];
-          insertedOnce = false;
+          let insertedOnce = false;
           newTemplateSettings.routing.rules.forEach(
             (routingRule) => {
               if (
@@ -521,11 +531,11 @@
         if (this.cm != null) {
           this.cm.toTextArea();
         }
-        textAreaObj = document.getElementById('xraySetting');
+        const textAreaObj = document.getElementById('xraySetting');
         textAreaObj.value = this[this.advSettings];
         this.cm = CodeMirror.fromTextArea(textAreaObj, this.cmOptions);
         this.cm.on('change', editor => {
-          value = editor.getValue();
+          const value = editor.getValue();
           if (this.isJsonString(value)) {
             this[this.advSettings] = value;
           }
@@ -539,11 +549,11 @@
           this.cm = null;
           return
         }
-        textAreaObj = document.getElementById('obsSetting');
+        const textAreaObj = document.getElementById('obsSetting');
         textAreaObj.value = this[this.obsSettings];
         this.cm = CodeMirror.fromTextArea(textAreaObj, this.cmOptions);
         this.cm.on('change', editor => {
-          value = editor.getValue();
+          const value = editor.getValue();
           if (this.isJsonString(value)) {
             this[this.obsSettings] = value;
           }
@@ -566,7 +576,7 @@
         return `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`
       },
       findOutboundAddress(o) {
-        serverObj = null;
+        let serverObj = null;
         switch (o.protocol) {
           case Protocols.VMess:
             serverObj = o.settings.vnext;
@@ -619,12 +629,12 @@
         });
       },
       deleteOutbound(index) {
-        outbounds = this.templateSettings.outbounds;
+        const outbounds = this.templateSettings.outbounds;
         outbounds.splice(index, 1);
         this.outboundSettings = JSON.stringify(outbounds);
       },
       setFirstOutbound(index) {
-        outbounds = this.templateSettings.outbounds;
+        const outbounds = this.templateSettings.outbounds;
         outbounds.splice(0, 0, outbounds.splice(index, 1)[0]);
         this.outboundSettings = JSON.stringify(outbounds);
       },
@@ -700,7 +710,7 @@
           confirm: (reverse, rules) => {
             reverseModal.loading();
             if (reverse.tag.length > 0) {
-              newTemplateSettings = this.templateSettings;
+              const newTemplateSettings = this.templateSettings;
               if (newTemplateSettings.reverse == undefined) newTemplateSettings.reverse = {};
               if (newTemplateSettings.reverse[reverse.type + 's'] == undefined) newTemplateSettings.reverse[reverse.type + 's'] = [];
               newTemplateSettings.reverse[reverse.type + 's'].push({ tag: reverse.tag, domain: reverse.domain });
@@ -716,6 +726,7 @@
         });
       },
       editReverse(index) {
+        let oldRules;
         if (this.reverseData[index].type == "bridge") {
           oldRules = this.templateSettings.routing.rules.filter(r => r.inboundTag && r.inboundTag[0] == this.reverseData[index].tag);
         } else {
@@ -728,11 +739,11 @@
           confirm: (reverse, rules) => {
             reverseModal.loading();
             if (reverse.tag.length > 0) {
-              oldData = this.reverseData[index];
-              newTemplateSettings = this.templateSettings;
-              oldReverseIndex = newTemplateSettings.reverse[oldData.type + 's'].findIndex(rs => rs.tag == oldData.tag);
-              oldRuleIndex0 = oldRules.length > 0 ? newTemplateSettings.routing.rules.findIndex(r => JSON.stringify(r) == JSON.stringify(oldRules[0])) : -1;
-              oldRuleIndex1 = oldRules.length == 2 ? newTemplateSettings.routing.rules.findIndex(r => JSON.stringify(r) == JSON.stringify(oldRules[1])) : -1;
+              const oldData = this.reverseData[index];
+              const newTemplateSettings = this.templateSettings;
+              const oldReverseIndex = newTemplateSettings.reverse[oldData.type + 's'].findIndex(rs => rs.tag == oldData.tag);
+              const oldRuleIndex0 = oldRules.length > 0 ? newTemplateSettings.routing.rules.findIndex(r => JSON.stringify(r) == JSON.stringify(oldRules[0])) : -1;
+              const oldRuleIndex1 = oldRules.length == 2 ? newTemplateSettings.routing.rules.findIndex(r => JSON.stringify(r) == JSON.stringify(oldRules[1])) : -1;
               if (oldData.type == reverse.type) {
                 newTemplateSettings.reverse[oldData.type + 's'][oldReverseIndex] = { tag: reverse.tag, domain: reverse.domain };
               } else {
@@ -746,7 +757,7 @@
               this.templateSettings = newTemplateSettings;
 
               // Adjust Rules
-              newRules = this.templateSettings.routing.rules;
+              const newRules = this.templateSettings.routing.rules;
               oldRuleIndex0 != -1 ? newRules[oldRuleIndex0] = rules[0] : newRules.push(rules[0]);
               oldRuleIndex1 != -1 ? newRules[oldRuleIndex1] = rules[1] : newRules.push(rules[1]);
               this.routingRuleSettings = JSON.stringify(newRules);
@@ -757,10 +768,10 @@
         });
       },
       deleteReverse(index) {
-        oldData = this.reverseData[index];
-        newTemplateSettings = this.templateSettings;
-        reverseTypeObj = newTemplateSettings.reverse[oldData.type + 's'];
-        realIndex = reverseTypeObj.findIndex(r => r.tag == oldData.tag && r.domain == oldData.domain);
+        const oldData = this.reverseData[index];
+        const newTemplateSettings = this.templateSettings;
+        const reverseTypeObj = newTemplateSettings.reverse[oldData.type + 's'];
+        const realIndex = reverseTypeObj.findIndex(r => r.tag == oldData.tag && r.domain == oldData.domain);
         newTemplateSettings.reverse[oldData.type + 's'].splice(realIndex, 1);
 
         // delete empty objects
@@ -768,7 +779,7 @@
         if (Object.keys(newTemplateSettings.reverse).length === 0) Reflect.deleteProperty(newTemplateSettings, 'reverse');
 
         // delete related routing rules
-        newRules = newTemplateSettings.routing.rules;
+        let newRules = newTemplateSettings.routing.rules;
         if (oldData.type == "bridge") {
           newRules = newTemplateSettings.routing.rules.filter(r => !(r.inboundTag && r.inboundTag.length == 1 && r.inboundTag[0] == oldData.tag));
         } else if (oldData.type == "portal") {
@@ -783,7 +794,7 @@
           this.refreshing = true;
           await this.getOutboundsTraffic();
 
-          data = []
+          const data = []
           if (this.templateSettings != null) {
             this.templateSettings.outbounds.forEach((o, index) => {
               data.push({ 'key': index, ...o });
@@ -817,11 +828,11 @@
           },
           confirm: (balancer) => {
             balancerModal.loading();
-            newTemplateSettings = this.templateSettings;
+            const newTemplateSettings = this.templateSettings;
             if (newTemplateSettings.routing.balancers == undefined) {
               newTemplateSettings.routing.balancers = [];
             }
-            let tmpBalancer = {
+            const tmpBalancer = {
               'tag': balancer.tag,
               'selector': balancer.selector,
               'fallbackTag': balancer.fallbackTag
@@ -849,9 +860,9 @@
           balancer: this.balancersData[index],
           confirm: (balancer) => {
             balancerModal.loading();
-            newTemplateSettings = this.templateSettings;
+            const newTemplateSettings = this.templateSettings;
 
-            let tmpBalancer = {
+            const tmpBalancer = {
               'tag': balancer.tag,
               'selector': balancer.selector,
               'fallbackTag': balancer.fallbackTag
@@ -889,7 +900,7 @@
         });
       },
       updateObservatorySelectors() {
-        newTemplateSettings = this.templateSettings;
+        const newTemplateSettings = this.templateSettings;
         const leastPings = this.balancersData.filter((b) => b.strategy == 'leastPing');
         const leastLoads = this.balancersData.filter((b) =>
           b.strategy === 'leastLoad' ||
@@ -926,7 +937,7 @@
         this.changeObsCode();
       },
       deleteBalancer(index) {
-        newTemplateSettings = this.templateSettings;
+        const newTemplateSettings = this.templateSettings;
 
         // Remove from balancers
         const removedBalancer = this.balancersData.splice(index, 1)[0];
@@ -958,7 +969,7 @@
         dnsModal.show({
           title: '{{ i18n "pages.xray.dns.add" }}',
           confirm: (dnsServer) => {
-            dnsServers = this.dnsServers;
+            const dnsServers = this.dnsServers;
             dnsServers.push(dnsServer);
             this.dnsServers = dnsServers;
             dnsModal.close();
@@ -971,7 +982,7 @@
           title: '{{ i18n "pages.xray.dns.edit" }} #' + (index + 1),
           dnsServer: this.dnsServers[index],
           confirm: (dnsServer) => {
-            dnsServers = this.dnsServers;
+            const dnsServers = this.dnsServers;
             dnsServers[index] = dnsServer;
             this.dnsServers = dnsServers;
             dnsModal.close();
@@ -980,7 +991,7 @@
         });
       },
       deleteDNSServer(index) {
-        newDnsServers = this.dnsServers;
+        const newDnsServers = this.dnsServers;
         newDnsServers.splice(index, 1);
         this.dnsServers = newDnsServers;
       },
@@ -988,7 +999,7 @@
         fakednsModal.show({
           title: '{{ i18n "pages.xray.fakedns.add" }}',
           confirm: (item) => {
-            fakeDns = this.fakeDns ?? [];
+            const fakeDns = this.fakeDns ?? [];
             fakeDns.push(item);
             this.fakeDns = fakeDns;
             fakednsModal.close();
@@ -1001,7 +1012,7 @@
           title: '{{ i18n "pages.xray.fakedns.edit" }} #' + (index + 1),
           fakeDns: this.fakeDns[index],
           confirm: (item) => {
-            fakeDns = this.fakeDns;
+            const fakeDns = this.fakeDns;
             fakeDns[index] = item;
             this.fakeDns = fakeDns;
             fakednsModal.close();
@@ -1010,7 +1021,7 @@
         });
       },
       deleteFakedns(index) {
-        fakeDns = this.fakeDns;
+        const fakeDns = this.fakeDns;
         fakeDns.splice(index, 1);
         this.fakeDns = fakeDns;
       },
@@ -1045,13 +1056,13 @@
         });
       },
       replaceRule(old_index, new_index) {
-        rules = this.templateSettings.routing.rules;
+        const rules = this.templateSettings.routing.rules;
         if (new_index >= rules.length) rules.push(undefined);
         rules.splice(new_index, 0, rules.splice(old_index, 1)[0]);
         this.routingRuleSettings = JSON.stringify(rules);
       },
       deleteRule(index) {
-        rules = this.templateSettings.routing.rules;
+        const rules = this.templateSettings.routing.rules;
         rules.splice(index, 1);
         this.routingRuleSettings = JSON.stringify(rules);
       },
@@ -1063,9 +1074,17 @@
       if (window.location.protocol !== "https:") {
         this.showAlert = true;
       }
-      await this.getXraySetting();
-      await this.getXrayResult();
-      await this.getOutboundsTraffic();
+      let settingsLoaded = false;
+      try {
+        settingsLoaded = await this.getXraySetting();
+        await this.getXrayResult();
+        await this.getOutboundsTraffic();
+      } finally {
+        this.loadingStates.fetched = true;
+      }
+      if (!settingsLoaded) {
+        return;
+      }
 
       if (window.wsClient) {
           window.wsClient.connect();
@@ -1097,7 +1116,7 @@
       inboundSettings: {
         get: function () { return this.templateSettings ? JSON.stringify(this.templateSettings.inbounds, null, 2) : null; },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.inbounds = JSON.parse(newValue);
           this.templateSettings = newTemplateSettings;
         },
@@ -1105,14 +1124,14 @@
       outboundSettings: {
         get: function () { return this.templateSettings ? JSON.stringify(this.templateSettings.outbounds, null, 2) : null; },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.outbounds = JSON.parse(newValue);
           this.templateSettings = newTemplateSettings;
         },
       },
       outboundData: {
         get: function () {
-          data = []
+          const data = [];
           if (this.templateSettings != null) {
             this.templateSettings.outbounds.forEach((o, index) => {
               data.push({ 'key': index, ...o });
@@ -1123,7 +1142,7 @@
       },
       reverseData: {
         get: function () {
-          data = []
+          const data = [];
           if (this.templateSettings != null && this.templateSettings.reverse != null) {
             if (this.templateSettings.reverse.bridges) {
               this.templateSettings.reverse.bridges.forEach((o, index) => {
@@ -1142,14 +1161,14 @@
       routingRuleSettings: {
         get: function () { return this.templateSettings ? JSON.stringify(this.templateSettings.routing.rules, null, 2) : null; },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.routing.rules = JSON.parse(newValue);
           this.templateSettings = newTemplateSettings;
         },
       },
       routingRuleData: {
         get: function () {
-          data = [];
+          const data = [];
           if (this.templateSettings != null) {
             this.templateSettings.routing.rules.forEach((r, index) => {
               data.push({ 'key': index, ...r });
@@ -1170,7 +1189,7 @@
       },
       balancersData: {
         get: function () {
-          data = []
+          const data = [];
           if (this.templateSettings != null && this.templateSettings.routing != null && this.templateSettings.routing.balancers != null) {
             this.templateSettings.routing.balancers.forEach((o, index) => {
               data.push({
@@ -1190,7 +1209,7 @@
           return this.templateSettings?.observatory ? JSON.stringify(this.templateSettings.observatory, null, 2) : null;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.observatory = JSON.parse(newValue);
           this.templateSettings = newTemplateSettings;
         },
@@ -1200,7 +1219,7 @@
           return this.templateSettings?.burstObservatory ? JSON.stringify(this.templateSettings.burstObservatory, null, 2) : null;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.burstObservatory = JSON.parse(newValue);
           this.templateSettings = newTemplateSettings;
         },
@@ -1210,14 +1229,14 @@
       freedomStrategy: {
         get: function () {
           if (!this.templateSettings) return "AsIs";
-          freedomOutbound = this.templateSettings.outbounds.find((o) => o.protocol === "freedom" && o.tag == "direct");
+          const freedomOutbound = this.templateSettings.outbounds.find((o) => o.protocol === "freedom" && o.tag == "direct");
           if (!freedomOutbound) return "AsIs";
           if (!freedomOutbound.settings || !freedomOutbound.settings.domainStrategy) return "AsIs";
           return freedomOutbound.settings.domainStrategy;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
-          freedomOutboundIndex = newTemplateSettings.outbounds.findIndex((o) => o.protocol === "freedom" && o.tag == "direct");
+          const newTemplateSettings = this.templateSettings;
+          const freedomOutboundIndex = newTemplateSettings.outbounds.findIndex((o) => o.protocol === "freedom" && o.tag == "direct");
           if (freedomOutboundIndex == -1) {
             newTemplateSettings.outbounds.push({ protocol: "freedom", tag: "direct", settings: { "domainStrategy": newValue } });
           } else if (!newTemplateSettings.outbounds[freedomOutboundIndex].settings) {
@@ -1234,7 +1253,7 @@
           return this.templateSettings.routing.domainStrategy;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.routing.domainStrategy = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1245,7 +1264,7 @@
           return this.templateSettings.log.loglevel;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.log.loglevel = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1256,7 +1275,7 @@
           return this.templateSettings.log.access;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.log.access = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1267,7 +1286,7 @@
           return this.templateSettings.log.error;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.log.error = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1278,7 +1297,7 @@
           return this.templateSettings.log.dnsLog;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.log.dnsLog = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1289,7 +1308,7 @@
           return this.templateSettings.policy.system.statsInboundUplink;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.policy.system.statsInboundUplink = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1300,7 +1319,7 @@
           return this.templateSettings.policy.system.statsInboundDownlink;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.policy.system.statsInboundDownlink = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1311,7 +1330,7 @@
           return this.templateSettings.policy.system.statsOutboundUplink;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.policy.system.statsOutboundUplink = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1322,7 +1341,7 @@
           return this.templateSettings.policy.system.statsOutboundDownlink;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.policy.system.statsOutboundDownlink = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1333,7 +1352,7 @@
           return this.templateSettings.log.maskAddress;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.log.maskAddress = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1419,7 +1438,7 @@
           return this.templateSettings ? this.templateSettings.dns != null : false;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns = {
               servers: [],
@@ -1440,7 +1459,7 @@
           return this.enableDNS ? this.templateSettings.dns.tag : "";
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.dns.tag = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1450,7 +1469,7 @@
           return this.enableDNS ? this.templateSettings.dns.clientIp : null;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns.clientIp = newValue;
           } else {
@@ -1464,7 +1483,7 @@
           return this.enableDNS ? this.templateSettings.dns.disableCache : false;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns.disableCache = newValue;
           } else {
@@ -1478,7 +1497,7 @@
           return this.enableDNS ? this.templateSettings.dns.disableFallback : false;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns.disableFallback = newValue;
           } else {
@@ -1492,7 +1511,7 @@
           return this.enableDNS ? this.templateSettings.dns.disableFallbackIfMatch : false;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns.disableFallbackIfMatch = newValue;
           } else {
@@ -1506,7 +1525,7 @@
           return this.enableDNS ? (this.templateSettings.dns.enableParallelQuery || false) : false;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns.enableParallelQuery = newValue;
           } else {
@@ -1520,7 +1539,7 @@
           return this.enableDNS ? this.templateSettings.dns.useSystemHosts : false;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (newValue) {
             newTemplateSettings.dns.useSystemHosts = newValue;
           } else {
@@ -1534,7 +1553,7 @@
           return this.enableDNS ? this.templateSettings.dns.queryStrategy : null;
         },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.dns.queryStrategy = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1542,7 +1561,7 @@
       dnsServers: {
         get: function () { return this.enableDNS ? this.templateSettings.dns.servers : []; },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           newTemplateSettings.dns.servers = newValue;
           this.templateSettings = newTemplateSettings;
         }
@@ -1550,7 +1569,7 @@
       fakeDns: {
         get: function () { return this.templateSettings && this.templateSettings.fakedns ? this.templateSettings.fakedns : []; },
         set: function (newValue) {
-          newTemplateSettings = this.templateSettings;
+          const newTemplateSettings = this.templateSettings;
           if (this.enableDNS) {
             newTemplateSettings.fakedns = newValue.length > 0 ? newValue : null;
           } else {

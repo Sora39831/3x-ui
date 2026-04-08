@@ -91,18 +91,24 @@ func runSeeders(isUsersEmpty bool) error {
 		return err
 	}
 
-	if empty && isUsersEmpty {
-		hashSeeder := &model.HistoryOfSeeders{
-			SeederName: "UserPasswordHash",
+	return db.Transaction(func(tx *gorm.DB) error {
+		if empty && isUsersEmpty {
+			hashSeeder := &model.HistoryOfSeeders{
+				SeederName: "UserPasswordHash",
+			}
+			return tx.Create(hashSeeder).Error
 		}
-		return db.Create(hashSeeder).Error
-	} else {
+
 		var seedersHistory []string
-		db.Model(&model.HistoryOfSeeders{}).Pluck("seeder_name", &seedersHistory)
+		if err := tx.Model(&model.HistoryOfSeeders{}).Pluck("seeder_name", &seedersHistory).Error; err != nil {
+			return err
+		}
 
 		if !slices.Contains(seedersHistory, "UserPasswordHash") && !isUsersEmpty {
 			var users []model.User
-			db.Find(&users)
+			if err := tx.Find(&users).Error; err != nil {
+				return err
+			}
 
 			for _, user := range users {
 				hashedPassword, err := crypto.HashPasswordAsBcrypt(user.Password)
@@ -110,13 +116,15 @@ func runSeeders(isUsersEmpty bool) error {
 					log.Printf("Error hashing password for user '%s': %v", user.Username, err)
 					return err
 				}
-				db.Model(&user).Update("password", hashedPassword)
+				if err := tx.Model(&user).Update("password", hashedPassword).Error; err != nil {
+					return err
+				}
 			}
 
 			hashSeeder := &model.HistoryOfSeeders{
 				SeederName: "UserPasswordHash",
 			}
-			if err := db.Create(hashSeeder).Error; err != nil {
+			if err := tx.Create(hashSeeder).Error; err != nil {
 				return err
 			}
 		}
@@ -125,21 +133,25 @@ func runSeeders(isUsersEmpty bool) error {
 			// Drop the old unique index on client_traffics.email to allow
 			// the same email across multiple inbounds
 			dbType := config.GetDBTypeFromJSON()
+			var execErr error
 			if dbType == "mariadb" {
-				db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email ON client_traffics")
+				execErr = tx.Exec("DROP INDEX IF EXISTS idx_client_traffics_email ON client_traffics").Error
 			} else {
-				db.Exec("DROP INDEX IF EXISTS idx_client_traffics_email")
+				execErr = tx.Exec("DROP INDEX IF EXISTS idx_client_traffics_email").Error
+			}
+			if execErr != nil {
+				return execErr
 			}
 			uniqueSeeder := &model.HistoryOfSeeders{
 				SeederName: "RemoveClientTrafficEmailUnique",
 			}
-			if err := db.Create(uniqueSeeder).Error; err != nil {
+			if err := tx.Create(uniqueSeeder).Error; err != nil {
 				return err
 			}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }
 
 // isTableEmpty returns true if the named table contains zero rows.

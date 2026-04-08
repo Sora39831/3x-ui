@@ -117,23 +117,23 @@
                             <a-icon slot="prefix" type="lock" class="fs-1rem"></a-icon>
                           </a-input-password>
                         </a-form-item>
-                        <a-form-item>
-                          <div class="cf-turnstile-wrapper">
-                            <div class="cf-turnstile" id="turnstile-widget"></div>
-                          </div>
-                        </a-form-item>
-                        <a-form-item>
-                          <a-row justify="center" class="centered">
-                            <div class="wave-btn-bg wave-btn-bg-cl h-50px mt-1rem"
-                              :style="loadingStates.registerSpinning ? 'width: 52px' : 'display: inline-block'">
-                              <a-button class="ant-btn-primary-login" type="primary" :loading="loadingStates.registerSpinning"
-                                :icon="loadingStates.registerSpinning ? 'poweroff' : undefined" html-type="submit">
-                                [[ loadingStates.registerSpinning ? '' : '{{ i18n "pages.login.registerTab" }}' ]]
-                              </a-button>
-                            </div>
-                          </a-row>
-                        </a-form-item>
                       </a-space>
+                      <a-form-item style="display:flex; justify-content:center; margin-top: 16px;">
+                        <div class="cf-turnstile-wrapper" style="display:inline-flex; max-width:100%; overflow-x:auto;">
+                          <div class="cf-turnstile" id="turnstile-widget"></div>
+                        </div>
+                      </a-form-item>
+                      <a-form-item>
+                        <a-row justify="center" class="centered">
+                          <div class="wave-btn-bg wave-btn-bg-cl h-50px mt-1rem"
+                            :style="loadingStates.registerSpinning ? 'width: 52px' : 'display: inline-block'">
+                            <a-button class="ant-btn-primary-login" type="primary" :loading="loadingStates.registerSpinning"
+                              :icon="loadingStates.registerSpinning ? 'poweroff' : undefined" html-type="submit">
+                              [[ loadingStates.registerSpinning ? '' : '{{ i18n "pages.login.registerTab" }}' ]]
+                            </a-button>
+                          </div>
+                        </a-row>
+                      </a-form-item>
                     </a-form>
                   </a-tab-pane>
                 </a-tabs>
@@ -150,6 +150,7 @@
 <script>
   var turnstileToken = '';
   var turnstileWidgetId = null;
+  var turnstileContainer = null;
 
   const app = new Vue({
     delimiters: ['[[', ']]'],
@@ -167,10 +168,20 @@
     },
     async mounted() {
       this.lang = LanguageManager.getLanguage();
-      this.twoFactorEnable = await this.getTwoFactorEnable();
-      this.turnstileSiteKey = await this.getTurnstileSiteKey();
-      if (this.turnstileSiteKey) {
-        this.$nextTick(() => this.ensureTurnstileRendered());
+      try {
+        this.twoFactorEnable = await this.getTwoFactorEnable();
+        this.turnstileSiteKey = await this.getTurnstileSiteKey();
+      } finally {
+        this.loadingStates.fetched = true;
+        this.$nextTick(() => {
+          if (!this.animationStarted) {
+            this.animationStarted = true;
+            this.initHeadline();
+          }
+          if (this.turnstileSiteKey && this.activeTab === 'register') {
+            this.ensureTurnstileRendered();
+          }
+        });
       }
     },
     computed: {
@@ -180,10 +191,21 @@
     },
     methods: {
       switchTab(key) {
+        if (key !== 'register') {
+          this.destroyTurnstile();
+        }
         this.activeTab = key;
         if (key === 'register') {
           this.$nextTick(() => this.ensureTurnstileRendered());
         }
+      },
+      destroyTurnstile() {
+        turnstileToken = '';
+        turnstileContainer = null;
+        if (window.turnstile && turnstileWidgetId !== null) {
+          turnstile.remove(turnstileWidgetId);
+        }
+        turnstileWidgetId = null;
       },
       async doLogin() {
         this.loadingStates.spinning = true;
@@ -213,15 +235,20 @@
           this.activeTab = 'login';
           this.user.username = this.regUser.username;
           this.regUser = { username: "", password: "", confirmPassword: "" };
-          turnstileToken = '';
-          if (window.turnstile && turnstileWidgetId !== null) {
-            turnstile.reset(turnstileWidgetId);
-          }
+          this.destroyTurnstile();
         }
         this.loadingStates.registerSpinning = false;
       },
+      isTurnstileContainerVisible(container) {
+        var pane = container.closest('.ant-tabs-tabpane');
+        if (!pane) {
+          return true;
+        }
+        var paneStyle = window.getComputedStyle(pane);
+        return paneStyle.display !== 'none' && paneStyle.visibility !== 'hidden';
+      },
       ensureTurnstileRendered(retries = 20) {
-        if (!this.turnstileSiteKey || turnstileWidgetId !== null) {
+        if (!this.turnstileSiteKey) {
           return;
         }
         var container = document.getElementById('turnstile-widget');
@@ -231,9 +258,30 @@
           }
           return;
         }
+        if (!this.isTurnstileContainerVisible(container)) {
+          if (retries > 0) {
+            setTimeout(() => this.ensureTurnstileRendered(retries - 1), 150);
+          }
+          return;
+        }
+        if (
+          turnstileWidgetId !== null &&
+          (turnstileContainer !== container || container.childElementCount === 0)
+        ) {
+          turnstile.remove(turnstileWidgetId);
+          turnstileWidgetId = null;
+          turnstileContainer = null;
+          turnstileToken = '';
+        }
+        if (turnstileWidgetId !== null) {
+          return;
+        }
+        turnstileContainer = container;
         turnstileWidgetId = turnstile.render(container, {
           sitekey: this.turnstileSiteKey,
           callback: function(token) { turnstileToken = token; },
+          'expired-callback': function() { turnstileToken = ''; },
+          'error-callback': function() { turnstileToken = ''; },
           size: this.turnstileSize,
         });
       },
@@ -248,15 +296,9 @@
         const msg = await HttpUtil.post('/getTwoFactorEnable');
         if (msg.success) {
           this.twoFactorEnable = msg.obj;
-          this.loadingStates.fetched = true;
-          this.$nextTick(() => {
-            if (!this.animationStarted) {
-              this.animationStarted = true;
-              this.initHeadline();
-            }
-          });
           return msg.obj;
         }
+        return false;
       },
       initHeadline() {
         const animationDelay = 2000;

@@ -131,26 +131,27 @@
         },
         methods: {
             collectConfig() {
-                config = warpModal.warpConfig.config;
-                peer = config.peers[0];
-                if (config) {
-                    warpModal.warpOutbound = Outbound.fromJson({
-                        tag: 'warp',
-                        protocol: Protocols.Wireguard,
-                        settings: {
-                            mtu: 1420,
-                            secretKey: warpModal.warpData.private_key,
-                            address: this.getAddresses(config.interface.addresses),
-                            reserved: this.getResolved(config.client_id),
-                            domainStrategy: 'ForceIP',
-                            peers: [{
-                                publicKey: peer.public_key,
-                                endpoint: peer.endpoint.host,
-                            }],
-                            noKernelTun: false,
-                        }
-                    });
+                const config = warpModal.warpConfig?.config;
+                if (!config || !Array.isArray(config.peers) || config.peers.length === 0) {
+                    return;
                 }
+                const peer = config.peers[0];
+                warpModal.warpOutbound = Outbound.fromJson({
+                    tag: 'warp',
+                    protocol: Protocols.Wireguard,
+                    settings: {
+                        mtu: 1420,
+                        secretKey: warpModal.warpData.private_key,
+                        address: this.getAddresses(config.interface.addresses),
+                        reserved: this.getResolved(config.client_id),
+                        domainStrategy: 'ForceIP',
+                        peers: [{
+                            publicKey: peer.public_key,
+                            endpoint: peer.endpoint.host,
+                        }],
+                        noKernelTun: false,
+                    }
+                });
             },
             getAddresses(addrs) {
                 let addresses = [];

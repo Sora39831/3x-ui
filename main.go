@@ -411,7 +411,9 @@ func migrateDb() {
 		log.Fatal(err)
 	}
 	fmt.Println("Start migrating database...")
-	inboundService.MigrateDB()
+	if err := inboundService.MigrateDB(); err != nil {
+		log.Fatal(err)
+	}
 	fmt.Println("Migration done!")
 }
 

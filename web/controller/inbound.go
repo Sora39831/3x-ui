@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/web/websocket"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // InboundController handles HTTP requests related to Xray inbounds management.
@@ -48,7 +50,6 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/resetAllClientTraffics/:id", a.resetAllClientTraffics)
 	g.POST("/delDepletedClients/:id", a.delDepletedClients)
 	g.POST("/import", a.importInbound)
-	g.GET("/userInfo", a.getUserInfo)
 	g.POST("/onlines", a.onlines)
 	g.POST("/lastOnline", a.lastOnline)
 	g.POST("/updateClientTraffic/:email", a.updateClientTraffic)
@@ -73,8 +74,13 @@ func (a *InboundController) getInbound(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "get"), err)
 		return
 	}
-	inbound, err := a.inboundService.GetInbound(id)
+	user := session.GetLoginUser(c)
+	inbound, err := a.inboundService.GetInboundForUser(user.Id, user.Role == "admin", id)
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), errors.New("inbound not found"))
+			return
+		}
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
 		return
 	}
@@ -140,7 +146,8 @@ func (a *InboundController) delInbound(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundDeleteSuccess"), err)
 		return
 	}
-	needRestart, err := a.inboundService.DelInbound(id)
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.DelInboundForUser(user.Id, user.Role == "admin", id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -150,7 +157,6 @@ func (a *InboundController) delInbound(c *gin.Context) {
 		a.xrayService.SetToNeedRestart()
 	}
 	// Broadcast inbounds update via WebSocket
-	user := session.GetLoginUser(c)
 	inbounds, _ := a.inboundService.GetInbounds(user.Id)
 	websocket.BroadcastInbounds(inbounds)
 }
@@ -170,7 +176,8 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
 		return
 	}
-	inbound, needRestart, err := a.inboundService.UpdateInbound(inbound)
+	user := session.GetLoginUser(c)
+	inbound, needRestart, err := a.inboundService.UpdateInboundForUser(user.Id, user.Role == "admin", inbound)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -180,7 +187,6 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 		a.xrayService.SetToNeedRestart()
 	}
 	// Broadcast inbounds update via WebSocket
-	user := session.GetLoginUser(c)
 	inbounds, _ := a.inboundService.GetInbounds(user.Id)
 	websocket.BroadcastInbounds(inbounds)
 }
@@ -250,7 +256,8 @@ func (a *InboundController) addInboundClient(c *gin.Context) {
 		return
 	}
 
-	needRestart, err := a.inboundService.AddInboundClient(data)
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.AddInboundClientForUser(user.Id, user.Role == "admin", data)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -270,7 +277,8 @@ func (a *InboundController) delInboundClient(c *gin.Context) {
 	}
 	clientId := c.Param("clientId")
 
-	needRestart, err := a.inboundService.DelInboundClient(id, clientId)
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.DelInboundClientForUser(user.Id, user.Role == "admin", id, clientId)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -292,7 +300,8 @@ func (a *InboundController) updateInboundClient(c *gin.Context) {
 		return
 	}
 
-	needRestart, err := a.inboundService.UpdateInboundClient(inbound, clientId)
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.UpdateInboundClientForUser(user.Id, user.Role == "admin", inbound, clientId)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -312,7 +321,8 @@ func (a *InboundController) resetClientTraffic(c *gin.Context) {
 	}
 	email := c.Param("email")
 
-	needRestart, err := a.inboundService.ResetClientTraffic(id, email)
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.ResetClientTrafficForUser(user.Id, user.Role == "admin", id, email)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -343,7 +353,8 @@ func (a *InboundController) resetAllClientTraffics(c *gin.Context) {
 		return
 	}
 
-	err = a.inboundService.ResetAllClientTraffics(id)
+	user := session.GetLoginUser(c)
+	err = a.inboundService.ResetAllClientTrafficsForUser(user.Id, user.Role == "admin", id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -390,7 +401,8 @@ func (a *InboundController) delDepletedClients(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
 		return
 	}
-	err = a.inboundService.DelDepletedClients(id)
+	user := session.GetLoginUser(c)
+	err = a.inboundService.DelDepletedClientsForUser(user.Id, user.Role == "admin", id)
 	if err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
@@ -444,7 +456,8 @@ func (a *InboundController) delInboundClientByEmail(c *gin.Context) {
 	}
 
 	email := c.Param("email")
-	needRestart, err := a.inboundService.DelInboundClientByEmail(inboundId, email)
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.DelInboundClientByEmailForUser(user.Id, user.Role == "admin", inboundId, email)
 	if err != nil {
 		jsonMsg(c, "Failed to delete client by email", err)
 		return
