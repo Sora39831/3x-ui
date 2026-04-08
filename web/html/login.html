@@ -150,6 +150,7 @@
 <script>
   var turnstileToken = '';
   var turnstileWidgetId = null;
+  var turnstileContainer = null;
 
   const app = new Vue({
     delimiters: ['[[', ']]'],
@@ -231,7 +232,7 @@
         this.loadingStates.registerSpinning = false;
       },
       ensureTurnstileRendered(retries = 20) {
-        if (!this.turnstileSiteKey || turnstileWidgetId !== null) {
+        if (!this.turnstileSiteKey) {
           return;
         }
         var container = document.getElementById('turnstile-widget');
@@ -241,9 +242,24 @@
           }
           return;
         }
+        if (
+          turnstileWidgetId !== null &&
+          (turnstileContainer !== container || container.childElementCount === 0)
+        ) {
+          turnstile.remove(turnstileWidgetId);
+          turnstileWidgetId = null;
+          turnstileContainer = null;
+          turnstileToken = '';
+        }
+        if (turnstileWidgetId !== null) {
+          return;
+        }
+        turnstileContainer = container;
         turnstileWidgetId = turnstile.render(container, {
           sitekey: this.turnstileSiteKey,
           callback: function(token) { turnstileToken = token; },
+          'expired-callback': function() { turnstileToken = ''; },
+          'error-callback': function() { turnstileToken = ''; },
           size: this.turnstileSize,
         });
       },
