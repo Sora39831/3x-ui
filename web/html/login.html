@@ -178,7 +178,7 @@
             this.animationStarted = true;
             this.initHeadline();
           }
-          if (this.turnstileSiteKey) {
+          if (this.turnstileSiteKey && this.activeTab === 'register') {
             this.ensureTurnstileRendered();
           }
         });
@@ -191,10 +191,21 @@
     },
     methods: {
       switchTab(key) {
+        if (key !== 'register') {
+          this.destroyTurnstile();
+        }
         this.activeTab = key;
         if (key === 'register') {
           this.$nextTick(() => this.ensureTurnstileRendered());
         }
+      },
+      destroyTurnstile() {
+        turnstileToken = '';
+        turnstileContainer = null;
+        if (window.turnstile && turnstileWidgetId !== null) {
+          turnstile.remove(turnstileWidgetId);
+        }
+        turnstileWidgetId = null;
       },
       async doLogin() {
         this.loadingStates.spinning = true;
@@ -224,12 +235,17 @@
           this.activeTab = 'login';
           this.user.username = this.regUser.username;
           this.regUser = { username: "", password: "", confirmPassword: "" };
-          turnstileToken = '';
-          if (window.turnstile && turnstileWidgetId !== null) {
-            turnstile.reset(turnstileWidgetId);
-          }
+          this.destroyTurnstile();
         }
         this.loadingStates.registerSpinning = false;
+      },
+      isTurnstileContainerVisible(container) {
+        var pane = container.closest('.ant-tabs-tabpane');
+        if (!pane) {
+          return true;
+        }
+        var paneStyle = window.getComputedStyle(pane);
+        return paneStyle.display !== 'none' && paneStyle.visibility !== 'hidden';
       },
       ensureTurnstileRendered(retries = 20) {
         if (!this.turnstileSiteKey) {
@@ -237,6 +253,12 @@
         }
         var container = document.getElementById('turnstile-widget');
         if (!container || !window.turnstile) {
+          if (retries > 0) {
+            setTimeout(() => this.ensureTurnstileRendered(retries - 1), 150);
+          }
+          return;
+        }
+        if (!this.isTurnstileContainerVisible(container)) {
           if (retries > 0) {
             setTimeout(() => this.ensureTurnstileRendered(retries - 1), 150);
           }

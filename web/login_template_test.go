@@ -18,6 +18,10 @@ func TestLoginTemplateRebuildsTurnstileAfterTabSwitch(t *testing.T) {
 		"turnstile.remove(turnstileWidgetId);",
 		"turnstileContainer !== container",
 		"turnstileToken = '';",
+		"this.activeTab === 'register'",
+		"!this.isTurnstileContainerVisible(container)",
+		"if (key !== 'register') {",
+		"this.destroyTurnstile();",
 	}
 
 	for _, check := range checks {
