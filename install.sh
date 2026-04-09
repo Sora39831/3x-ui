@@ -110,6 +110,48 @@ gen_random_string() {
         | head -c "$length"
 }
 
+save_panel_domain() {
+    local domain="$1"
+    if [[ -z "$domain" ]]; then
+        return 0
+    fi
+
+    ${xui_folder}/x-ui setting -webDomain "${domain}" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo -e "${red}保存面板域名失败：${domain}${plain}"
+        return 1
+    fi
+
+    local saved_domain
+    saved_domain=$(${xui_folder}/x-ui setting -show true 2>/dev/null | grep -Eo 'webDomain: .+' | awk '{print $2}' | tr -d '[:space:]')
+    if [[ "${saved_domain}" != "${domain}" ]]; then
+        echo -e "${red}面板域名未写入配置文件：期望 ${domain}，实际 ${saved_domain:-空}${plain}"
+        return 1
+    fi
+
+    return 0
+}
+
+verify_panel_cert_paths() {
+    local expected_cert="$1"
+    local expected_key="$2"
+
+    local current_cert current_key
+    current_cert=$(${xui_folder}/x-ui setting -getCert true 2>/dev/null | grep '^cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    current_key=$(${xui_folder}/x-ui setting -getCert true 2>/dev/null | grep '^key:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+
+    if [[ "${current_cert}" != "${expected_cert}" || "${current_key}" != "${expected_key}" ]]; then
+        echo -e "${red}证书路径未写入配置文件${plain}"
+        echo -e "${yellow}期望证书：${expected_cert}${plain}"
+        echo -e "${yellow}实际证书：${current_cert:-空}${plain}"
+        echo -e "${yellow}期望私钥：${expected_key}${plain}"
+        echo -e "${yellow}实际私钥：${current_key:-空}${plain}"
+        return 1
+    fi
+
+    return 0
+}
+
 install_acme() {
     echo -e "${green}正在安装 acme.sh 用于 SSL 证书管理...${plain}"
     cd ~ || return 1
@@ -182,6 +224,9 @@ setup_ssl_certificate() {
 
     if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
         ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile" >/dev/null 2>&1
+        if ! verify_panel_cert_paths "$webCertFile" "$webKeyFile"; then
+            return 1
+        fi
         echo -e "${green}SSL 证书安装并配置成功！${plain}"
         return 0
     else
@@ -345,7 +390,7 @@ setup_ip_certificate() {
 # 综合手动 SSL 证书签发（通过 acme.sh）
 ssl_cert_issue() {
     local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep 'webBasePath:' | awk -F': ' '{print $2}' | tr -d '[:space:]' | sed 's#^/##')
-    local existing_port=$(${xui_folder}/x-ui setting -show true | grep 'port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    local existing_port=$(${xui_folder}/x-ui setting -show true | grep '^port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
 
     # 检查 acme.sh
     if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
@@ -488,6 +533,13 @@ ssl_cert_issue() {
 
         if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
             ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile"
+            if ! verify_panel_cert_paths "$webCertFile" "$webKeyFile"; then
+                echo -e "${red}错误：证书路径未写入配置文件。${plain}"
+                return 1
+            fi
+            if ! save_panel_domain "$domain"; then
+                return 1
+            fi
             echo -e "${green}面板证书路径已设置${plain}"
             echo -e "${green}证书文件：$webCertFile${plain}"
             echo -e "${green}私钥文件：$webKeyFile${plain}"
@@ -536,6 +588,10 @@ prompt_and_setup_ssl() {
         # 从证书中提取使用的域名
         local cert_domain=$(~/.acme.sh/acme.sh --list 2>/dev/null | tail -1 | awk '{print $1}')
         if [[ -n "${cert_domain}" ]]; then
+            if ! save_panel_domain "${cert_domain}"; then
+                SSL_HOST="${server_ip}"
+                return 1
+            fi
             SSL_HOST="${cert_domain}"
             echo -e "${green}✓ SSL 证书配置成功，域名：${cert_domain}${plain}"
         else
@@ -615,9 +671,17 @@ prompt_and_setup_ssl() {
 
         # 3.4 通过 x-ui 二进制文件应用设置
         ${xui_folder}/x-ui cert -webCert "$custom_cert" -webCertKey "$custom_key" >/dev/null 2>&1
+        if ! verify_panel_cert_paths "$custom_cert" "$custom_key"; then
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
 
         # 设置 SSL_HOST 用于组成面板 URL
         if [[ -n "$custom_domain" ]]; then
+            if ! save_panel_domain "$custom_domain"; then
+                SSL_HOST="${server_ip}"
+                return 1
+            fi
             SSL_HOST="$custom_domain"
         else
             SSL_HOST="${server_ip}"
@@ -731,6 +795,14 @@ prompt_and_setup_ssl() {
 
         if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
             ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile" >/dev/null 2>&1
+            if ! verify_panel_cert_paths "$webCertFile" "$webKeyFile"; then
+                SSL_HOST="${server_ip}"
+                return 1
+            fi
+            if ! save_panel_domain "$cf_domain"; then
+                SSL_HOST="${server_ip}"
+                return 1
+            fi
             echo -e "${green}✓ 面板证书已设置。${plain}"
         else
             echo -e "${red}未找到证书或私钥文件。${plain}"
@@ -760,7 +832,7 @@ config_after_install() {
     fi
 
     local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
-    local existing_port=$(${xui_folder}/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
+    local existing_port=$(${xui_folder}/x-ui setting -show true | grep '^port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
     # 通过检查 cert: 行是否存在且之后有内容来正确检测空证书
     local existing_cert=$(${xui_folder}/x-ui setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
     local URL_lists=(
@@ -816,6 +888,13 @@ config_after_install() {
         fi
 
         ${xui_folder}/x-ui setting -username "${config_username}" -password "${config_password}" -port "${config_port}" -webBasePath "${config_webBasePath}"
+        local saved_port
+        saved_port=$(${xui_folder}/x-ui setting -show true 2>/dev/null | grep '^port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+        if [[ "${saved_port}" != "${config_port}" ]]; then
+            echo -e "${red}端口未写入配置文件：期望 ${config_port}，实际 ${saved_port:-空}${plain}"
+            return 1
+        fi
+        config_port="${saved_port}"
 
         echo ""
         echo -e "${green}═══════════════════════════════════════════${plain}"
@@ -843,6 +922,7 @@ config_after_install() {
     else
         # 已有安装（存在 x-ui.json 或 x-ui.db）：保留所有配置，不重新输入
         local config_webBasePath="${existing_webBasePath}"
+        local existing_webDomain=$(${xui_folder}/x-ui setting -show true | grep '^webDomain:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
         if [[ ${#config_webBasePath} -lt 4 ]]; then
             config_webBasePath=$(gen_random_string 18)
             echo -e "${yellow}WebBasePath 缺失或过短，正在生成新的...${plain}"
@@ -853,7 +933,11 @@ config_after_install() {
         if [[ -n "${existing_cert}" ]]; then
             echo -e "${green}SSL 证书已配置。${plain}"
         fi
-        echo -e "${green}访问地址：https://${server_ip}:${existing_port}/${config_webBasePath}${plain}"
+        local final_host="${server_ip}"
+        if [[ -n "${existing_webDomain}" ]]; then
+            final_host="${existing_webDomain}"
+        fi
+        echo -e "${green}访问地址：https://${final_host}:${existing_port}/${config_webBasePath}${plain}"
     fi
 
     ${xui_folder}/x-ui migrate

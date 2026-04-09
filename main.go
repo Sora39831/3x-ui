@@ -160,6 +160,11 @@ func showSetting(show bool) {
 			fmt.Println("get webBasePath failed, error info:", err)
 		}
 
+		webDomain, err := settingService.GetWebDomain()
+		if err != nil {
+			fmt.Println("get webDomain failed, error info:", err)
+		}
+
 		certFile, err := settingService.GetCertFile()
 		if err != nil {
 			fmt.Println("get cert file failed, error info:", err)
@@ -192,6 +197,7 @@ func showSetting(show bool) {
 
 		fmt.Println("hasDefaultCredential:", hasDefaultCredential)
 		fmt.Println("port:", port)
+		fmt.Println("webDomain:", webDomain)
 		fmt.Println("webBasePath:", webBasePath)
 	}
 }
@@ -254,8 +260,8 @@ func updateTgbotSetting(tgBotToken string, tgBotChatid string, tgBotRuntime stri
 	}
 }
 
-// updateSetting updates various panel settings including port, credentials, base path, listen IP, and two-factor authentication.
-func updateSetting(port int, username string, password string, webBasePath string, listenIP string, resetTwoFactor bool) {
+// updateSetting updates various panel settings including port, domain, credentials, base path, listen IP, and two-factor authentication.
+func updateSetting(port int, username string, password string, webBasePath string, webDomain string, listenIP string, resetTwoFactor bool) {
 	err := database.InitDB()
 	if err != nil {
 		fmt.Println("Database initialization failed:", err)
@@ -289,6 +295,15 @@ func updateSetting(port int, username string, password string, webBasePath strin
 			fmt.Println("Failed to set base URI path:", err)
 		} else {
 			fmt.Println("Base URI path set successfully")
+		}
+	}
+
+	if webDomain != "" {
+		err := settingService.SetWebDomain(webDomain)
+		if err != nil {
+			fmt.Println("Failed to set web domain:", err)
+		} else {
+			fmt.Printf("Web domain set successfully: %v\n", webDomain)
 		}
 	}
 
@@ -473,6 +488,7 @@ func main() {
 	var username string
 	var password string
 	var webBasePath string
+	var webDomain string
 	var listenIP string
 	var getListen bool
 	var webCertFile string
@@ -491,6 +507,7 @@ func main() {
 	settingCmd.StringVar(&username, "username", "", "Set login username")
 	settingCmd.StringVar(&password, "password", "", "Set login password")
 	settingCmd.StringVar(&webBasePath, "webBasePath", "", "Set base path for Panel")
+	settingCmd.StringVar(&webDomain, "webDomain", "", "Set panel domain")
 	settingCmd.StringVar(&listenIP, "listenIP", "", "set panel listenIP IP")
 	settingCmd.BoolVar(&resetTwoFactor, "resetTwoFactor", false, "Reset two-factor authentication settings")
 	settingCmd.BoolVar(&getListen, "getListen", false, "Display current panel listenIP IP")
@@ -572,7 +589,7 @@ func main() {
 		if reset {
 			resetSetting()
 		} else {
-			updateSetting(port, username, password, webBasePath, listenIP, resetTwoFactor)
+			updateSetting(port, username, password, webBasePath, webDomain, listenIP, resetTwoFactor)
 		}
 		if show {
 			showSetting(show)

@@ -104,6 +104,24 @@ func TestSettingServiceSetAndGetString(t *testing.T) {
 	}
 }
 
+func TestSettingServiceSetAndGetWebDomain(t *testing.T) {
+	setupTestSettings(t)
+
+	svc := &SettingService{}
+
+	if err := svc.SetWebDomain("panel.example.com"); err != nil {
+		t.Fatalf("SetWebDomain error: %v", err)
+	}
+
+	val, err := svc.GetWebDomain()
+	if err != nil {
+		t.Fatalf("GetWebDomain error: %v", err)
+	}
+	if val != "panel.example.com" {
+		t.Fatalf("expected panel.example.com, got %s", val)
+	}
+}
+
 func TestSaveXrayTemplateConfigToDB_UpdatesSingleRow(t *testing.T) {
 	setupTestSettings(t)
 	setupTestDB(t)
