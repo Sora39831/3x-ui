@@ -672,8 +672,14 @@ prompt_and_setup_ssl() {
             SSL_HOST="${server_ip}"
             return 1
         fi
+        if ! is_domain "$cf_domain"; then
+            echo -e "${red}无效的域名格式：${cf_domain}${plain}"
+            SSL_HOST="${server_ip}"
+            return 1
+        fi
 
-        read -rp "请输入 Cloudflare 全局 API 密钥：" cf_key
+        read -rsp "请输入 Cloudflare 全局 API 密钥：" cf_key
+        echo
         cf_key="${cf_key// /}"
         if [[ -z "$cf_key" ]]; then
             echo -e "${red}API 密钥不能为空，跳过 SSL 配置。${plain}"
@@ -716,6 +722,7 @@ prompt_and_setup_ssl() {
         echo -e "${yellow}正在通过 Cloudflare DNS 签发证书...${plain}"
         ~/.acme.sh/acme.sh --issue --dns dns_cf -d "${cf_domain}" -d "*.${cf_domain}" --log --force
         if [ $? -ne 0 ]; then
+            unset CF_Key CF_Email
             echo -e "${red}证书签发失败，请检查 Cloudflare API 密钥和域名是否正确。${plain}"
             SSL_HOST="${server_ip}"
             return 1
@@ -726,6 +733,7 @@ prompt_and_setup_ssl() {
         rm -rf "${certPath}"
         mkdir -p "${certPath}"
         if [ $? -ne 0 ]; then
+            unset CF_Key CF_Email
             echo -e "${red}创建目录失败：${certPath}${plain}"
             SSL_HOST="${server_ip}"
             return 1
@@ -737,6 +745,7 @@ prompt_and_setup_ssl() {
             --fullchain-file "${certPath}/fullchain.pem" --reloadcmd "${reloadCmd}"
 
         if [ $? -ne 0 ]; then
+            unset CF_Key CF_Email
             echo -e "${red}证书安装失败。${plain}"
             SSL_HOST="${server_ip}"
             return 1
@@ -757,20 +766,24 @@ prompt_and_setup_ssl() {
         if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
             ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile" >/dev/null 2>&1
             if ! verify_panel_cert_paths "$webCertFile" "$webKeyFile"; then
+                unset CF_Key CF_Email
                 SSL_HOST="${server_ip}"
                 return 1
             fi
             if ! save_panel_domain "$cf_domain"; then
+                unset CF_Key CF_Email
                 SSL_HOST="${server_ip}"
                 return 1
             fi
             echo -e "${green}✓ 面板证书已设置。${plain}"
         else
+            unset CF_Key CF_Email
             echo -e "${red}未找到证书或私钥文件。${plain}"
             SSL_HOST="${server_ip}"
             return 1
         fi
 
+        unset CF_Key CF_Email
         SSL_HOST="${cf_domain}"
         echo -e "${green}✓ Cloudflare SSL 证书配置完成。${plain}"
         echo -e "${yellow}注意：证书支持自动续期，无需手动管理。${plain}"
