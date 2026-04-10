@@ -9,11 +9,17 @@ import (
 )
 
 type TrafficDelta struct {
+	Kind      string `json:"kind"`
 	InboundID int    `json:"inboundId"`
 	Email     string `json:"email"`
 	UpDelta   int64  `json:"upDelta"`
 	DownDelta int64  `json:"downDelta"`
 }
+
+const (
+	TrafficDeltaKindClient      = "client"
+	TrafficDeltaKindInboundOnly = "inbound_only"
+)
 
 type TrafficPendingStore struct {
 	path string
@@ -47,11 +53,14 @@ func (s *TrafficPendingStore) Merge(newDeltas []TrafficDelta) error {
 
 	index := map[string]int{}
 	for i, delta := range current {
-		index[deltaKey(delta.InboundID, delta.Email)] = i
+		index[deltaKey(delta.Kind, delta.InboundID, delta.Email)] = i
 	}
 
 	for _, delta := range newDeltas {
-		key := deltaKey(delta.InboundID, delta.Email)
+		if delta.Kind == "" {
+			delta.Kind = TrafficDeltaKindClient
+		}
+		key := deltaKey(delta.Kind, delta.InboundID, delta.Email)
 		if idx, ok := index[key]; ok {
 			current[idx].UpDelta += delta.UpDelta
 			current[idx].DownDelta += delta.DownDelta
@@ -108,6 +117,6 @@ func (s *TrafficPendingStore) saveUnlocked(deltas []TrafficDelta) error {
 	return os.WriteFile(s.path, data, 0644)
 }
 
-func deltaKey(inboundID int, email string) string {
-	return fmt.Sprintf("%d:%s", inboundID, email)
+func deltaKey(kind string, inboundID int, email string) string {
+	return fmt.Sprintf("%s:%d:%s", kind, inboundID, email)
 }

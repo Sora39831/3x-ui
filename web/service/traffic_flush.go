@@ -7,6 +7,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 	"gorm.io/gorm"
@@ -30,19 +31,73 @@ func NewTrafficFlushService(store *TrafficPendingStore) *TrafficFlushService {
 	return svc
 }
 
-func (s *TrafficFlushService) Collect(clientTraffics []*xray.ClientTraffic) error {
-	deltas := make([]TrafficDelta, 0, len(clientTraffics))
+func (s *TrafficFlushService) Collect(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) error {
+	deltas := make([]TrafficDelta, 0, len(clientTraffics)+len(inboundTraffics))
+	clientTotals := map[int]TrafficDelta{}
+
 	for _, traffic := range clientTraffics {
 		if traffic == nil || (traffic.Up == 0 && traffic.Down == 0) {
 			continue
 		}
-		deltas = append(deltas, TrafficDelta{
+		delta := TrafficDelta{
+			Kind:      TrafficDeltaKindClient,
 			InboundID: traffic.InboundId,
 			Email:     traffic.Email,
 			UpDelta:   traffic.Up,
 			DownDelta: traffic.Down,
+		}
+		deltas = append(deltas, delta)
+		total := clientTotals[traffic.InboundId]
+		total.UpDelta += traffic.Up
+		total.DownDelta += traffic.Down
+		clientTotals[traffic.InboundId] = total
+	}
+
+	for _, traffic := range inboundTraffics {
+		if traffic == nil || !traffic.IsInbound || (traffic.Up == 0 && traffic.Down == 0) {
+			continue
+		}
+
+		var inbound model.Inbound
+		if err := database.GetDB().Select("id").First(&inbound, "tag = ?", traffic.Tag).Error; err != nil {
+			logger.Warning("resolve inbound tag for shared traffic failed:", err)
+			continue
+		}
+
+		clientTotal := clientTotals[inbound.Id]
+		residualUp := traffic.Up - clientTotal.UpDelta
+		residualDown := traffic.Down - clientTotal.DownDelta
+		if residualUp < 0 || residualDown < 0 {
+			logger.Warningf(
+				"shared traffic residual below zero: tag=%s inbound_id=%d inbound_up=%d inbound_down=%d client_up=%d client_down=%d residual_up=%d residual_down=%d",
+				traffic.Tag,
+				inbound.Id,
+				traffic.Up,
+				traffic.Down,
+				clientTotal.UpDelta,
+				clientTotal.DownDelta,
+				residualUp,
+				residualDown,
+			)
+			if residualUp < 0 {
+				residualUp = 0
+			}
+			if residualDown < 0 {
+				residualDown = 0
+			}
+		}
+		if residualUp == 0 && residualDown == 0 {
+			continue
+		}
+
+		deltas = append(deltas, TrafficDelta{
+			Kind:      TrafficDeltaKindInboundOnly,
+			InboundID: inbound.Id,
+			UpDelta:   residualUp,
+			DownDelta: residualDown,
 		})
 	}
+
 	if len(deltas) == 0 {
 		return nil
 	}
@@ -54,6 +109,11 @@ func (s *TrafficFlushService) flushToDatabase(deltas []TrafficDelta) error {
 
 	return database.GetDB().Transaction(func(tx *gorm.DB) error {
 		for _, delta := range deltas {
+			kind := delta.Kind
+			if kind == "" {
+				kind = TrafficDeltaKindClient
+			}
+
 			if err := tx.Model(&model.Inbound{}).
 				Where("id = ?", delta.InboundID).
 				Updates(map[string]any{
@@ -64,25 +124,27 @@ func (s *TrafficFlushService) flushToDatabase(deltas []TrafficDelta) error {
 				return err
 			}
 
-			row := xray.ClientTraffic{
-				InboundId:  delta.InboundID,
-				Email:      delta.Email,
-				Enable:     true,
-				Up:         delta.UpDelta,
-				Down:       delta.DownDelta,
-				AllTime:    delta.UpDelta + delta.DownDelta,
-				LastOnline: now,
-			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "inbound_id"}, {Name: "email"}},
-				DoUpdates: clause.Assignments(map[string]any{
-					"up":          gorm.Expr("up + ?", delta.UpDelta),
-					"down":        gorm.Expr("down + ?", delta.DownDelta),
-					"all_time":    gorm.Expr("COALESCE(all_time, 0) + ?", delta.UpDelta+delta.DownDelta),
-					"last_online": now,
-				}),
-			}).Create(&row).Error; err != nil {
-				return err
+			if kind == TrafficDeltaKindClient {
+				row := xray.ClientTraffic{
+					InboundId:  delta.InboundID,
+					Email:      delta.Email,
+					Enable:     true,
+					Up:         delta.UpDelta,
+					Down:       delta.DownDelta,
+					AllTime:    delta.UpDelta + delta.DownDelta,
+					LastOnline: now,
+				}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns: []clause.Column{{Name: "inbound_id"}, {Name: "email"}},
+					DoUpdates: clause.Assignments(map[string]any{
+						"up":          gorm.Expr("up + ?", delta.UpDelta),
+						"down":        gorm.Expr("down + ?", delta.DownDelta),
+						"all_time":    gorm.Expr("COALESCE(all_time, 0) + ?", delta.UpDelta+delta.DownDelta),
+						"last_online": now,
+					}),
+				}).Create(&row).Error; err != nil {
+					return err
+				}
 			}
 		}
 
