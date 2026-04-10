@@ -268,3 +268,34 @@ func TestWriteSettingToJSONUsesModulePurposeGroup(t *testing.T) {
 		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
 	}
 }
+
+func TestWriteSettingToJSONCreatesSettingsFileWhenMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	if err := WriteSettingToJSON("dbType", "mariadb"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+	if err := WriteSettingToJSON("dbHost", "127.0.0.1"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+
+	data, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	group, ok := parsed["databaseConnection"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected databaseConnection group, got %T", parsed["databaseConnection"])
+	}
+	if got, ok := group["dbType"].(string); !ok || got != "mariadb" {
+		t.Fatalf("expected databaseConnection.dbType to be updated, got %v", group["dbType"])
+	}
+	if got, ok := group["dbHost"].(string); !ok || got != "127.0.0.1" {
+		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
+	}
+}
