@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 )
@@ -141,6 +142,11 @@ func TestInitDB_Idempotent(t *testing.T) {
 		t.Fatalf("first InitDB failed: %v", err)
 	}
 	CloseDB()
+
+	startSecond := time.Now().Unix()
+	for time.Now().Unix() == startSecond {
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	// Second init on the same file should not fail
 	if err := InitDBWithPath(dbPath); err != nil {
