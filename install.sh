@@ -953,14 +953,12 @@ config_after_install() {
         echo -e "${yellow}Let's Encrypt 现已支持域名和 IP 地址！${plain}"
         echo ""
 
-        local access_scheme="http"
-        local access_host="${server_ip:-localhost}"
-        if prompt_and_setup_ssl "${config_port}" "${config_webBasePath}" "${server_ip}"; then
-            access_scheme="https"
-            access_host="${SSL_HOST:-${server_ip:-localhost}}"
-        else
-            echo -e "${yellow}⚠ SSL 配置未完成，面板将回退为 HTTP 访问。${plain}"
+        if ! prompt_and_setup_ssl "${config_port}" "${config_webBasePath}" "${server_ip}"; then
+            echo -e "${red}SSL 配置失败，安装终止。${plain}"
+            return 1
         fi
+        local access_scheme="https"
+        local access_host="${SSL_HOST:-${server_ip:-localhost}}"
 
         # 显示最终凭据和访问信息
         echo ""
@@ -974,11 +972,7 @@ config_after_install() {
         echo -e "${green}访问地址：  ${access_scheme}://${access_host}:${config_port}/${config_webBasePath}${plain}"
         echo -e "${green}═══════════════════════════════════════════${plain}"
         echo -e "${yellow}⚠ 重要：请安全保存这些凭据！${plain}"
-        if [[ "${access_scheme}" == "https" ]]; then
-            echo -e "${yellow}⚠ SSL 证书：已启用并配置${plain}"
-        else
-            echo -e "${yellow}⚠ SSL 证书：未配置成功，当前为 HTTP${plain}"
-        fi
+        echo -e "${yellow}⚠ SSL 证书：已启用并配置${plain}"
     else
         # 已有安装（存在 x-ui.json 或 x-ui.db）：保留所有配置，不重新输入
         local config_webBasePath="${existing_webBasePath}"
