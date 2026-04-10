@@ -41,6 +41,14 @@ go build -ldflags "-w -s" -o build/x-ui main.go
 
 Production builds embed files from `web/public/assets` and `web/public/assets-manifest.json`.
 
+## Multi-Node Shared Control
+
+- use MariaDB as the shared control database
+- keep one `master` node for shared-account writes
+- configure other nodes as `worker`
+- workers rebuild local Xray config from synchronized snapshots
+- traffic is flushed back as deltas, not absolute totals
+
 ## A Special Thanks to
 
 - [alireza0](https://github.com/alireza0/)
