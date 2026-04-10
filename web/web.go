@@ -410,6 +410,20 @@ func (s *Server) startTask() {
 	}
 }
 
+func (s *Server) startNodeLoops() {
+	nodeCfg := config.GetNodeConfigFromJSON()
+	nodeSyncService := service.NewNodeSyncService()
+	interval := time.Duration(nodeCfg.SyncIntervalSeconds) * time.Second
+
+	if nodeCfg.Role == config.NodeRoleWorker {
+		go nodeSyncService.Run(s.ctx, interval)
+		return
+	}
+	if nodeCfg.NodeID != "" {
+		go nodeSyncService.RunHeartbeatLoop(s.ctx, interval)
+	}
+}
+
 // Start initializes and starts the web server with configured settings, routes, and background jobs.
 func (s *Server) Start() (err error) {
 	// This is an anonymous function, no function name
@@ -479,6 +493,7 @@ func (s *Server) Start() (err error) {
 	}()
 
 	s.startTask()
+	s.startNodeLoops()
 
 	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
 	if (err == nil) && (isTgbotenabled) {

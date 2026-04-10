@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/xray"
 
@@ -98,8 +99,87 @@ func RemoveIndex(s []any, index int) []any {
 	return append(s[:index], s[index+1:]...)
 }
 
-// GetXrayConfig retrieves and builds the Xray configuration from settings and inbounds.
-func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
+func normalizeInboundForXray(inbound *model.Inbound) error {
+	// get settings clients
+	settings := map[string]any{}
+	json.Unmarshal([]byte(inbound.Settings), &settings)
+	clients, ok := settings["clients"].([]any)
+	if ok {
+		// check users active or not
+		clientStats := inbound.ClientStats
+		for _, clientTraffic := range clientStats {
+			indexDecrease := 0
+			for index, client := range clients {
+				c := client.(map[string]any)
+				if c["email"] == clientTraffic.Email {
+					if !clientTraffic.Enable {
+						clients = RemoveIndex(clients, index-indexDecrease)
+						indexDecrease++
+						logger.Infof("Remove Inbound User %s due to expiration or traffic limit", c["email"])
+					}
+				}
+			}
+		}
+
+		// clear client config for additional parameters
+		var finalClients []any
+		for _, client := range clients {
+			c := client.(map[string]any)
+			if c["enable"] != nil {
+				if enable, ok := c["enable"].(bool); ok && !enable {
+					continue
+				}
+			}
+			for key := range c {
+				if key != "email" && key != "id" && key != "password" && key != "flow" && key != "method" {
+					delete(c, key)
+				}
+				if c["flow"] == "xtls-rprx-vision-udp443" {
+					c["flow"] = "xtls-rprx-vision"
+				}
+			}
+			finalClients = append(finalClients, any(c))
+		}
+
+		settings["clients"] = finalClients
+		modifiedSettings, err := json.MarshalIndent(settings, "", "  ")
+		if err != nil {
+			return err
+		}
+
+		inbound.Settings = string(modifiedSettings)
+	}
+
+	if len(inbound.StreamSettings) > 0 {
+		// Unmarshal stream JSON
+		var stream map[string]any
+		json.Unmarshal([]byte(inbound.StreamSettings), &stream)
+
+		// Remove the "settings" field under "tlsSettings" and "realitySettings"
+		tlsSettings, ok1 := stream["tlsSettings"].(map[string]any)
+		realitySettings, ok2 := stream["realitySettings"].(map[string]any)
+		if ok1 || ok2 {
+			if ok1 {
+				delete(tlsSettings, "settings")
+			} else if ok2 {
+				delete(realitySettings, "settings")
+			}
+		}
+
+		delete(stream, "externalProxy")
+
+		newStream, err := json.MarshalIndent(stream, "", "  ")
+		if err != nil {
+			return err
+		}
+		inbound.StreamSettings = string(newStream)
+	}
+
+	return nil
+}
+
+// BuildConfigFromInbounds builds Xray config from an explicit inbound list.
+func (s *XrayService) BuildConfigFromInbounds(inbounds []*model.Inbound) (*xray.Config, error) {
 	templateConfig, err := s.settingService.GetXrayConfigTemplate()
 	if err != nil {
 		return nil, err
@@ -111,95 +191,33 @@ func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 		return nil, err
 	}
 
+	for _, inbound := range inbounds {
+		if inbound == nil {
+			continue
+		}
+		if !inbound.Enable {
+			continue
+		}
+		inboundCopy := *inbound
+		if err := normalizeInboundForXray(&inboundCopy); err != nil {
+			return nil, err
+		}
+
+		inboundConfig := inboundCopy.GenXrayInboundConfig()
+		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
+	}
+	return xrayConfig, nil
+}
+
+// GetXrayConfig retrieves and builds the Xray configuration from settings and inbounds.
+func (s *XrayService) GetXrayConfig() (*xray.Config, error) {
 	s.inboundService.AddTraffic(nil, nil)
 
 	inbounds, err := s.inboundService.GetAllInbounds()
 	if err != nil {
 		return nil, err
 	}
-	for _, inbound := range inbounds {
-		if !inbound.Enable {
-			continue
-		}
-		// get settings clients
-		settings := map[string]any{}
-		json.Unmarshal([]byte(inbound.Settings), &settings)
-		clients, ok := settings["clients"].([]any)
-		if ok {
-			// check users active or not
-			clientStats := inbound.ClientStats
-			for _, clientTraffic := range clientStats {
-				indexDecrease := 0
-				for index, client := range clients {
-					c := client.(map[string]any)
-					if c["email"] == clientTraffic.Email {
-						if !clientTraffic.Enable {
-							clients = RemoveIndex(clients, index-indexDecrease)
-							indexDecrease++
-							logger.Infof("Remove Inbound User %s due to expiration or traffic limit", c["email"])
-						}
-					}
-				}
-			}
-
-			// clear client config for additional parameters
-			var final_clients []any
-			for _, client := range clients {
-				c := client.(map[string]any)
-				if c["enable"] != nil {
-					if enable, ok := c["enable"].(bool); ok && !enable {
-						continue
-					}
-				}
-				for key := range c {
-					if key != "email" && key != "id" && key != "password" && key != "flow" && key != "method" {
-						delete(c, key)
-					}
-					if c["flow"] == "xtls-rprx-vision-udp443" {
-						c["flow"] = "xtls-rprx-vision"
-					}
-				}
-				final_clients = append(final_clients, any(c))
-			}
-
-			settings["clients"] = final_clients
-			modifiedSettings, err := json.MarshalIndent(settings, "", "  ")
-			if err != nil {
-				return nil, err
-			}
-
-			inbound.Settings = string(modifiedSettings)
-		}
-
-		if len(inbound.StreamSettings) > 0 {
-			// Unmarshal stream JSON
-			var stream map[string]any
-			json.Unmarshal([]byte(inbound.StreamSettings), &stream)
-
-			// Remove the "settings" field under "tlsSettings" and "realitySettings"
-			tlsSettings, ok1 := stream["tlsSettings"].(map[string]any)
-			realitySettings, ok2 := stream["realitySettings"].(map[string]any)
-			if ok1 || ok2 {
-				if ok1 {
-					delete(tlsSettings, "settings")
-				} else if ok2 {
-					delete(realitySettings, "settings")
-				}
-			}
-
-			delete(stream, "externalProxy")
-
-			newStream, err := json.MarshalIndent(stream, "", "  ")
-			if err != nil {
-				return nil, err
-			}
-			inbound.StreamSettings = string(newStream)
-		}
-
-		inboundConfig := inbound.GenXrayInboundConfig()
-		xrayConfig.InboundConfigs = append(xrayConfig.InboundConfigs, *inboundConfig)
-	}
-	return xrayConfig, nil
+	return s.BuildConfigFromInbounds(inbounds)
 }
 
 // GetXrayTraffic fetches the current traffic statistics from the running Xray process.
@@ -223,14 +241,22 @@ func (s *XrayService) GetXrayTraffic() ([]*xray.Traffic, []*xray.ClientTraffic, 
 
 // RestartXray restarts the Xray process, optionally forcing a restart even if config unchanged.
 func (s *XrayService) RestartXray(isForce bool) error {
+	xrayConfig, err := s.GetXrayConfig()
+	if err != nil {
+		return err
+	}
+	return s.RestartXrayWithConfig(xrayConfig, isForce)
+}
+
+// RestartXrayWithConfig restarts Xray with a pre-built config.
+func (s *XrayService) RestartXrayWithConfig(xrayConfig *xray.Config, isForce bool) error {
 	lock.Lock()
 	defer lock.Unlock()
 	logger.Debug("restart Xray, force:", isForce)
 	isManuallyStopped.Store(false)
 
-	xrayConfig, err := s.GetXrayConfig()
-	if err != nil {
-		return err
+	if xrayConfig == nil {
+		return errors.New("xray config is nil")
 	}
 
 	if s.IsXrayRunning() {
@@ -243,12 +269,23 @@ func (s *XrayService) RestartXray(isForce bool) error {
 
 	p = xray.NewProcess(xrayConfig)
 	result = ""
-	err = p.Start()
-	if err != nil {
+	if err := p.Start(); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// ApplySharedSnapshot builds and applies config from a shared snapshot.
+func (s *XrayService) ApplySharedSnapshot(snapshot *SharedAccountsSnapshot) error {
+	if snapshot == nil {
+		return errors.New("shared snapshot is nil")
+	}
+	xrayConfig, err := s.BuildConfigFromInbounds(snapshot.Inbounds)
+	if err != nil {
+		return err
+	}
+	return s.RestartXrayWithConfig(xrayConfig, false)
 }
 
 // StopXray stops the running Xray process.
