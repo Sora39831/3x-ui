@@ -40,12 +40,17 @@ func initModels() error {
 		&model.InboundClientIps{},
 		&xray.ClientTraffic{},
 		&model.HistoryOfSeeders{},
+		&model.SharedState{},
+		&model.NodeState{},
 	}
 	for _, model := range models {
 		if err := db.AutoMigrate(model); err != nil {
 			log.Printf("Error auto migrating model: %v", err)
 			return err
 		}
+	}
+	if err := seedSharedAccountsVersion(db); err != nil {
+		return err
 	}
 	return nil
 }

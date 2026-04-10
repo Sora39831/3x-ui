@@ -30,6 +30,14 @@ bash <(curl -Ls https://raw.githubusercontent.com/Sora39831/3x-ui/master/install
 
 完整文档请参阅 [项目Wiki](https://github.com/Sora39831/3x-ui/wiki)。
 
+## 多节点共享控制
+
+- 使用 MariaDB 作为共享控制数据库
+- 仅保留一个 `master` 节点负责共享账号写入
+- 其他节点配置为 `worker`
+- `worker` 通过同步快照重建本地 Xray 配置
+- 流量按增量回刷，不覆盖绝对总量
+
 ## 特别感谢
 
 - [alireza0](https://github.com/alireza0/)

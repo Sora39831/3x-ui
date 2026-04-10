@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -132,6 +133,72 @@ func TestGetLogFolderCustom(t *testing.T) {
 	}
 }
 
+func writeTestSettingsFile(t *testing.T, settings map[string]any) {
+	t.Helper()
+	data, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent error: %v", err)
+	}
+	if err := os.WriteFile(GetSettingPath(), data, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+}
+
+func TestGetNodeConfigFromJSONDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+	writeTestSettingsFile(t, map[string]any{})
+
+	cfg := GetNodeConfigFromJSON()
+	if cfg.Role != NodeRoleMaster {
+		t.Fatalf("expected default role %q, got %q", NodeRoleMaster, cfg.Role)
+	}
+	if cfg.NodeID != "" {
+		t.Fatalf("expected empty default node id, got %q", cfg.NodeID)
+	}
+	if cfg.SyncIntervalSeconds != 30 {
+		t.Fatalf("expected default sync interval 30, got %d", cfg.SyncIntervalSeconds)
+	}
+	if cfg.TrafficFlushSeconds != 10 {
+		t.Fatalf("expected default traffic flush interval 10, got %d", cfg.TrafficFlushSeconds)
+	}
+}
+
+func TestValidateNodeConfigWorkerRequiresNodeID(t *testing.T) {
+	err := ValidateNodeConfig(NodeConfig{
+		Role:                NodeRoleWorker,
+		SyncIntervalSeconds: 30,
+		TrafficFlushSeconds: 10,
+	}, DBConfig{Type: "mariadb"})
+	if err == nil {
+		t.Fatal("expected worker without node id to fail validation")
+	}
+}
+
+func TestValidateNodeConfigWorkerRequiresMariaDB(t *testing.T) {
+	err := ValidateNodeConfig(NodeConfig{
+		Role:                NodeRoleWorker,
+		NodeID:              "worker-1",
+		SyncIntervalSeconds: 30,
+		TrafficFlushSeconds: 10,
+	}, DBConfig{Type: "sqlite"})
+	if err == nil {
+		t.Fatal("expected worker on sqlite to fail validation")
+	}
+}
+
+func TestSharedRuntimeFilePaths(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	if got := GetSharedCachePath(); got != filepath.Join(tmpDir, "shared-cache.json") {
+		t.Fatalf("unexpected shared cache path: %s", got)
+	}
+	if got := GetTrafficPendingPath(); got != filepath.Join(tmpDir, "traffic-pending.json") {
+		t.Fatalf("unexpected traffic pending path: %s", got)
+	}
+}
+
 func TestGetDBConfigFromJSONSupportsModulePurposeLayout(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XUI_DB_FOLDER", tmpDir)
@@ -198,6 +265,37 @@ func TestWriteSettingToJSONUsesModulePurposeGroup(t *testing.T) {
 		t.Fatalf("expected databaseConnection group, got %T", parsed["databaseConnection"])
 	}
 	if got, ok := group["dbHost"].(string); !ok || got != "127.0.0.2" {
+		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
+	}
+}
+
+func TestWriteSettingToJSONCreatesSettingsFileWhenMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	if err := WriteSettingToJSON("dbType", "mariadb"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+	if err := WriteSettingToJSON("dbHost", "127.0.0.1"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+
+	data, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	group, ok := parsed["databaseConnection"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected databaseConnection group, got %T", parsed["databaseConnection"])
+	}
+	if got, ok := group["dbType"].(string); !ok || got != "mariadb" {
+		t.Fatalf("expected databaseConnection.dbType to be updated, got %v", group["dbType"])
+	}
+	if got, ok := group["dbHost"].(string); !ok || got != "127.0.0.1" {
 		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
 	}
 }

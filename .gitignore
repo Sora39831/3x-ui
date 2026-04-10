@@ -41,3 +41,6 @@ docker-compose.override.yml
 
 # Ignore local docs directory
 /docs/
+
+# Ignore local git worktrees
+/.worktrees/

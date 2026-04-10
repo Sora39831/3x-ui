@@ -3,6 +3,7 @@ package job
 import (
 	"encoding/json"
 
+	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/web/websocket"
@@ -17,11 +18,16 @@ type XrayTrafficJob struct {
 	xrayService     service.XrayService
 	inboundService  service.InboundService
 	outboundService service.OutboundService
+	trafficFlushSvc *service.TrafficFlushService
 }
 
 // NewXrayTrafficJob creates a new traffic collection job instance.
 func NewXrayTrafficJob() *XrayTrafficJob {
-	return new(XrayTrafficJob)
+	return &XrayTrafficJob{
+		trafficFlushSvc: service.NewTrafficFlushService(
+			service.NewTrafficPendingStore(config.GetTrafficPendingPath()),
+		),
+	}
 }
 
 // Run collects traffic statistics from Xray and updates the database, triggering restart if needed.
@@ -33,9 +39,16 @@ func (j *XrayTrafficJob) Run() {
 	if err != nil {
 		return
 	}
-	err, needRestart0 := j.inboundService.AddTraffic(traffics, clientTraffics)
-	if err != nil {
-		logger.Warning("add inbound traffic failed:", err)
+	needRestart0 := false
+	if service.IsSharedModeEnabled() {
+		if err := j.trafficFlushSvc.Collect(traffics, clientTraffics); err != nil {
+			logger.Warning("collect shared traffic failed:", err)
+		}
+	} else {
+		err, needRestart0 = j.inboundService.AddTraffic(traffics, clientTraffics)
+		if err != nil {
+			logger.Warning("add inbound traffic failed:", err)
+		}
 	}
 	err, needRestart1 := j.outboundService.AddTraffic(traffics, clientTraffics)
 	if err != nil {

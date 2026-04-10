@@ -1,0 +1,50 @@
+package database
+
+import (
+	"time"
+
+	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"gorm.io/gorm"
+)
+
+const SharedAccountsVersionKey = "shared_accounts_version"
+
+func txOrDB(tx *gorm.DB) *gorm.DB {
+	if tx != nil {
+		return tx
+	}
+	return GetDB()
+}
+
+func seedSharedAccountsVersion(tx *gorm.DB) error {
+	return txOrDB(tx).
+		Where("key = ?", SharedAccountsVersionKey).
+		Attrs(&model.SharedState{
+			Key:       SharedAccountsVersionKey,
+			Version:   0,
+			UpdatedAt: time.Now().Unix(),
+		}).
+		FirstOrCreate(&model.SharedState{}).Error
+}
+
+func GetSharedAccountsVersion(tx *gorm.DB) (int64, error) {
+	state := &model.SharedState{}
+	if err := txOrDB(tx).First(state, "key = ?", SharedAccountsVersionKey).Error; err != nil {
+		return 0, err
+	}
+	return state.Version, nil
+}
+
+func BumpSharedAccountsVersion(tx *gorm.DB) error {
+	return txOrDB(tx).Model(&model.SharedState{}).
+		Where("key = ?", SharedAccountsVersionKey).
+		Updates(map[string]any{
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": time.Now().Unix(),
+		}).Error
+}
+
+func UpsertNodeState(tx *gorm.DB, state *model.NodeState) error {
+	state.UpdatedAt = time.Now().Unix()
+	return txOrDB(tx).Save(state).Error
+}

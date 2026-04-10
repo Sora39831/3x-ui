@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -30,6 +31,20 @@ const (
 	Warning LogLevel = "warning"
 	Error   LogLevel = "error"
 )
+
+type NodeRole string
+
+const (
+	NodeRoleMaster NodeRole = "master"
+	NodeRoleWorker NodeRole = "worker"
+)
+
+type NodeConfig struct {
+	Role                NodeRole
+	NodeID              string
+	SyncIntervalSeconds int
+	TrafficFlushSeconds int
+}
 
 // GetVersion returns the version string of the 3x-ui application.
 func GetVersion() string {
@@ -106,6 +121,14 @@ func GetSettingPath() string {
 	return fmt.Sprintf("%s/%s.json", GetDBFolderPath(), GetName())
 }
 
+func GetSharedCachePath() string {
+	return filepath.Join(GetDBFolderPath(), "shared-cache.json")
+}
+
+func GetTrafficPendingPath() string {
+	return filepath.Join(GetDBFolderPath(), "traffic-pending.json")
+}
+
 // GetLogFolder returns the path to the log folder based on environment variables or platform defaults.
 func GetLogFolder() string {
 	logFolderPath := os.Getenv("XUI_LOG_FOLDER")
@@ -125,6 +148,14 @@ var settingGroupAliases = map[string][]string{
 	"dbUser":     {"databaseConnection", "other"},
 	"dbPassword": {"databaseConnection", "other"},
 	"dbName":     {"databaseConnection", "other"},
+	"nodeRole":   {"other"},
+	"nodeId":     {"other"},
+	"syncInterval": {
+		"other",
+	},
+	"trafficFlushInterval": {
+		"other",
+	},
 }
 
 func readGroupedString(settings map[string]any, key string) string {
@@ -141,6 +172,37 @@ func readGroupedString(settings map[string]any, key string) string {
 		return value
 	}
 	return ""
+}
+
+func readGroupedInt(settings map[string]any, key string, fallback int) int {
+	readInt := func(value any) (int, bool) {
+		switch v := value.(type) {
+		case float64:
+			return int(v), true
+		case int:
+			return v, true
+		case string:
+			i, err := strconv.Atoi(v)
+			if err == nil {
+				return i, true
+			}
+		}
+		return 0, false
+	}
+
+	if groups, ok := settingGroupAliases[key]; ok {
+		for _, groupName := range groups {
+			if group, ok := settings[groupName].(map[string]any); ok {
+				if value, ok := readInt(group[key]); ok {
+					return value
+				}
+			}
+		}
+	}
+	if value, ok := readInt(settings[key]); ok {
+		return value
+	}
+	return fallback
 }
 
 func settingsLayoutMeta() map[string]any {
@@ -250,17 +312,69 @@ func GetDBConfigFromJSON() DBConfig {
 	}
 }
 
-// WriteSettingToJSON writes a single setting key to the JSON config file.
-// It reads the existing file, updates the value, and writes back.
-func WriteSettingToJSON(key, value string) error {
-	path := GetSettingPath()
-	data, err := os.ReadFile(path)
+func GetNodeConfigFromJSON() NodeConfig {
+	data, err := os.ReadFile(GetSettingPath())
 	if err != nil {
-		return err
+		return NodeConfig{Role: NodeRoleMaster, SyncIntervalSeconds: 30, TrafficFlushSeconds: 10}
 	}
 
 	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
+		return NodeConfig{Role: NodeRoleMaster, SyncIntervalSeconds: 30, TrafficFlushSeconds: 10}
+	}
+
+	role := readGroupedString(settings, "nodeRole")
+	if role == "" {
+		role = string(NodeRoleMaster)
+	}
+
+	return NodeConfig{
+		Role:                NodeRole(role),
+		NodeID:              readGroupedString(settings, "nodeId"),
+		SyncIntervalSeconds: readGroupedInt(settings, "syncInterval", 30),
+		TrafficFlushSeconds: readGroupedInt(settings, "trafficFlushInterval", 10),
+	}
+}
+
+func ValidateNodeConfig(nodeCfg NodeConfig, dbCfg DBConfig) error {
+	switch nodeCfg.Role {
+	case NodeRoleMaster, NodeRoleWorker:
+	default:
+		return fmt.Errorf("invalid nodeRole %q", nodeCfg.Role)
+	}
+	if nodeCfg.Role == NodeRoleWorker && nodeCfg.NodeID == "" {
+		return fmt.Errorf("worker mode requires nodeId")
+	}
+	if nodeCfg.Role == NodeRoleWorker && dbCfg.Type != "mariadb" {
+		return fmt.Errorf("worker mode requires mariadb")
+	}
+	if nodeCfg.SyncIntervalSeconds <= 0 {
+		return fmt.Errorf("syncInterval must be positive")
+	}
+	if nodeCfg.TrafficFlushSeconds <= 0 {
+		return fmt.Errorf("trafficFlushInterval must be positive")
+	}
+	return nil
+}
+
+// WriteSettingToJSON writes a single setting key to the JSON config file.
+// It reads the existing file, updates the value, and writes back.
+func WriteSettingToJSON(key, value string) error {
+	path := GetSettingPath()
+	var settings map[string]any
+	data, err := os.ReadFile(path)
+	if err == nil {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return err
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+		settings = map[string]any{
+			"_meta": settingsLayoutMeta(),
+		}
+	} else {
 		return err
 	}
 	if _, exists := settings["_meta"]; !exists {
