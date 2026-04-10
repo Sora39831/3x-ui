@@ -26,30 +26,30 @@ import (
 )
 
 type settingCommandOptions struct {
-	port                 int
-	username             string
-	password             string
-	webBasePath          string
-	webDomain            string
-	listenIP             string
-	reset                bool
-	show                 bool
-	getListen            bool
-	getCert              bool
-	resetTwoFactor       bool
-	tgbotToken           string
-	tgbotChatID          string
-	tgbotRuntime         string
-	enableTgbot          bool
-	dbType               string
-	dbHost               string
-	dbPort               string
-	dbUser               string
-	dbPassword           string
-	dbName               string
-	nodeRoleSet          bool
-	nodeIDSet            bool
-	syncIntervalSet      bool
+	port                    int
+	username                string
+	password                string
+	webBasePath             string
+	webDomain               string
+	listenIP                string
+	reset                   bool
+	show                    bool
+	getListen               bool
+	getCert                 bool
+	resetTwoFactor          bool
+	tgbotToken              string
+	tgbotChatID             string
+	tgbotRuntime            string
+	enableTgbot             bool
+	dbType                  string
+	dbHost                  string
+	dbPort                  string
+	dbUser                  string
+	dbPassword              string
+	dbName                  string
+	nodeRoleSet             bool
+	nodeIDSet               bool
+	syncIntervalSet         bool
 	trafficFlushIntervalSet bool
 }
 
