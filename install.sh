@@ -909,6 +909,22 @@ config_after_install() {
             node_role="master"
         fi
 
+        read -rp "Sync interval [30]: " sync_interval
+        sync_interval="${sync_interval:-30}"
+        while ! [[ "${sync_interval}" =~ ^[1-9][0-9]*$ ]]; do
+            echo -e "${yellow}同步间隔必须为正整数${plain}"
+            read -rp "Sync interval [30]: " sync_interval
+            sync_interval="${sync_interval:-30}"
+        done
+
+        read -rp "Traffic flush interval [10]: " traffic_flush_interval
+        traffic_flush_interval="${traffic_flush_interval:-10}"
+        while ! [[ "${traffic_flush_interval}" =~ ^[1-9][0-9]*$ ]]; do
+            echo -e "${yellow}流量回刷间隔必须为正整数${plain}"
+            read -rp "Traffic flush interval [10]: " traffic_flush_interval
+            traffic_flush_interval="${traffic_flush_interval:-10}"
+        done
+
         if [[ "${node_role}" == "worker" && "${db_type}" != "mariadb" ]]; then
             echo -e "${yellow}worker 节点要求使用 MariaDB，回退到 master${plain}"
             node_role="master"
@@ -922,12 +938,12 @@ config_after_install() {
                 read -rp "Node ID: " node_id
                 node_id="${node_id// /}"
             done
-            if ! ${xui_folder}/x-ui setting -nodeRole worker -nodeId "$node_id" >/dev/null 2>&1; then
+            if ! ${xui_folder}/x-ui setting -nodeRole worker -nodeId "$node_id" -syncInterval "${sync_interval}" -trafficFlushInterval "${traffic_flush_interval}" >/dev/null 2>&1; then
                 echo -e "${red}写入 worker 节点配置失败${plain}"
                 return 1
             fi
         else
-            if ! ${xui_folder}/x-ui setting -nodeRole master >/dev/null 2>&1; then
+            if ! ${xui_folder}/x-ui setting -nodeRole master -nodeId "" -syncInterval "${sync_interval}" -trafficFlushInterval "${traffic_flush_interval}" >/dev/null 2>&1; then
                 echo -e "${red}写入 master 节点配置失败${plain}"
                 return 1
             fi

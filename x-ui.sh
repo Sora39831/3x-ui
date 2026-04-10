@@ -2238,6 +2238,7 @@ get_node_setting() {
     local key="$1"
     local default_value="$2"
     local json_path="/etc/x-ui/x-ui.json"
+    local jq_expr=""
 
     if [ ! -f "$json_path" ]; then
         echo "$default_value"
@@ -2245,7 +2246,24 @@ get_node_setting() {
     fi
 
     if command -v jq >/dev/null 2>&1; then
-        jq -r "$key // $default_value" "$json_path" 2>/dev/null
+        case "$key" in
+        ".nodeRole")
+            jq_expr='.other.nodeRole // .nodeRole // "master"'
+            ;;
+        ".nodeId")
+            jq_expr='.other.nodeId // .nodeId // ""'
+            ;;
+        ".syncInterval")
+            jq_expr='.other.syncInterval // .syncInterval // "30"'
+            ;;
+        ".trafficFlushInterval")
+            jq_expr='.other.trafficFlushInterval // .trafficFlushInterval // "10"'
+            ;;
+        *)
+            jq_expr="$key // $default_value"
+            ;;
+        esac
+        jq -r "$jq_expr" "$json_path" 2>/dev/null
         return
     fi
 
@@ -2333,6 +2351,38 @@ set_node_id() {
         return 1
     fi
     echo -e "${yellow}节点 ID 已更新，建议重启面板使其完全生效。${plain}"
+}
+
+set_sync_interval() {
+    local sync_interval=""
+
+    read -rp "输入同步间隔（秒）: " sync_interval
+    sync_interval="${sync_interval// /}"
+    if ! [[ "${sync_interval}" =~ ^[1-9][0-9]*$ ]]; then
+        echo -e "${red}同步间隔必须为正整数${plain}"
+        return 1
+    fi
+    if ! ${xui_folder}/x-ui setting -syncInterval "${sync_interval}"; then
+        echo -e "${red}同步间隔更新失败${plain}"
+        return 1
+    fi
+    echo -e "${yellow}同步间隔已更新，建议重启面板使其完全生效。${plain}"
+}
+
+set_traffic_flush_interval() {
+    local flush_interval=""
+
+    read -rp "输入流量回刷间隔（秒）: " flush_interval
+    flush_interval="${flush_interval// /}"
+    if ! [[ "${flush_interval}" =~ ^[1-9][0-9]*$ ]]; then
+        echo -e "${red}流量回刷间隔必须为正整数${plain}"
+        return 1
+    fi
+    if ! ${xui_folder}/x-ui setting -trafficFlushInterval "${flush_interval}"; then
+        echo -e "${red}流量回刷间隔更新失败${plain}"
+        return 1
+    fi
+    echo -e "${yellow}流量回刷间隔已更新，建议重启面板使其完全生效。${plain}"
 }
 
 # Check if MariaDB is installed (server or client)
@@ -2572,9 +2622,11 @@ db_menu() {
 │   ${green}4.${plain} 查看当前节点设置                            │
 │   ${green}5.${plain} 设置节点角色                                │
 │   ${green}6.${plain} 设置节点 ID                                 │
+│   ${green}7.${plain} 设置同步间隔                                │
+│   ${green}8.${plain} 设置流量回刷间隔                            │
 ╚════════════════════════════════════════════════╝
 "
-    read -rp "请输入选择 [0-6]：" num
+    read -rp "请输入选择 [0-8]：" num
     case "${num}" in
     0)
         show_menu
@@ -2599,6 +2651,14 @@ db_menu() {
         ;;
     6)
         set_node_id
+        db_menu
+        ;;
+    7)
+        set_sync_interval
+        db_menu
+        ;;
+    8)
+        set_traffic_flush_interval
         db_menu
         ;;
     *)

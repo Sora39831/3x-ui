@@ -2,12 +2,17 @@ package database
 
 import (
 	"bytes"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/database/model"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	glogger "gorm.io/gorm/logger"
 )
 
 func setupTestDB(t *testing.T) {
@@ -299,6 +304,34 @@ func TestBumpSharedAccountsVersion(t *testing.T) {
 	}
 	if version != 1 {
 		t.Fatalf("expected bumped version 1, got %d", version)
+	}
+}
+
+func TestSeedSharedAccountsVersion_UsesPrimaryKeyLookup(t *testing.T) {
+	var logs bytes.Buffer
+	dryLogger := glogger.New(log.New(&logs, "", 0), glogger.Config{
+		LogLevel: glogger.Info,
+		Colorful: false,
+	})
+
+	dryDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
+		DryRun: true,
+		Logger: dryLogger,
+	})
+	if err != nil {
+		t.Fatalf("open dry-run DB failed: %v", err)
+	}
+
+	if err := seedSharedAccountsVersion(dryDB); err != nil {
+		t.Fatalf("seedSharedAccountsVersion error: %v", err)
+	}
+
+	sqlLogs := logs.String()
+	if !strings.Contains(sqlLogs, "WHERE `shared_states`.`key` = \"shared_accounts_version\"") {
+		t.Fatalf("expected primary-key lookup SQL, got logs:\n%s", sqlLogs)
+	}
+	if strings.Contains(sqlLogs, "WHERE key = \"shared_accounts_version\"") {
+		t.Fatalf("expected seed query to avoid raw key lookup, got logs:\n%s", sqlLogs)
 	}
 }
 

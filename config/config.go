@@ -213,6 +213,26 @@ func settingsLayoutMeta() map[string]any {
 	}
 }
 
+func ensureDefaultNodeSettings(settings map[string]any) {
+	group, ok := settings["other"].(map[string]any)
+	if !ok {
+		group = make(map[string]any)
+		settings["other"] = group
+	}
+
+	defaults := map[string]string{
+		"nodeRole":             string(NodeRoleMaster),
+		"nodeId":               "",
+		"syncInterval":         "30",
+		"trafficFlushInterval": "10",
+	}
+	for key, value := range defaults {
+		if existing, exists := group[key]; !exists || existing == nil {
+			group[key] = value
+		}
+	}
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -380,6 +400,7 @@ func WriteSettingToJSON(key, value string) error {
 	if _, exists := settings["_meta"]; !exists {
 		settings["_meta"] = settingsLayoutMeta()
 	}
+	ensureDefaultNodeSettings(settings)
 
 	// Check if the key lives in a nested group
 	if groups, ok := settingGroupAliases[key]; ok && len(groups) > 0 {
