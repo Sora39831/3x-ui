@@ -545,6 +545,24 @@ prompt_and_setup_ssl() {
         # 用户选择 Let's Encrypt IP 证书选项
         echo -e "${green}使用 Let's Encrypt IP 证书（短期配置文件）...${plain}"
 
+        if [[ -z "${server_ip}" ]]; then
+            local manual_ipv4=""
+            echo -e "${yellow}未能自动检测到服务器公网 IPv4。${plain}"
+            while true; do
+                read -rp "请输入服务器公网 IPv4（留空取消）：" manual_ipv4
+                manual_ipv4="${manual_ipv4// /}"
+                if [[ -z "${manual_ipv4}" ]]; then
+                    echo -e "${red}未提供公网 IPv4，无法继续 IP 证书配置。${plain}"
+                    return 1
+                fi
+                if is_ipv4 "${manual_ipv4}"; then
+                    server_ip="${manual_ipv4}"
+                    break
+                fi
+                echo -e "${red}无效的 IPv4 地址：${manual_ipv4}${plain}"
+            done
+        fi
+
         # 询问可选的 IPv6
         local ipv6_addr=""
         read -rp "是否包含 IPv6 地址？（留空跳过）：" ipv6_addr
