@@ -256,3 +256,67 @@ func TestSettingKey_IsUnique(t *testing.T) {
 		t.Fatal("expected duplicate setting key insert to fail")
 	}
 }
+
+func TestInitDB_CreatesSharedMetadataTables(t *testing.T) {
+	setupTestDB(t)
+
+	for _, table := range []string{"shared_states", "node_states"} {
+		var count int64
+		if err := db.Table(table).Count(&count).Error; err != nil {
+			t.Fatalf("table %s should exist: %v", table, err)
+		}
+	}
+}
+
+func TestBumpSharedAccountsVersion(t *testing.T) {
+	setupTestDB(t)
+
+	version, err := GetSharedAccountsVersion(GetDB())
+	if err != nil {
+		t.Fatalf("GetSharedAccountsVersion error: %v", err)
+	}
+	if version != 0 {
+		t.Fatalf("expected seeded version 0, got %d", version)
+	}
+
+	tx := GetDB().Begin()
+	if err := BumpSharedAccountsVersion(tx); err != nil {
+		t.Fatalf("BumpSharedAccountsVersion error: %v", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatalf("Commit error: %v", err)
+	}
+
+	version, err = GetSharedAccountsVersion(GetDB())
+	if err != nil {
+		t.Fatalf("GetSharedAccountsVersion error: %v", err)
+	}
+	if version != 1 {
+		t.Fatalf("expected bumped version 1, got %d", version)
+	}
+}
+
+func TestUpsertNodeState(t *testing.T) {
+	setupTestDB(t)
+
+	state := &model.NodeState{
+		NodeID:          "worker-1",
+		NodeRole:        "worker",
+		LastSeenVersion: 7,
+		LastError:       "dial tcp timeout",
+	}
+	if err := UpsertNodeState(GetDB(), state); err != nil {
+		t.Fatalf("UpsertNodeState error: %v", err)
+	}
+
+	var stored model.NodeState
+	if err := GetDB().First(&stored, "node_id = ?", "worker-1").Error; err != nil {
+		t.Fatalf("lookup node state failed: %v", err)
+	}
+	if stored.LastSeenVersion != 7 {
+		t.Fatalf("expected last seen version 7, got %d", stored.LastSeenVersion)
+	}
+	if stored.LastError != "dial tcp timeout" {
+		t.Fatalf("expected last error to round-trip, got %q", stored.LastError)
+	}
+}
