@@ -392,7 +392,9 @@ ssl_cert_issue() {
     # 获取独立服务器端口号
     local WebPort=80
     read -rp "请选择要使用的端口（默认 80）：" WebPort
-    if [[ ${WebPort} -gt 65535 || ${WebPort} -lt 1 ]]; then
+    WebPort="${WebPort// /}"
+    WebPort="${WebPort:-80}"
+    if ! [[ "${WebPort}" =~ ^[0-9]+$ ]] || ((WebPort < 1 || WebPort > 65535)); then
         echo -e "${yellow}输入 ${WebPort} 无效，将使用默认端口 80。${plain}"
         WebPort=80
     fi
@@ -825,7 +827,15 @@ config_after_install() {
 
         read -rp "是否要自定义面板端口？（否则将使用随机端口）[y/n]：" config_confirm
         if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-            read -rp "请设置面板端口：" config_port
+            while true; do
+                read -rp "请设置面板端口：" config_port
+                config_port="${config_port// /}"
+                if ! [[ "${config_port}" =~ ^[0-9]+$ ]] || ((config_port < 1 || config_port > 65535)); then
+                    echo -e "${red}无效端口，请输入 1-65535 之间的数字。${plain}"
+                    continue
+                fi
+                break
+            done
             echo -e "${yellow}您的面板端口为：${config_port}${plain}"
         else
             local config_port=$(shuf -i 1024-62000 -n 1)
