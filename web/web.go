@@ -424,6 +424,15 @@ func (s *Server) startNodeLoops() {
 	}
 }
 
+func (s *Server) startTrafficFlushLoop() {
+	if !service.IsSharedModeEnabled() {
+		return
+	}
+	store := service.NewTrafficPendingStore(config.GetTrafficPendingPath())
+	flushService := service.NewTrafficFlushService(store)
+	go flushService.Run(s.ctx)
+}
+
 // Start initializes and starts the web server with configured settings, routes, and background jobs.
 func (s *Server) Start() (err error) {
 	// This is an anonymous function, no function name
@@ -494,6 +503,7 @@ func (s *Server) Start() (err error) {
 
 	s.startTask()
 	s.startNodeLoops()
+	s.startTrafficFlushLoop()
 
 	isTgbotenabled, err := s.settingService.GetTgbotEnabled()
 	if (err == nil) && (isTgbotenabled) {

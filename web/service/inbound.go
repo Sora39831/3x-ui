@@ -1165,6 +1165,14 @@ func (s *InboundService) AddTraffic(inboundTraffics []*xray.Traffic, clientTraff
 		return err, false
 	}
 
+	needRestart, err := s.ReconcileSharedTrafficState(tx)
+	if err != nil {
+		return err, false
+	}
+	return nil, needRestart
+}
+
+func (s *InboundService) ReconcileSharedTrafficState(tx *gorm.DB) (bool, error) {
 	needRestart0, count, err := s.autoRenewClients(tx)
 	if err != nil {
 		logger.Warning("Error in renew clients:", err)
@@ -1185,7 +1193,7 @@ func (s *InboundService) AddTraffic(inboundTraffics []*xray.Traffic, clientTraff
 	} else if count > 0 {
 		logger.Debugf("%v inbounds disabled", count)
 	}
-	return nil, (needRestart0 || needRestart1 || needRestart2)
+	return needRestart0 || needRestart1 || needRestart2, nil
 }
 
 func (s *InboundService) addInboundTraffic(tx *gorm.DB, traffics []*xray.Traffic) error {
