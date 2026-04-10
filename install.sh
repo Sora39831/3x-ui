@@ -6,8 +6,6 @@ blue='\033[0;34m'
 yellow='\033[0;33m'
 plain='\033[0m'
 
-cur_dir=$(pwd)
-
 xui_folder="${XUI_MAIN_FOLDER:=/usr/local/x-ui}"
 xui_service="${XUI_SERVICE:=/etc/systemd/system}"
 
@@ -48,9 +46,6 @@ is_ipv4() {
 }
 is_ipv6() {
     [[ "$1" =~ : ]] && return 0 || return 1
-}
-is_ip() {
-    is_ipv4 "$1" || is_ipv6 "$1"
 }
 is_domain() {
     [[ "$1" =~ ^([A-Za-z0-9](-*[A-Za-z0-9])*\.)+(xn--[a-z0-9]{2,}|[A-Za-z]{2,})$ ]] && return 0 || return 1
@@ -185,76 +180,6 @@ install_acme() {
         echo -e "${green}acme.sh 安装成功${plain}"
     fi
     return 0
-}
-
-setup_ssl_certificate() {
-    local domain="$1"
-    local server_ip="$2"
-    local existing_port="$3"
-    local existing_webBasePath="$4"
-
-    echo -e "${green}正在配置 SSL 证书...${plain}"
-
-    # 检查 acme.sh 是否已安装
-    if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
-        install_acme
-        if [ $? -ne 0 ]; then
-            echo -e "${yellow}安装 acme.sh 失败，跳过 SSL 配置${plain}"
-            return 1
-        fi
-    fi
-
-    # 创建证书目录
-    local certPath="/root/cert/${domain}"
-    mkdir -p "$certPath"
-
-    # 签发证书
-    echo -e "${green}正在为 ${domain} 签发 SSL 证书...${plain}"
-    echo -e "${yellow}注意：80 端口必须开放且可从外网访问${plain}"
-
-    ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt --force >/dev/null 2>&1
-    ~/.acme.sh/acme.sh --issue -d ${domain} --listen-v6 --standalone --httpport 80 --force
-
-    if [ $? -ne 0 ]; then
-        echo -e "${yellow}为 ${domain} 签发证书失败${plain}"
-        echo -e "${yellow}请确保 80 端口已开放，稍后可通过以下命令重试：x-ui${plain}"
-        rm -rf ~/.acme.sh/${domain} 2>/dev/null
-        rm -rf "$certPath" 2>/dev/null
-        return 1
-    fi
-
-    # 安装证书
-    ~/.acme.sh/acme.sh --installcert -d ${domain} \
-        --key-file /root/cert/${domain}/privkey.pem \
-        --fullchain-file /root/cert/${domain}/fullchain.pem \
-        --reloadcmd "systemctl restart x-ui" >/dev/null 2>&1
-
-    if [ $? -ne 0 ]; then
-        echo -e "${yellow}安装证书失败${plain}"
-        return 1
-    fi
-
-    # 启用自动续期
-    ~/.acme.sh/acme.sh --upgrade --auto-upgrade >/dev/null 2>&1
-    # 安全权限：私钥仅所有者可读
-    chmod 600 $certPath/privkey.pem 2>/dev/null
-    chmod 644 $certPath/fullchain.pem 2>/dev/null
-
-    # 为面板设置证书
-    local webCertFile="/root/cert/${domain}/fullchain.pem"
-    local webKeyFile="/root/cert/${domain}/privkey.pem"
-
-    if [[ -f "$webCertFile" && -f "$webKeyFile" ]]; then
-        ${xui_folder}/x-ui cert -webCert "$webCertFile" -webCertKey "$webKeyFile" >/dev/null 2>&1
-        if ! verify_panel_cert_paths "$webCertFile" "$webKeyFile"; then
-            return 1
-        fi
-        echo -e "${green}SSL 证书安装并配置成功！${plain}"
-        return 0
-    else
-        echo -e "${yellow}未找到证书文件${plain}"
-        return 1
-    fi
 }
 
 # 签发 Let's Encrypt IP 证书（短期配置文件，约 6 天有效期）
@@ -597,7 +522,7 @@ prompt_and_setup_ssl() {
     read -rp "请选择（默认 2 使用 IP）：" ssl_choice
     ssl_choice="${ssl_choice// /}"  # 去除空格
 
-    # 如果输入为空或无效（非 1、3 或 4），默认为 2（IP 证书）
+    # 除 1/3/4 外，其余输入均视为 2（IP 证书）
     if [[ "$ssl_choice" != "1" && "$ssl_choice" != "3" && "$ssl_choice" != "4" ]]; then
         ssl_choice="2"
     fi
