@@ -335,6 +335,62 @@ func TestSeedSharedAccountsVersion_UsesPrimaryKeyLookup(t *testing.T) {
 	}
 }
 
+func TestGetSharedAccountsVersion_UsesPrimaryKeyLookup(t *testing.T) {
+	var logs bytes.Buffer
+	dryLogger := glogger.New(log.New(&logs, "", 0), glogger.Config{
+		LogLevel: glogger.Info,
+		Colorful: false,
+	})
+
+	dryDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
+		DryRun: true,
+		Logger: dryLogger,
+	})
+	if err != nil {
+		t.Fatalf("open dry-run DB failed: %v", err)
+	}
+
+	if _, err := GetSharedAccountsVersion(dryDB); err != nil {
+		t.Fatalf("GetSharedAccountsVersion error: %v", err)
+	}
+
+	sqlLogs := logs.String()
+	if !strings.Contains(sqlLogs, "WHERE `shared_states`.`key` = \"shared_accounts_version\"") {
+		t.Fatalf("expected primary-key lookup SQL, got logs:\n%s", sqlLogs)
+	}
+	if strings.Contains(sqlLogs, "WHERE key = \"shared_accounts_version\"") {
+		t.Fatalf("expected version lookup to avoid raw key lookup, got logs:\n%s", sqlLogs)
+	}
+}
+
+func TestBumpSharedAccountsVersion_UsesQuotedKeyColumn(t *testing.T) {
+	var logs bytes.Buffer
+	dryLogger := glogger.New(log.New(&logs, "", 0), glogger.Config{
+		LogLevel: glogger.Info,
+		Colorful: false,
+	})
+
+	dryDB, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
+		DryRun: true,
+		Logger: dryLogger,
+	})
+	if err != nil {
+		t.Fatalf("open dry-run DB failed: %v", err)
+	}
+
+	if err := BumpSharedAccountsVersion(dryDB); err != nil {
+		t.Fatalf("BumpSharedAccountsVersion error: %v", err)
+	}
+
+	sqlLogs := logs.String()
+	if !strings.Contains(sqlLogs, "WHERE `shared_states`.`key` = \"shared_accounts_version\"") {
+		t.Fatalf("expected quoted key column in update SQL, got logs:\n%s", sqlLogs)
+	}
+	if strings.Contains(sqlLogs, "WHERE key = \"shared_accounts_version\"") {
+		t.Fatalf("expected update SQL to avoid raw key lookup, got logs:\n%s", sqlLogs)
+	}
+}
+
 func TestUpsertNodeState(t *testing.T) {
 	setupTestDB(t)
 
