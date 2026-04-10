@@ -896,6 +896,54 @@ config_after_install() {
         fi
         config_port="${saved_port}"
 
+        read -rp "Database type [mariadb]: " db_type
+        db_type=$(echo "${db_type:-mariadb}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+        if [[ "${db_type}" != "mariadb" && "${db_type}" != "sqlite" ]]; then
+            echo -e "${yellow}无效的数据库类型，回退到 mariadb${plain}"
+            db_type="mariadb"
+        fi
+
+        if [[ "${db_type}" == "mariadb" ]]; then
+            read -rp "MariaDB host [127.0.0.1]: " db_host
+            read -rp "MariaDB port [3306]: " db_port
+            read -rp "MariaDB user: " db_user
+            read -rsp "MariaDB password: " db_pass
+            echo
+            read -rp "MariaDB database [3xui]: " db_name
+
+            XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting \
+                -dbHost "${db_host:-127.0.0.1}" \
+                -dbPort "${db_port:-3306}" \
+                -dbUser "$db_user" \
+                -dbName "${db_name:-3xui}"
+        fi
+        ${xui_folder}/x-ui setting -dbType "${db_type}"
+
+        read -rp "Node role [master]: " node_role
+        node_role=$(echo "${node_role:-master}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+        if [[ "${node_role}" != "master" && "${node_role}" != "worker" ]]; then
+            echo -e "${yellow}无效的节点角色，回退到 master${plain}"
+            node_role="master"
+        fi
+
+        if [[ "${node_role}" == "worker" && "${db_type}" != "mariadb" ]]; then
+            echo -e "${yellow}worker 节点要求使用 MariaDB，回退到 master${plain}"
+            node_role="master"
+        fi
+
+        if [[ "${node_role}" == "worker" ]]; then
+            read -rp "Node ID: " node_id
+            node_id="${node_id// /}"
+            while [[ -z "${node_id}" ]]; do
+                echo -e "${yellow}worker 节点必须提供 Node ID${plain}"
+                read -rp "Node ID: " node_id
+                node_id="${node_id// /}"
+            done
+            ${xui_folder}/x-ui setting -nodeRole worker -nodeId "$node_id"
+        else
+            ${xui_folder}/x-ui setting -nodeRole master
+        fi
+
         echo ""
         echo -e "${green}═══════════════════════════════════════════${plain}"
         echo -e "${green}        SSL 证书配置（必需）              ${plain}"

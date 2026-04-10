@@ -2231,6 +2231,108 @@ db_show_status() {
         echo -e "${green}MariaDB 主机: ${host:-127.0.0.1}:${port:-3306}${plain}"
         echo -e "${green}数据库名: ${dbname:-3xui}${plain}"
     fi
+    show_node_status
+}
+
+get_node_setting() {
+    local key="$1"
+    local default_value="$2"
+    local json_path="/etc/x-ui/x-ui.json"
+
+    if [ ! -f "$json_path" ]; then
+        echo "$default_value"
+        return
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        jq -r "$key // $default_value" "$json_path" 2>/dev/null
+        return
+    fi
+
+    case "$key" in
+    ".nodeRole")
+        grep -o '"nodeRole"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".nodeId")
+        grep -o '"nodeId"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".syncInterval")
+        grep -o '"syncInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' || echo "$default_value"
+        ;;
+    ".trafficFlushInterval")
+        grep -o '"trafficFlushInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' || echo "$default_value"
+        ;;
+    *)
+        echo "$default_value"
+        ;;
+    esac
+}
+
+show_node_status() {
+    local node_role
+    local node_id
+    local sync_interval
+    local flush_interval
+
+    node_role=$(get_node_setting '.nodeRole' '"master"' | tr -d '"')
+    node_id=$(get_node_setting '.nodeId' '""' | tr -d '"')
+    sync_interval=$(get_node_setting '.syncInterval' '30' | tr -d '"')
+    flush_interval=$(get_node_setting '.trafficFlushInterval' '10' | tr -d '"')
+
+    echo -e "${green}节点角色: ${node_role:-master}${plain}"
+    echo -e "${green}节点 ID: ${node_id:-<empty>}${plain}"
+    echo -e "${green}同步间隔: ${sync_interval:-30}s${plain}"
+    echo -e "${green}流量回刷间隔: ${flush_interval:-10}s${plain}"
+}
+
+set_node_role() {
+    local node_role=""
+    local node_id=""
+
+    read -rp "输入节点角色（master/worker）: " node_role
+    node_role=$(echo "${node_role}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    if [ "$node_role" != "master" ] && [ "$node_role" != "worker" ]; then
+        echo -e "${red}无效的节点角色${plain}"
+        return 1
+    fi
+
+    if [ "$node_role" = "worker" ]; then
+        read -rp "输入节点 ID: " node_id
+        node_id="${node_id// /}"
+        if [ -z "$node_id" ]; then
+            echo -e "${red}worker 节点必须提供 nodeId${plain}"
+            return 1
+        fi
+        if ! ${xui_folder}/x-ui setting -nodeRole worker -nodeId "$node_id"; then
+            echo -e "${red}节点角色更新失败${plain}"
+            return 1
+        fi
+    else
+        if ! ${xui_folder}/x-ui setting -nodeRole master; then
+            echo -e "${red}节点角色更新失败${plain}"
+            return 1
+        fi
+    fi
+
+    echo -e "${yellow}节点设置已更新，建议重启面板使其完全生效。${plain}"
+}
+
+set_node_id() {
+    local node_id=""
+    local current_role=""
+
+    read -rp "输入节点 ID: " node_id
+    node_id="${node_id// /}"
+    current_role=$(get_node_setting '.nodeRole' '"master"' | tr -d '"')
+    if [ "${current_role}" = "worker" ] && [ -z "${node_id}" ]; then
+        echo -e "${red}worker 节点必须提供 nodeId${plain}"
+        return 1
+    fi
+    if ! ${xui_folder}/x-ui setting -nodeId "$node_id"; then
+        echo -e "${red}节点 ID 更新失败${plain}"
+        return 1
+    fi
+    echo -e "${yellow}节点 ID 已更新，建议重启面板使其完全生效。${plain}"
 }
 
 # Check if MariaDB is installed (server or client)
@@ -2467,9 +2569,12 @@ db_menu() {
 │   ${green}1.${plain} 查看当前数据库类型（当前: ${current_type}）   │
 │   ${green}2.${plain} 切换到 MariaDB                             │
 │   ${green}3.${plain} 切换到 SQLite                               │
+│   ${green}4.${plain} 查看当前节点设置                            │
+│   ${green}5.${plain} 设置节点角色                                │
+│   ${green}6.${plain} 设置节点 ID                                 │
 ╚════════════════════════════════════════════════╝
 "
-    read -rp "请输入选择 [0-3]：" num
+    read -rp "请输入选择 [0-6]：" num
     case "${num}" in
     0)
         show_menu
@@ -2483,6 +2588,18 @@ db_menu() {
         ;;
     3)
         db_switch_to_sqlite
+        ;;
+    4)
+        show_node_status
+        db_menu
+        ;;
+    5)
+        set_node_role
+        db_menu
+        ;;
+    6)
+        set_node_id
+        db_menu
         ;;
     *)
         echo -e "${red}无效选项，请选择有效数字。${plain}\n"
