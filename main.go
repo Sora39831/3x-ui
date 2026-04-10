@@ -29,6 +29,12 @@ import (
 func runWebServer() {
 	log.Printf("Starting %v %v", config.GetName(), config.GetVersion())
 
+	dbCfg := config.GetDBConfigFromJSON()
+	nodeCfg := config.GetNodeConfigFromJSON()
+	if err := config.ValidateNodeConfig(nodeCfg, dbCfg); err != nil {
+		log.Fatalf("invalid node configuration: %v", err)
+	}
+
 	switch config.GetLogLevel() {
 	case config.Debug:
 		logger.InitLogger(logging.DEBUG)
@@ -199,6 +205,11 @@ func showSetting(show bool) {
 		fmt.Println("port:", port)
 		fmt.Println("webDomain:", webDomain)
 		fmt.Println("webBasePath:", webBasePath)
+		nodeCfg := config.GetNodeConfigFromJSON()
+		fmt.Println("nodeRole:", nodeCfg.Role)
+		fmt.Println("nodeId:", nodeCfg.NodeID)
+		fmt.Println("syncInterval:", nodeCfg.SyncIntervalSeconds)
+		fmt.Println("trafficFlushInterval:", nodeCfg.TrafficFlushSeconds)
 	}
 }
 
@@ -525,6 +536,10 @@ func main() {
 	var dbPassword string
 	var dbName string
 	var showDbType bool
+	var nodeRoleFlag string
+	var nodeIDFlag string
+	var syncIntervalFlag int
+	var trafficFlushIntervalFlag int
 	settingCmd.StringVar(&dbTypeFlag, "dbType", "", "Set database type (sqlite or mariadb)")
 	settingCmd.StringVar(&dbHost, "dbHost", "", "Set MariaDB host")
 	settingCmd.StringVar(&dbPort, "dbPort", "", "Set MariaDB port")
@@ -532,6 +547,10 @@ func main() {
 	settingCmd.StringVar(&dbPassword, "dbPassword", "", "Set MariaDB password")
 	settingCmd.StringVar(&dbName, "dbName", "", "Set MariaDB database name")
 	settingCmd.BoolVar(&showDbType, "showDbType", false, "Print current database type and exit")
+	settingCmd.StringVar(&nodeRoleFlag, "nodeRole", "", "Set node role (master or worker)")
+	settingCmd.StringVar(&nodeIDFlag, "nodeId", "", "Set node identifier")
+	settingCmd.IntVar(&syncIntervalFlag, "syncInterval", 0, "Set shared sync interval in seconds")
+	settingCmd.IntVar(&trafficFlushIntervalFlag, "trafficFlushInterval", 0, "Set traffic flush interval in seconds")
 
 	migrateDbCmd := flag.NewFlagSet("migrate-db", flag.ExitOnError)
 	var migrateDirection string
@@ -582,6 +601,22 @@ func main() {
 			fmt.Println(err)
 			return
 		}
+		nodeRoleSet := false
+		nodeIDSet := false
+		syncIntervalSet := false
+		trafficFlushIntervalSet := false
+		settingCmd.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "nodeRole":
+				nodeRoleSet = true
+			case "nodeId":
+				nodeIDSet = true
+			case "syncInterval":
+				syncIntervalSet = true
+			case "trafficFlushInterval":
+				trafficFlushIntervalSet = true
+			}
+		})
 		if showDbType {
 			fmt.Println(config.GetDBTypeFromJSON())
 			return
@@ -646,6 +681,53 @@ func main() {
 				fmt.Println("Failed to set dbName:", err)
 			} else {
 				fmt.Println("dbName set to:", dbName)
+			}
+		}
+		if nodeRoleSet || nodeIDSet || syncIntervalSet || trafficFlushIntervalSet {
+			candidate := config.GetNodeConfigFromJSON()
+			if nodeRoleSet {
+				candidate.Role = config.NodeRole(nodeRoleFlag)
+			}
+			if nodeIDSet {
+				candidate.NodeID = nodeIDFlag
+			}
+			if syncIntervalSet {
+				candidate.SyncIntervalSeconds = syncIntervalFlag
+			}
+			if trafficFlushIntervalSet {
+				candidate.TrafficFlushSeconds = trafficFlushIntervalFlag
+			}
+			if err := config.ValidateNodeConfig(candidate, config.GetDBConfigFromJSON()); err != nil {
+				fmt.Println("Invalid node settings:", err)
+				return
+			}
+			if nodeRoleSet {
+				if err := config.WriteSettingToJSON("nodeRole", nodeRoleFlag); err != nil {
+					fmt.Println("Failed to set nodeRole:", err)
+				} else {
+					fmt.Println("nodeRole set to:", nodeRoleFlag)
+				}
+			}
+			if nodeIDSet {
+				if err := config.WriteSettingToJSON("nodeId", nodeIDFlag); err != nil {
+					fmt.Println("Failed to set nodeId:", err)
+				} else {
+					fmt.Println("nodeId set to:", nodeIDFlag)
+				}
+			}
+			if syncIntervalSet {
+				if err := config.WriteSettingToJSON("syncInterval", fmt.Sprintf("%d", syncIntervalFlag)); err != nil {
+					fmt.Println("Failed to set syncInterval:", err)
+				} else {
+					fmt.Println("syncInterval set to:", syncIntervalFlag)
+				}
+			}
+			if trafficFlushIntervalSet {
+				if err := config.WriteSettingToJSON("trafficFlushInterval", fmt.Sprintf("%d", trafficFlushIntervalFlag)); err != nil {
+					fmt.Println("Failed to set trafficFlushInterval:", err)
+				} else {
+					fmt.Println("trafficFlushInterval set to:", trafficFlushIntervalFlag)
+				}
 			}
 		}
 	case "cert":
