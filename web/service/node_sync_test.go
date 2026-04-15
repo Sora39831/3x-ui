@@ -67,11 +67,11 @@ func TestSyncOnceSkipsApplyWhenVersionUnchanged(t *testing.T) {
 	applyCalled := false
 	loadSnapshotCalled := false
 	syncSvc := &NodeSyncService{
-		cachePath:        cachePath,
-		lastSeenVersion:  9,
-		loadVersion:      func() (int64, error) { return 9, nil },
-		loadSnapshot:     func() (*SharedAccountsSnapshot, error) { loadSnapshotCalled = true; return nil, nil },
-		applySnapshot:    func(*SharedAccountsSnapshot) error { applyCalled = true; return nil },
+		cachePath:       cachePath,
+		lastSeenVersion: 9,
+		loadVersion:     func() (int64, error) { return 9, nil },
+		loadSnapshot:    func() (*SharedAccountsSnapshot, error) { loadSnapshotCalled = true; return nil, nil },
+		applySnapshot:   func(*SharedAccountsSnapshot) error { applyCalled = true; return nil },
 	}
 
 	didSync, err := syncSvc.SyncOnce()
@@ -122,11 +122,11 @@ func TestSyncOnceRefreshesCacheAndAppliesSnapshot(t *testing.T) {
 
 	applyCalls := 0
 	syncSvc := &NodeSyncService{
-		cachePath:        cachePath,
-		lastSeenVersion:  11,
-		loadVersion:      func() (int64, error) { return 12, nil },
-		loadSnapshot:     func() (*SharedAccountsSnapshot, error) { return wantSnapshot, nil },
-		applySnapshot:    func(snapshot *SharedAccountsSnapshot) error { applyCalls++; return nil },
+		cachePath:       cachePath,
+		lastSeenVersion: 11,
+		loadVersion:     func() (int64, error) { return 12, nil },
+		loadSnapshot:    func() (*SharedAccountsSnapshot, error) { return wantSnapshot, nil },
+		applySnapshot:   func(snapshot *SharedAccountsSnapshot) error { applyCalls++; return nil },
 	}
 
 	didSync, err := syncSvc.SyncOnce()

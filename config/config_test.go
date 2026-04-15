@@ -268,3 +268,100 @@ func TestWriteSettingToJSONUsesModulePurposeGroup(t *testing.T) {
 		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
 	}
 }
+
+func TestWriteSettingToJSONCreatesSettingsFileWhenMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	if err := WriteSettingToJSON("dbType", "mariadb"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+	if err := WriteSettingToJSON("dbHost", "127.0.0.1"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+
+	data, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	group, ok := parsed["databaseConnection"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected databaseConnection group, got %T", parsed["databaseConnection"])
+	}
+	if got, ok := group["dbType"].(string); !ok || got != "mariadb" {
+		t.Fatalf("expected databaseConnection.dbType to be updated, got %v", group["dbType"])
+	}
+	if got, ok := group["dbHost"].(string); !ok || got != "127.0.0.1" {
+		t.Fatalf("expected databaseConnection.dbHost to be updated, got %v", group["dbHost"])
+	}
+	other, ok := parsed["other"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected other group, got %T", parsed["other"])
+	}
+	if got, ok := other["nodeRole"].(string); !ok || got != "master" {
+		t.Fatalf("expected other.nodeRole to default to master, got %v", other["nodeRole"])
+	}
+	if got, ok := other["nodeId"].(string); !ok || got != "" {
+		t.Fatalf("expected other.nodeId to default to empty string, got %v", other["nodeId"])
+	}
+	if got, ok := other["syncInterval"].(string); !ok || got != "30" {
+		t.Fatalf("expected other.syncInterval to default to 30, got %v", other["syncInterval"])
+	}
+	if got, ok := other["trafficFlushInterval"].(string); !ok || got != "10" {
+		t.Fatalf("expected other.trafficFlushInterval to default to 10, got %v", other["trafficFlushInterval"])
+	}
+}
+
+func TestWriteSettingToJSONBackfillsDefaultNodeSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XUI_DB_FOLDER", tmpDir)
+
+	initial := map[string]any{
+		"_meta": map[string]any{
+			"layout": "按模块-用途来归类",
+		},
+		"databaseConnection": map[string]any{
+			"dbType": "mariadb",
+		},
+	}
+	data, err := json.MarshalIndent(initial, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent error: %v", err)
+	}
+	if err := os.WriteFile(GetSettingPath(), data, 0644); err != nil {
+		t.Fatalf("WriteFile error: %v", err)
+	}
+
+	if err := WriteSettingToJSON("dbHost", "127.0.0.1"); err != nil {
+		t.Fatalf("WriteSettingToJSON error: %v", err)
+	}
+
+	updated, err := os.ReadFile(GetSettingPath())
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(updated, &parsed); err != nil {
+		t.Fatalf("Unmarshal error: %v", err)
+	}
+	other, ok := parsed["other"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected other group, got %T", parsed["other"])
+	}
+	if got, ok := other["nodeRole"].(string); !ok || got != "master" {
+		t.Fatalf("expected other.nodeRole to default to master, got %v", other["nodeRole"])
+	}
+	if got, ok := other["nodeId"].(string); !ok || got != "" {
+		t.Fatalf("expected other.nodeId to default to empty string, got %v", other["nodeId"])
+	}
+	if got, ok := other["syncInterval"].(string); !ok || got != "30" {
+		t.Fatalf("expected other.syncInterval to default to 30, got %v", other["syncInterval"])
+	}
+	if got, ok := other["trafficFlushInterval"].(string); !ok || got != "10" {
+		t.Fatalf("expected other.trafficFlushInterval to default to 10, got %v", other["trafficFlushInterval"])
+	}
+}

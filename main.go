@@ -25,6 +25,51 @@ import (
 	"github.com/op/go-logging"
 )
 
+type settingCommandOptions struct {
+	port                    int
+	username                string
+	password                string
+	webBasePath             string
+	webDomain               string
+	listenIP                string
+	reset                   bool
+	show                    bool
+	getListen               bool
+	getCert                 bool
+	resetTwoFactor          bool
+	tgbotToken              string
+	tgbotChatID             string
+	tgbotRuntime            string
+	enableTgbot             bool
+	dbType                  string
+	dbHost                  string
+	dbPort                  string
+	dbUser                  string
+	dbPassword              string
+	dbName                  string
+	nodeRoleSet             bool
+	nodeIDSet               bool
+	syncIntervalSet         bool
+	trafficFlushIntervalSet bool
+}
+
+func (o settingCommandOptions) needsDBInit() bool {
+	return o.port > 0 ||
+		o.username != "" ||
+		o.password != "" ||
+		o.webBasePath != "" ||
+		o.webDomain != "" ||
+		o.listenIP != "" ||
+		o.show ||
+		o.getListen ||
+		o.getCert ||
+		o.resetTwoFactor ||
+		o.tgbotToken != "" ||
+		o.tgbotChatID != "" ||
+		o.tgbotRuntime != "" ||
+		o.enableTgbot
+}
+
 // runWebServer initializes and starts the web server for the 3x-ui panel.
 func runWebServer() {
 	log.Printf("Starting %v %v", config.GetName(), config.GetVersion())
@@ -235,12 +280,6 @@ func updateTgbotEnableSts(status bool) {
 
 // updateTgbotSetting updates Telegram bot settings including token, chat ID, and runtime schedule.
 func updateTgbotSetting(tgBotToken string, tgBotChatid string, tgBotRuntime string) {
-	err := database.InitDB()
-	if err != nil {
-		fmt.Println("Error initializing database:", err)
-		return
-	}
-
 	settingService := service.SettingService{}
 
 	if tgBotToken != "" {
@@ -273,12 +312,6 @@ func updateTgbotSetting(tgBotToken string, tgBotChatid string, tgBotRuntime stri
 
 // updateSetting updates various panel settings including port, domain, credentials, base path, listen IP, and two-factor authentication.
 func updateSetting(port int, username string, password string, webBasePath string, webDomain string, listenIP string, resetTwoFactor bool) {
-	err := database.InitDB()
-	if err != nil {
-		fmt.Println("Database initialization failed:", err)
-		return
-	}
-
 	settingService := service.SettingService{}
 	userService := service.UserService{}
 
@@ -621,26 +654,6 @@ func main() {
 			fmt.Println(config.GetDBTypeFromJSON())
 			return
 		}
-		if reset {
-			resetSetting()
-		} else {
-			updateSetting(port, username, password, webBasePath, webDomain, listenIP, resetTwoFactor)
-		}
-		if show {
-			showSetting(show)
-		}
-		if getListen {
-			GetListenIP(getListen)
-		}
-		if getCert {
-			GetCertificate(getCert)
-		}
-		if (tgbottoken != "") || (tgbotchatid != "") || (tgbotRuntime != "") {
-			updateTgbotSetting(tgbottoken, tgbotchatid, tgbotRuntime)
-		}
-		if enabletgbot {
-			updateTgbotEnableSts(enabletgbot)
-		}
 		if dbTypeFlag != "" {
 			if err := config.WriteSettingToJSON("dbType", dbTypeFlag); err != nil {
 				fmt.Println("Failed to set dbType:", err)
@@ -729,6 +742,59 @@ func main() {
 					fmt.Println("trafficFlushInterval set to:", trafficFlushIntervalFlag)
 				}
 			}
+		}
+		opts := settingCommandOptions{
+			port:                    port,
+			username:                username,
+			password:                password,
+			webBasePath:             webBasePath,
+			webDomain:               webDomain,
+			listenIP:                listenIP,
+			reset:                   reset,
+			show:                    show,
+			getListen:               getListen,
+			getCert:                 getCert,
+			resetTwoFactor:          resetTwoFactor,
+			tgbotToken:              tgbottoken,
+			tgbotChatID:             tgbotchatid,
+			tgbotRuntime:            tgbotRuntime,
+			enableTgbot:             enabletgbot,
+			dbType:                  dbTypeFlag,
+			dbHost:                  dbHost,
+			dbPort:                  dbPort,
+			dbUser:                  dbUser,
+			dbPassword:              dbPassword,
+			dbName:                  dbName,
+			nodeRoleSet:             nodeRoleSet,
+			nodeIDSet:               nodeIDSet,
+			syncIntervalSet:         syncIntervalSet,
+			trafficFlushIntervalSet: trafficFlushIntervalSet,
+		}
+		if opts.needsDBInit() {
+			if err := database.InitDB(); err != nil {
+				fmt.Println("Database initialization failed:", err)
+				return
+			}
+		}
+		if reset {
+			resetSetting()
+		} else {
+			updateSetting(port, username, password, webBasePath, webDomain, listenIP, resetTwoFactor)
+		}
+		if show {
+			showSetting(show)
+		}
+		if getListen {
+			GetListenIP(getListen)
+		}
+		if getCert {
+			GetCertificate(getCert)
+		}
+		if (tgbottoken != "") || (tgbotchatid != "") || (tgbotRuntime != "") {
+			updateTgbotSetting(tgbottoken, tgbotchatid, tgbotRuntime)
+		}
+		if enabletgbot {
+			updateTgbotEnableSts(enabletgbot)
 		}
 	case "cert":
 		err := settingCmd.Parse(os.Args[2:])
