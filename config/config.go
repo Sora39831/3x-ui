@@ -213,6 +213,26 @@ func settingsLayoutMeta() map[string]any {
 	}
 }
 
+func ensureDefaultNodeSettings(settings map[string]any) {
+	group, ok := settings["other"].(map[string]any)
+	if !ok {
+		group = make(map[string]any)
+		settings["other"] = group
+	}
+
+	defaults := map[string]string{
+		"nodeRole":             string(NodeRoleMaster),
+		"nodeId":               "",
+		"syncInterval":         "30",
+		"trafficFlushInterval": "10",
+	}
+	for key, value := range defaults {
+		if existing, exists := group[key]; !exists || existing == nil {
+			group[key] = value
+		}
+	}
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -361,18 +381,26 @@ func ValidateNodeConfig(nodeCfg NodeConfig, dbCfg DBConfig) error {
 // It reads the existing file, updates the value, and writes back.
 func WriteSettingToJSON(key, value string) error {
 	path := GetSettingPath()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
 	var settings map[string]any
-	if err := json.Unmarshal(data, &settings); err != nil {
+	data, err := os.ReadFile(path)
+	if err == nil {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return err
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return err
+		}
+		settings = map[string]any{
+			"_meta": settingsLayoutMeta(),
+		}
+	} else {
 		return err
 	}
 	if _, exists := settings["_meta"]; !exists {
 		settings["_meta"] = settingsLayoutMeta()
 	}
+	ensureDefaultNodeSettings(settings)
 
 	// Check if the key lives in a nested group
 	if groups, ok := settingGroupAliases[key]; ok && len(groups) > 0 {

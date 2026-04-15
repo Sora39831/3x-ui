@@ -23,11 +23,11 @@ function LOGI() {
 is_port_in_use() {
     local port="$1"
     if command -v ss >/dev/null 2>&1; then
-        ss -ltn 2>/dev/null | awk -v p=":${port}$" '$4 ~ p {exit 0} END {exit 1}'
+        ss -ltn 2>/dev/null | awk -v p=":${port}$" '$4 ~ p {found=1} END {exit(found ? 0 : 1)}'
         return
     fi
     if command -v netstat >/dev/null 2>&1; then
-        netstat -lnt 2>/dev/null | awk -v p=":${port} " '$4 ~ p {exit 0} END {exit 1}'
+        netstat -lnt 2>/dev/null | awk -v p=":${port} " '$4 ~ p {found=1} END {exit(found ? 0 : 1)}'
         return
     fi
     if command -v lsof >/dev/null 2>&1; then
@@ -2238,6 +2238,7 @@ get_node_setting() {
     local key="$1"
     local default_value="$2"
     local json_path="/etc/x-ui/x-ui.json"
+    local jq_expr=""
 
     if [ ! -f "$json_path" ]; then
         echo "$default_value"
@@ -2245,7 +2246,24 @@ get_node_setting() {
     fi
 
     if command -v jq >/dev/null 2>&1; then
-        jq -r "$key // $default_value" "$json_path" 2>/dev/null
+        case "$key" in
+        ".nodeRole")
+            jq_expr='.other.nodeRole // .nodeRole // "master"'
+            ;;
+        ".nodeId")
+            jq_expr='.other.nodeId // .nodeId // ""'
+            ;;
+        ".syncInterval")
+            jq_expr='.other.syncInterval // .syncInterval // "30"'
+            ;;
+        ".trafficFlushInterval")
+            jq_expr='.other.trafficFlushInterval // .trafficFlushInterval // "10"'
+            ;;
+        *)
+            jq_expr="$key // $default_value"
+            ;;
+        esac
+        jq -r "$jq_expr" "$json_path" 2>/dev/null
         return
     fi
 
@@ -2335,20 +2353,99 @@ set_node_id() {
     echo -e "${yellow}节点 ID 已更新，建议重启面板使其完全生效。${plain}"
 }
 
-# Check if MariaDB is installed (server or client)
-check_mariadb_installed() {
-    if command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1; then
+set_sync_interval() {
+    local sync_interval=""
+
+    read -rp "输入同步间隔（秒）: " sync_interval
+    sync_interval="${sync_interval// /}"
+    if ! [[ "${sync_interval}" =~ ^[1-9][0-9]*$ ]]; then
+        echo -e "${red}同步间隔必须为正整数${plain}"
+        return 1
+    fi
+    if ! ${xui_folder}/x-ui setting -syncInterval "${sync_interval}"; then
+        echo -e "${red}同步间隔更新失败${plain}"
+        return 1
+    fi
+    echo -e "${yellow}同步间隔已更新，建议重启面板使其完全生效。${plain}"
+}
+
+set_traffic_flush_interval() {
+    local flush_interval=""
+
+    read -rp "输入流量回刷间隔（秒）: " flush_interval
+    flush_interval="${flush_interval// /}"
+    if ! [[ "${flush_interval}" =~ ^[1-9][0-9]*$ ]]; then
+        echo -e "${red}流量回刷间隔必须为正整数${plain}"
+        return 1
+    fi
+    if ! ${xui_folder}/x-ui setting -trafficFlushInterval "${flush_interval}"; then
+        echo -e "${red}流量回刷间隔更新失败${plain}"
+        return 1
+    fi
+    echo -e "${yellow}流量回刷间隔已更新，建议重启面板使其完全生效。${plain}"
+}
+
+has_mariadb_cli() {
+    command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1
+}
+
+mariadb_cli_bin() {
+    if command -v mariadb >/dev/null 2>&1; then
+        command -v mariadb
         return 0
     fi
-    if systemctl is-active --quiet mariadb 2>/dev/null || systemctl is-active --quiet mysql 2>/dev/null; then
+    if command -v mysql >/dev/null 2>&1; then
+        command -v mysql
         return 0
     fi
     return 1
 }
 
-# Install MariaDB server based on distro
-install_mariadb() {
-    echo -e "${green}正在安装 MariaDB...${plain}"
+has_local_mariadb_service() {
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl list-unit-files 2>/dev/null | grep -qE '^(mariadb|mysql)\.service$' && return 0
+    fi
+    [[ -f /etc/init.d/mariadb ]]
+}
+
+check_mariadb_installed() {
+    has_mariadb_cli || has_local_mariadb_service
+}
+
+install_mariadb_client() {
+    echo -e "${green}正在安装 MariaDB 客户端...${plain}"
+    case "${release}" in
+    ubuntu | debian | linuxmint)
+        apt-get update -y && apt-get install -y mariadb-client
+        ;;
+    centos | rhel | almalinux | rocky | ol | alinux | amzn)
+        if command -v dnf >/dev/null 2>&1; then
+            dnf install -y mariadb
+        else
+            yum install -y mariadb
+        fi
+        ;;
+    fedora)
+        dnf install -y mariadb
+        ;;
+    arch | manjaro)
+        pacman -Sy --noconfirm mariadb-clients >/dev/null 2>&1 || pacman -Sy --noconfirm mariadb
+        ;;
+    opensuse* | sles)
+        zypper install -y mariadb-client
+        ;;
+    alpine)
+        apk add mariadb-client
+        ;;
+    *)
+        echo -e "${red}不支持的发行版: ${release}，请手动安装 MariaDB 客户端${plain}"
+        return 1
+        ;;
+    esac
+}
+
+install_local_mariadb_server() {
+    echo -e "${green}正在安装本地 MariaDB...${plain}"
     case "${release}" in
     ubuntu | debian | linuxmint)
         apt-get update -y && apt-get install -y mariadb-server mariadb-client
@@ -2365,14 +2462,14 @@ install_mariadb() {
         ;;
     arch | manjaro)
         pacman -Sy --noconfirm mariadb
-        mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null 2>&1
+        mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null 2>&1 || true
         ;;
     opensuse* | sles)
         zypper install -y mariadb-server mariadb-client
         ;;
     alpine)
         apk add mariadb mariadb-client
-        mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null 2>&1
+        mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql >/dev/null 2>&1 || true
         ;;
     *)
         echo -e "${red}不支持的发行版: ${release}，请手动安装 MariaDB${plain}"
@@ -2388,55 +2485,153 @@ install_mariadb() {
     return $ret
 }
 
-# Start and enable MariaDB service
 start_mariadb_service() {
     local svc_name=""
-    if systemctl list-unit-files | grep -q "^mariadb.service"; then
-        svc_name="mariadb"
-    elif systemctl list-unit-files | grep -q "^mysql.service"; then
-        svc_name="mysql"
+    if command -v systemctl >/dev/null 2>&1; then
+        if systemctl list-unit-files 2>/dev/null | grep -q "^mariadb.service"; then
+            svc_name="mariadb"
+        elif systemctl list-unit-files 2>/dev/null | grep -q "^mysql.service"; then
+            svc_name="mysql"
+        fi
     fi
     if [ -n "$svc_name" ]; then
         systemctl start "$svc_name" 2>/dev/null
         systemctl enable "$svc_name" 2>/dev/null
-    else
-        # alpine / no systemd
+        return 0
+    fi
+    if [[ $release == "alpine" ]]; then
         rc-service mariadb start 2>/dev/null
         rc-update add mariadb 2>/dev/null
+        return $?
     fi
+    return 1
 }
 
-# Test MariaDB connection with given credentials
-# Args: host port user pass
-test_mariadb_connection() {
+ensure_mariadb_client_ready() {
+    if has_mariadb_cli; then
+        return 0
+    fi
+    echo -e "${yellow}未检测到 MariaDB 客户端${plain}"
+    confirm "是否安装 MariaDB 客户端？" "y" || return 1
+    install_mariadb_client || return 1
+    has_mariadb_cli
+}
+
+ensure_local_mariadb_ready() {
+    if ! has_local_mariadb_service; then
+        echo -e "${yellow}未检测到本地 MariaDB 服务${plain}"
+        confirm "是否安装本地 MariaDB？" "y" || return 1
+        install_local_mariadb_server || return 1
+    fi
+    ensure_mariadb_client_ready || return 1
+    start_mariadb_service || true
+    return 0
+}
+
+test_mariadb_server_connection() {
     local host="$1" port="$2" user="$3" pass="$4"
-    mariadb -h "$host" -P "$port" -u "$user" -p"$pass" -e "SELECT 1;" >/dev/null 2>&1
-    return $?
+    local bin
+    bin=$(mariadb_cli_bin) || return 1
+    "$bin" -h "$host" -P "$port" -u "$user" -p"$pass" -e "SELECT 1;" >/dev/null 2>&1
 }
 
-# Test connection to a specific database, create if not exists
-# Args: host port user pass dbname
-ensure_mariadb_database() {
-    local host="$1" port="$2" user="$3" pass="$4" dbname="$5"
-    # Check if database exists
-    local exists
-    exists=$(mariadb -h "$host" -P "$port" -u "$user" -p"$pass" -N -B -e \
-        "SELECT COUNT(*) FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='${dbname}';" 2>/dev/null)
-    if [ "$exists" = "1" ]; then
-        echo -e "${green}数据库 '${dbname}' 已存在${plain}"
+test_mariadb_database_connection() {
+    local host="$1" port="$2" dbname="$3" user="$4" pass="$5"
+    local bin
+    bin=$(mariadb_cli_bin) || return 1
+    "$bin" -h "$host" -P "$port" -u "$user" -p"$pass" -D "$dbname" -e "SELECT 1;" >/dev/null 2>&1
+}
+
+is_safe_mariadb_identifier() {
+    [[ "$1" =~ ^[A-Za-z0-9_.-]+$ ]]
+}
+
+escape_sql_string() {
+    printf "%s" "$1" | sed "s/'/''/g"
+}
+
+LOCAL_MARIADB_ADMIN_MODE=""
+LOCAL_MARIADB_ADMIN_USER=""
+LOCAL_MARIADB_ADMIN_PASS=""
+LOCAL_MARIADB_ADMIN_PORT="3306"
+
+try_local_mariadb_socket_admin() {
+    local bin
+    bin=$(mariadb_cli_bin) || return 1
+    "$bin" -e "SELECT 1;" >/dev/null 2>&1 || "$bin" -uroot -e "SELECT 1;" >/dev/null 2>&1
+}
+
+ensure_local_mariadb_admin_access() {
+    local port="${1:-3306}"
+    LOCAL_MARIADB_ADMIN_PORT="$port"
+
+    if try_local_mariadb_socket_admin; then
+        LOCAL_MARIADB_ADMIN_MODE="socket"
         return 0
     fi
-    # Create database
-    echo -e "${green}正在创建数据库 '${dbname}'...${plain}"
-    mariadb -h "$host" -P "$port" -u "$user" -p"$pass" -e \
-        "CREATE DATABASE \`${dbname}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
-    if [ $? -eq 0 ]; then
-        echo -e "${green}数据库 '${dbname}' 创建成功${plain}"
-        return 0
-    else
-        echo -e "${red}数据库 '${dbname}' 创建失败${plain}"
+
+    local admin_user admin_pass
+    echo -e "${yellow}无法通过 root socket 直接连接本地 MariaDB，请输入管理员账号信息。${plain}"
+    read -rp "MariaDB 管理员用户名 [root]: " admin_user
+    admin_user="${admin_user:-root}"
+    read -rsp "MariaDB 管理员密码: " admin_pass
+    echo
+
+    if ! test_mariadb_server_connection "127.0.0.1" "$port" "$admin_user" "$admin_pass"; then
+        echo -e "${red}管理员账号连接失败${plain}"
         return 1
     fi
+
+    LOCAL_MARIADB_ADMIN_MODE="password"
+    LOCAL_MARIADB_ADMIN_USER="$admin_user"
+    LOCAL_MARIADB_ADMIN_PASS="$admin_pass"
+}
+
+run_local_mariadb_admin_sql() {
+    local sql="$1"
+    local bin
+    bin=$(mariadb_cli_bin) || return 1
+
+    case "$LOCAL_MARIADB_ADMIN_MODE" in
+    socket)
+        "$bin" -e "$sql" >/dev/null 2>&1 || "$bin" -uroot -e "$sql" >/dev/null 2>&1
+        ;;
+    password)
+        "$bin" -h "127.0.0.1" -P "$LOCAL_MARIADB_ADMIN_PORT" -u "$LOCAL_MARIADB_ADMIN_USER" -p"$LOCAL_MARIADB_ADMIN_PASS" -e "$sql" >/dev/null 2>&1
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+ensure_mariadb_database_and_user() {
+    local dbname="$1" dbuser="$2" dbpass="$3"
+    local escaped_pass
+    local sql=""
+    local account_host=""
+
+    if ! is_safe_mariadb_identifier "$dbname"; then
+        echo -e "${red}业务数据库名仅支持字母、数字、点、下划线和连字符${plain}"
+        return 1
+    fi
+    if ! is_safe_mariadb_identifier "$dbuser"; then
+        echo -e "${red}业务用户名仅支持字母、数字、点、下划线和连字符${plain}"
+        return 1
+    fi
+
+    escaped_pass=$(escape_sql_string "$dbpass")
+    sql="CREATE DATABASE IF NOT EXISTS \`${dbname}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+    for account_host in "localhost" "127.0.0.1" "::1"; do
+        sql="${sql} CREATE USER IF NOT EXISTS '${dbuser}'@'${account_host}' IDENTIFIED BY '${escaped_pass}';"
+        sql="${sql} ALTER USER '${dbuser}'@'${account_host}' IDENTIFIED BY '${escaped_pass}';"
+        sql="${sql} GRANT ALL PRIVILEGES ON \`${dbname}\`.* TO '${dbuser}'@'${account_host}';"
+    done
+    sql="${sql} FLUSH PRIVILEGES;"
+
+    echo -e "${green}正在确保本地 MariaDB 的业务库和业务账号存在...${plain}"
+    run_local_mariadb_admin_sql "$sql"
 }
 
 # Switch to MariaDB
@@ -2448,77 +2643,86 @@ db_switch_to_mariadb() {
         return
     fi
 
-    # Step 1: Check MariaDB installation
-    if ! check_mariadb_installed; then
-        echo -e "${yellow}未检测到 MariaDB${plain}"
-        confirm "是否安装 MariaDB？" "y"
-        if [ $? -ne 0 ]; then
-            echo -e "${yellow}已取消安装，返回数据库菜单${plain}"
+    local mariadb_mode_choice mariadb_mode
+    local db_host db_port db_user db_pass db_name
+
+    read -rp "MariaDB 部署位置 [1=本地 MariaDB, 2=远程 MariaDB，默认 1]: " mariadb_mode_choice
+    case "${mariadb_mode_choice:-1}" in
+    2)
+        mariadb_mode="remote"
+        ;;
+    *)
+        mariadb_mode="local"
+        ;;
+    esac
+
+    if [[ "${mariadb_mode}" == "remote" ]]; then
+        ensure_mariadb_client_ready || {
+            echo -e "${yellow}已取消安装 MariaDB 客户端，返回数据库菜单${plain}"
+            db_menu
+            return
+        }
+
+        echo -e "${green}请输入远程 MariaDB 业务连接信息（直接回车使用默认值）：${plain}"
+        read -rp "远程 MariaDB host [127.0.0.1]: " db_host
+        read -rp "远程 MariaDB port [3306]: " db_port
+        read -rp "业务数据库名 [3xui]: " db_name
+        read -rp "业务用户名: " db_user
+        read -rsp "业务密码: " db_pass
+        echo
+
+        db_host=${db_host:-127.0.0.1}
+        db_port=${db_port:-3306}
+        db_name=${db_name:-3xui}
+        if [[ -z "$db_user" || -z "$db_pass" ]]; then
+            echo -e "${red}业务用户名和业务密码不能为空${plain}"
             db_menu
             return
         fi
-        install_mariadb
-        if [ $? -ne 0 ]; then
-            echo -e "${red}MariaDB 安装失败，返回数据库菜单${plain}"
+
+        echo -e "${green}正在验证远程 MariaDB 业务连接...${plain}"
+        if ! test_mariadb_database_connection "$db_host" "$db_port" "$db_name" "$db_user" "$db_pass"; then
+            echo -e "${red}无法使用输入的远程 MariaDB 信息连接到业务数据库${plain}"
             db_menu
             return
         fi
-        start_mariadb_service
-        if ! check_mariadb_installed; then
-            echo -e "${red}MariaDB 安装后仍无法检测到，请手动检查${plain}"
-            db_menu
-            return
-        fi
-        echo -e "${green}MariaDB 已安装并启动${plain}"
     else
-        echo -e "${green}MariaDB 已安装${plain}"
-        # Ensure service is running
-        start_mariadb_service
+        db_host="127.0.0.1"
+        db_port="3306"
+        read -rp "业务数据库名 [3xui]: " db_name
+        read -rp "业务用户名: " db_user
+        read -rsp "业务密码: " db_pass
+        echo
+
+        db_name=${db_name:-3xui}
+        if [[ -z "$db_user" || -z "$db_pass" ]]; then
+            echo -e "${red}业务用户名和业务密码不能为空${plain}"
+            db_menu
+            return
+        fi
+
+        ensure_local_mariadb_ready || {
+            echo -e "${yellow}本地 MariaDB 未准备完成，返回数据库菜单${plain}"
+            db_menu
+            return
+        }
+        ensure_local_mariadb_admin_access "$db_port" || {
+            db_menu
+            return
+        }
+        ensure_mariadb_database_and_user "$db_name" "$db_user" "$db_pass" || {
+            db_menu
+            return
+        }
+
+        echo -e "${green}正在验证本地 MariaDB 业务连接...${plain}"
+        if ! test_mariadb_database_connection "$db_host" "$db_port" "$db_name" "$db_user" "$db_pass"; then
+            echo -e "${red}无法使用创建后的本地 MariaDB 业务账号连接数据库${plain}"
+            db_menu
+            return
+        fi
     fi
 
-    # Step 2: Collect connection info
-    echo -e "${green}请输入 MariaDB 连接信息（直接回车使用默认值）：${plain}"
-
-    read -rp "MariaDB IP（默认 127.0.0.1）: " db_host
-    db_host=${db_host:-127.0.0.1}
-
-    read -rp "MariaDB 端口（默认 3306）: " db_port
-    db_port=${db_port:-3306}
-
-    read -rp "MariaDB 用户名: " db_user
-    if [ -z "$db_user" ]; then
-        echo -e "${red}用户名不能为空${plain}"
-        db_menu
-        return
-    fi
-
-    read -rsp "MariaDB 密码: " db_pass
-    echo
-    if [ -z "$db_pass" ]; then
-        echo -e "${red}密码不能为空${plain}"
-        db_menu
-        return
-    fi
-
-    read -rp "数据库名（默认 3xui）: " db_name
-    db_name=${db_name:-3xui}
-
-    # Step 3: Test connection
-    echo -e "${green}正在测试数据库连接...${plain}"
-    if ! test_mariadb_connection "$db_host" "$db_port" "$db_user" "$db_pass"; then
-        echo -e "${red}无法连接到 MariaDB，请检查用户名、密码及主机信息${plain}"
-        db_menu
-        return
-    fi
-    echo -e "${green}数据库连接成功${plain}"
-
-    # Step 4: Ensure database exists
-    if ! ensure_mariadb_database "$db_host" "$db_port" "$db_user" "$db_pass" "$db_name"; then
-        db_menu
-        return
-    fi
-
-    # Step 5: Save config and migrate
     echo -e "${green}正在配置 MariaDB 连接...${plain}"
     XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
 
@@ -2572,9 +2776,11 @@ db_menu() {
 │   ${green}4.${plain} 查看当前节点设置                            │
 │   ${green}5.${plain} 设置节点角色                                │
 │   ${green}6.${plain} 设置节点 ID                                 │
+│   ${green}7.${plain} 设置同步间隔                                │
+│   ${green}8.${plain} 设置流量回刷间隔                            │
 ╚════════════════════════════════════════════════╝
 "
-    read -rp "请输入选择 [0-6]：" num
+    read -rp "请输入选择 [0-8]：" num
     case "${num}" in
     0)
         show_menu
@@ -2599,6 +2805,14 @@ db_menu() {
         ;;
     6)
         set_node_id
+        db_menu
+        ;;
+    7)
+        set_sync_interval
+        db_menu
+        ;;
+    8)
+        set_traffic_flush_interval
         db_menu
         ;;
     *)

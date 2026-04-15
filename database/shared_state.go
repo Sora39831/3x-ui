@@ -17,19 +17,22 @@ func txOrDB(tx *gorm.DB) *gorm.DB {
 }
 
 func seedSharedAccountsVersion(tx *gorm.DB) error {
-	return txOrDB(tx).FirstOrCreate(
-		&model.SharedState{},
-		&model.SharedState{
-			Key:       SharedAccountsVersionKey,
+	state := &model.SharedState{
+		Key: SharedAccountsVersionKey,
+	}
+	return txOrDB(tx).
+		Attrs(&model.SharedState{
 			Version:   0,
 			UpdatedAt: time.Now().Unix(),
-		},
-	).Error
+		}).
+		FirstOrCreate(state).Error
 }
 
 func GetSharedAccountsVersion(tx *gorm.DB) (int64, error) {
-	state := &model.SharedState{}
-	if err := txOrDB(tx).First(state, "key = ?", SharedAccountsVersionKey).Error; err != nil {
+	state := &model.SharedState{
+		Key: SharedAccountsVersionKey,
+	}
+	if err := txOrDB(tx).First(state).Error; err != nil {
 		return 0, err
 	}
 	return state.Version, nil
@@ -37,7 +40,7 @@ func GetSharedAccountsVersion(tx *gorm.DB) (int64, error) {
 
 func BumpSharedAccountsVersion(tx *gorm.DB) error {
 	return txOrDB(tx).Model(&model.SharedState{}).
-		Where("key = ?", SharedAccountsVersionKey).
+		Where(&model.SharedState{Key: SharedAccountsVersionKey}).
 		Updates(map[string]any{
 			"version":    gorm.Expr("version + 1"),
 			"updated_at": time.Now().Unix(),

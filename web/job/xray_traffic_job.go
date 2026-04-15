@@ -41,7 +41,7 @@ func (j *XrayTrafficJob) Run() {
 	}
 	needRestart0 := false
 	if service.IsSharedModeEnabled() {
-		if err := j.trafficFlushSvc.Collect(clientTraffics); err != nil {
+		if err := j.trafficFlushSvc.Collect(traffics, clientTraffics); err != nil {
 			logger.Warning("collect shared traffic failed:", err)
 		}
 	} else {
