@@ -204,6 +204,44 @@ uninstall() {
         fi
     fi
 
+    local current_db_type=""
+    local db_host=""
+    local db_port=""
+    local db_name=""
+    local db_user=""
+    local delete_db_confirmed=1
+    current_db_type=$(read_json_dbtype)
+    if [[ "$current_db_type" == "mariadb" ]]; then
+        local json_path="/etc/x-ui/x-ui.json"
+        if command -v jq >/dev/null 2>&1; then
+            db_host=$(jq -r '.databaseConnection.dbHost // .other.dbHost // "127.0.0.1"' "$json_path" 2>/dev/null)
+            db_port=$(jq -r '.databaseConnection.dbPort // .other.dbPort // "3306"' "$json_path" 2>/dev/null)
+            db_name=$(jq -r '.databaseConnection.dbName // .other.dbName // "3xui"' "$json_path" 2>/dev/null)
+            db_user=$(jq -r '.databaseConnection.dbUser // .other.dbUser // ""' "$json_path" 2>/dev/null)
+        else
+            db_host=$(grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            db_port=$(grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            db_name=$(grep -o '"dbName"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            db_user=$(grep -o '"dbUser"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
+        fi
+        db_host="${db_host:-127.0.0.1}"
+        db_port="${db_port:-3306}"
+        db_name="${db_name:-3xui}"
+
+        echo -e "${yellow}检测到当前数据库类型为 MariaDB (${db_host}:${db_port}/${db_name})${plain}"
+        confirm "是否删除数据库并卸载本机 MariaDB？" "n"
+        delete_db_confirmed=$?
+
+        if [[ $delete_db_confirmed == 0 ]]; then
+            if [[ "$db_host" == "127.0.0.1" || "$db_host" == "localhost" || "$db_host" == "::1" ]]; then
+                remove_local_mariadb_data "$db_port" "$db_name" "$db_user"
+                uninstall_local_mariadb_packages
+            else
+                echo -e "${yellow}当前 MariaDB 为远程地址 (${db_host})，跳过数据库删除与本机 MariaDB 卸载${plain}"
+            fi
+        fi
+    fi
+
     if [[ $release == "alpine" ]]; then
         rc-service x-ui stop
         rc-update del x-ui
@@ -227,6 +265,95 @@ uninstall() {
     # 捕获 SIGTERM 信号
     trap delete_script SIGTERM
     delete_script
+}
+
+remove_local_mariadb_data() {
+    local db_port="$1"
+    local db_name="$2"
+    local db_user="$3"
+    local sql=""
+    local account_host=""
+
+    if ! has_local_mariadb_service && ! has_mariadb_cli; then
+        echo -e "${yellow}未检测到本机 MariaDB 服务或客户端，跳过数据库删除${plain}"
+        return 0
+    fi
+
+    if ! ensure_mariadb_client_ready; then
+        echo -e "${yellow}MariaDB 客户端未就绪，跳过数据库删除${plain}"
+        return 0
+    fi
+    if ! ensure_local_mariadb_admin_access "${db_port}"; then
+        echo -e "${yellow}无法获取本机 MariaDB 管理权限，跳过数据库删除${plain}"
+        return 0
+    fi
+
+    if [[ "$db_name" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+        sql="${sql} DROP DATABASE IF EXISTS \`${db_name}\`;"
+    else
+        echo -e "${yellow}数据库名不符合安全规则，跳过删除业务库: ${db_name}${plain}"
+    fi
+
+    if [[ -n "$db_user" ]]; then
+        if [[ "$db_user" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            for account_host in "localhost" "127.0.0.1" "::1"; do
+                sql="${sql} DROP USER IF EXISTS '${db_user}'@'${account_host}';"
+            done
+        else
+            echo -e "${yellow}业务用户名不符合安全规则，跳过删除业务账号: ${db_user}${plain}"
+        fi
+    fi
+
+    if [[ -z "$sql" ]]; then
+        echo -e "${yellow}无可执行的数据库删除语句，跳过数据库删除${plain}"
+        return 0
+    fi
+
+    if run_local_mariadb_admin_sql "$sql"; then
+        echo -e "${green}本机 MariaDB 业务库/业务账号删除完成${plain}"
+    else
+        echo -e "${yellow}本机 MariaDB 业务库/业务账号删除失败，继续执行卸载流程${plain}"
+    fi
+}
+
+uninstall_local_mariadb_packages() {
+    echo -e "${green}正在卸载本机 MariaDB...${plain}"
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl stop mariadb 2>/dev/null || true
+        systemctl disable mariadb 2>/dev/null || true
+        systemctl stop mysql 2>/dev/null || true
+        systemctl disable mysql 2>/dev/null || true
+    elif [[ $release == "alpine" ]]; then
+        rc-service mariadb stop 2>/dev/null || true
+        rc-update del mariadb 2>/dev/null || true
+    fi
+
+    case "${release}" in
+    ubuntu | debian | linuxmint | armbian)
+        apt-get remove -y mariadb-server mariadb-client mariadb-common >/dev/null 2>&1 || true
+        apt-get autoremove -y >/dev/null 2>&1 || true
+        ;;
+    centos | rhel | almalinux | rocky | ol | alinux | amzn | fedora)
+        if command -v dnf >/dev/null 2>&1; then
+            dnf remove -y mariadb-server mariadb mariadb-client >/dev/null 2>&1 || true
+        else
+            yum remove -y mariadb-server mariadb mariadb-client >/dev/null 2>&1 || true
+        fi
+        ;;
+    arch | manjaro | parch)
+        pacman -Rns --noconfirm mariadb mariadb-clients >/dev/null 2>&1 || pacman -Rns --noconfirm mariadb >/dev/null 2>&1 || true
+        ;;
+    opensuse* | sles | opensuse-tumbleweed | opensuse-leap)
+        zypper rm -y mariadb mariadb-client mariadb-server >/dev/null 2>&1 || true
+        ;;
+    alpine)
+        apk del mariadb mariadb-client >/dev/null 2>&1 || true
+        ;;
+    *)
+        echo -e "${yellow}当前发行版未内置 MariaDB 卸载命令，请手动检查数据库包${plain}"
+        ;;
+    esac
 }
 
 reset_user() {
@@ -2674,6 +2801,11 @@ db_switch_to_mariadb() {
         db_host=${db_host:-127.0.0.1}
         db_port=${db_port:-3306}
         db_name=${db_name:-3xui}
+        while ! [[ "${db_port}" =~ ^[0-9]+$ ]] || ((db_port < 1 || db_port > 65535)); do
+            echo -e "${red}远程 MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+            read -rp "远程 MariaDB port [3306]: " db_port
+            db_port=${db_port:-3306}
+        done
         if [[ -z "$db_user" || -z "$db_pass" ]]; then
             echo -e "${red}业务用户名和业务密码不能为空${plain}"
             db_menu
