@@ -2346,21 +2346,78 @@ read_json_dbtype() {
     fi
 }
 
+get_database_setting() {
+    local key="$1"
+    local default_value="$2"
+    local json_path="/etc/x-ui/x-ui.json"
+    local jq_expr=""
+
+    if [ ! -f "$json_path" ]; then
+        echo "$default_value"
+        return
+    fi
+
+    if command -v jq >/dev/null 2>&1; then
+        case "$key" in
+        ".dbType")
+            jq_expr='.databaseConnection.dbType // .other.dbType // .dbType // "sqlite"'
+            ;;
+        ".dbHost")
+            jq_expr='.databaseConnection.dbHost // .other.dbHost // .dbHost // "127.0.0.1"'
+            ;;
+        ".dbPort")
+            jq_expr='.databaseConnection.dbPort // .other.dbPort // .dbPort // "3306"'
+            ;;
+        ".dbUser")
+            jq_expr='.databaseConnection.dbUser // .other.dbUser // .dbUser // ""'
+            ;;
+        ".dbPassword")
+            jq_expr='.databaseConnection.dbPassword // .other.dbPassword // .dbPassword // ""'
+            ;;
+        ".dbName")
+            jq_expr='.databaseConnection.dbName // .other.dbName // .dbName // "3xui"'
+            ;;
+        *)
+            jq_expr="$key // $default_value"
+            ;;
+        esac
+        jq -r "$jq_expr" "$json_path" 2>/dev/null
+        return
+    fi
+
+    case "$key" in
+    ".dbType")
+        grep -o '"dbType"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".dbHost")
+        grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".dbPort")
+        grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".dbUser")
+        grep -o '"dbUser"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".dbPassword")
+        grep -o '"dbPassword"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    ".dbName")
+        grep -o '"dbName"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        ;;
+    *)
+        echo "$default_value"
+        ;;
+    esac
+}
+
 # Show current database status
 db_show_status() {
     local current_type=$(read_json_dbtype)
     echo -e "${green}当前数据库类型: ${current_type}${plain}"
     if [ "$current_type" = "mariadb" ]; then
-        local json_path="/etc/x-ui/x-ui.json"
-        if command -v jq >/dev/null 2>&1; then
-            local host=$(jq -r '.databaseConnection.dbHost // .other.dbHost // "127.0.0.1"' "$json_path" 2>/dev/null)
-            local port=$(jq -r '.databaseConnection.dbPort // .other.dbPort // "3306"' "$json_path" 2>/dev/null)
-            local dbname=$(jq -r '.databaseConnection.dbName // .other.dbName // "3xui"' "$json_path" 2>/dev/null)
-        else
-            local host=$(grep -o '"dbHost"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
-            local port=$(grep -o '"dbPort"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
-            local dbname=$(grep -o '"dbName"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/')
-        fi
+        local host=$(get_database_setting '.dbHost' '127.0.0.1')
+        local port=$(get_database_setting '.dbPort' '3306')
+        local dbname=$(get_database_setting '.dbName' '3xui')
         echo -e "${green}MariaDB 主机: ${host:-127.0.0.1}:${port:-3306}${plain}"
         echo -e "${green}数据库名: ${dbname:-3xui}${plain}"
     fi
@@ -2516,6 +2573,97 @@ set_traffic_flush_interval() {
         return 1
     fi
     echo -e "${yellow}流量回刷间隔已更新，建议重启面板使其完全生效。${plain}"
+}
+
+set_remote_database_connection() {
+    local current_type current_host current_port current_user current_name current_pass
+    local db_host db_port db_user db_name db_pass effective_pass
+
+    current_type=$(read_json_dbtype)
+    current_host=$(get_database_setting '.dbHost' '127.0.0.1')
+    current_port=$(get_database_setting '.dbPort' '3306')
+    current_user=$(get_database_setting '.dbUser' '')
+    current_name=$(get_database_setting '.dbName' '3xui')
+    current_pass=$(get_database_setting '.dbPassword' '')
+
+    echo -e "${green}当前远程数据库连接配置：${plain}"
+    echo -e "${green}Host: ${current_host:-127.0.0.1}${plain}"
+    echo -e "${green}Port: ${current_port:-3306}${plain}"
+    echo -e "${green}User: ${current_user:-<empty>}${plain}"
+    echo -e "${green}Database: ${current_name:-3xui}${plain}"
+    if [ -n "$current_pass" ]; then
+        echo -e "${green}Password: <stored>${plain}"
+    else
+        echo -e "${green}Password: <empty>${plain}"
+    fi
+
+    if [ "$current_type" != "mariadb" ]; then
+        echo -e "${yellow}当前数据库类型为 ${current_type}。本操作只更新 MariaDB 连接配置，不会自动切换数据库类型。${plain}"
+    fi
+
+    ensure_mariadb_client_ready || {
+        echo -e "${yellow}已取消安装 MariaDB 客户端，返回数据库菜单${plain}"
+        return 1
+    }
+
+    echo -e "${green}请输入新的远程数据库连接信息，直接回车保留当前值。${plain}"
+    read -rp "远程 MariaDB host [${current_host:-127.0.0.1}]: " db_host
+    read -rp "远程 MariaDB port [${current_port:-3306}]: " db_port
+    read -rp "业务数据库名 [${current_name:-3xui}]: " db_name
+    read -rp "业务用户名 [${current_user}]: " db_user
+    read -rsp "业务密码（留空则保持当前密码）: " db_pass
+    echo
+
+    db_host=${db_host:-$current_host}
+    db_port=${db_port:-$current_port}
+    db_name=${db_name:-$current_name}
+    db_user=${db_user:-$current_user}
+
+    if [ -z "$db_pass" ]; then
+        effective_pass="$current_pass"
+    else
+        effective_pass="$db_pass"
+    fi
+
+    if [ -z "$db_host" ]; then
+        echo -e "${red}远程 MariaDB host 不能为空${plain}"
+        return 1
+    fi
+    if ! [[ "${db_port}" =~ ^[0-9]+$ ]] || ((db_port < 1 || db_port > 65535)); then
+        echo -e "${red}远程 MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+        return 1
+    fi
+    if [ -z "$db_user" ]; then
+        echo -e "${red}业务用户名不能为空${plain}"
+        return 1
+    fi
+    if [ -z "$db_name" ]; then
+        echo -e "${red}业务数据库名不能为空${plain}"
+        return 1
+    fi
+
+    echo -e "${green}正在验证远程 MariaDB 业务连接...${plain}"
+    if ! test_mariadb_database_connection "$db_host" "$db_port" "$db_name" "$db_user" "$effective_pass"; then
+        echo -e "${red}无法使用输入的远程 MariaDB 信息连接到业务数据库，配置未保存${plain}"
+        return 1
+    fi
+
+    echo -e "${green}正在保存远程 MariaDB 连接配置...${plain}"
+    if [ -n "$db_pass" ]; then
+        XUI_DB_PASSWORD="$db_pass" ${xui_folder}/x-ui setting -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
+    else
+        ${xui_folder}/x-ui setting -dbHost "$db_host" -dbPort "$db_port" -dbUser "$db_user" -dbName "$db_name" >/dev/null 2>&1
+    fi
+    if [ $? -ne 0 ]; then
+        echo -e "${red}远程 MariaDB 连接配置保存失败${plain}"
+        return 1
+    fi
+
+    if [ "$current_type" = "mariadb" ]; then
+        echo -e "${yellow}远程 MariaDB 连接配置已更新，建议重启面板使其完全生效。${plain}"
+    else
+        echo -e "${yellow}远程 MariaDB 连接配置已更新，当前数据库类型仍为 ${current_type}。${plain}"
+    fi
 }
 
 has_mariadb_cli() {
@@ -2950,9 +3098,10 @@ db_menu() {
 │   ${green}6.${plain} 设置节点 ID                                 │
 │   ${green}7.${plain} 设置同步间隔                                │
 │   ${green}8.${plain} 设置流量回刷间隔                            │
+│   ${green}9.${plain} 设置远程数据库连接                          │
 ╚════════════════════════════════════════════════╝
 "
-    read -rp "请输入选择 [0-8]：" num
+    read -rp "请输入选择 [0-9]：" num
     case "${num}" in
     0)
         show_menu
@@ -2985,6 +3134,10 @@ db_menu() {
         ;;
     8)
         set_traffic_flush_interval
+        db_menu
+        ;;
+    9)
+        set_remote_database_connection
         db_menu
         ;;
     *)
