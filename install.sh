@@ -263,6 +263,168 @@ escape_sql_string() {
     printf "%s" "$1" | sed "s/'/''/g"
 }
 
+validate_tcp_port() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ ]] && ((port >= 1 && port <= 65535))
+}
+
+mariadb_server_override_path() {
+    local dir=""
+    for dir in /etc/mysql/mariadb.conf.d /etc/mysql/conf.d /etc/my.cnf.d /etc/mariadb.conf.d; do
+        if [ -d "$dir" ]; then
+            echo "${dir}/60-x-ui.cnf"
+            return 0
+        fi
+    done
+    echo "/etc/my.cnf"
+}
+
+mariadb_server_config_candidates() {
+    local override_path
+    override_path=$(mariadb_server_override_path)
+    echo "$override_path"
+
+    local path=""
+    for path in \
+        /etc/mysql/mariadb.conf.d/50-server.cnf \
+        /etc/mysql/mariadb.cnf \
+        /etc/mysql/my.cnf \
+        /etc/mysql/conf.d/mysql.cnf \
+        /etc/my.cnf.d/mariadb-server.cnf \
+        /etc/my.cnf.d/server.cnf \
+        /etc/mariadb.conf.d/50-server.cnf \
+        /etc/my.cnf; do
+        if [ -f "$path" ] && [ "$path" != "$override_path" ]; then
+            echo "$path"
+        fi
+    done
+}
+
+ensure_mariadb_override_file() {
+    local path
+    path=$(mariadb_server_override_path)
+    mkdir -p "$(dirname "$path")"
+    if [ ! -f "$path" ]; then
+        printf "[mysqld]\n" >"$path"
+    elif ! grep -q '^\[mysqld\]' "$path" 2>/dev/null; then
+        printf "\n[mysqld]\n" >>"$path"
+    fi
+    echo "$path"
+}
+
+upsert_mariadb_mysqld_option() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    awk -v key="$key" -v value="$value" '
+    BEGIN {
+        in_section = 0
+        section_seen = 0
+        key_written = 0
+    }
+    /^\[.*\][[:space:]]*$/ {
+        if (in_section && !key_written) {
+            print key " = " value
+            key_written = 1
+        }
+        if ($0 == "[mysqld]") {
+            in_section = 1
+            section_seen = 1
+        } else {
+            in_section = 0
+        }
+        print
+        next
+    }
+    {
+        if (in_section && $0 ~ "^[[:space:]]*[#;]?[[:space:]]*" key "[[:space:]]*=") {
+            if (!key_written) {
+                print key " = " value
+                key_written = 1
+            }
+            next
+        }
+        print
+    }
+    END {
+        if (!section_seen) {
+            print "[mysqld]"
+        }
+        if (!key_written) {
+            print key " = " value
+        }
+    }' "$file" >"$tmp_file"
+
+    cat "$tmp_file" >"$file"
+    rm -f "$tmp_file"
+}
+
+disable_mariadb_skip_networking() {
+    local file=""
+    local tmp_file=""
+    while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        tmp_file=$(mktemp)
+        awk '
+        {
+            if ($0 ~ /^[[:space:]]*skip-networking([[:space:]]*=[[:space:]]*.*)?[[:space:]]*$/) {
+                print "# x-ui disabled skip-networking to keep managed MariaDB networking available"
+                next
+            }
+            print
+        }' "$file" >"$tmp_file"
+        cat "$tmp_file" >"$file"
+        rm -f "$tmp_file"
+    done < <(mariadb_server_config_candidates)
+}
+
+restart_mariadb_service() {
+    local svc_name=""
+    if command -v systemctl >/dev/null 2>&1; then
+        if systemctl list-unit-files 2>/dev/null | grep -q "^mariadb.service"; then
+            svc_name="mariadb"
+        elif systemctl list-unit-files 2>/dev/null | grep -q "^mysql.service"; then
+            svc_name="mysql"
+        fi
+    fi
+
+    if [ -n "$svc_name" ]; then
+        systemctl restart "$svc_name" 2>/dev/null
+        return $?
+    fi
+    if [[ $release == "alpine" ]]; then
+        rc-service mariadb restart 2>/dev/null
+        return $?
+    fi
+
+    start_mariadb_service
+}
+
+configure_local_mariadb_server_network() {
+    local db_port="$1"
+    local bind_address="$2"
+    local override_file=""
+
+    if ! validate_tcp_port "$db_port"; then
+        echo -e "${red}MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+        return 1
+    fi
+
+    override_file=$(ensure_mariadb_override_file) || return 1
+    upsert_mariadb_mysqld_option "$override_file" "port" "$db_port"
+    upsert_mariadb_mysqld_option "$override_file" "bind-address" "$bind_address"
+    disable_mariadb_skip_networking
+
+    if ! restart_mariadb_service; then
+        echo -e "${red}重启 MariaDB 失败，请检查配置文件${plain}"
+        return 1
+    fi
+    return 0
+}
+
 LOCAL_MARIADB_ADMIN_MODE=""
 LOCAL_MARIADB_ADMIN_USER=""
 LOCAL_MARIADB_ADMIN_PASS=""
@@ -1197,13 +1359,18 @@ config_after_install() {
                 fi
             else
                 db_host="127.0.0.1"
-                db_port="3306"
+                read -rp "本地 MariaDB port [3306]: " db_port
                 read -rp "业务数据库名 [3xui]: " db_name
                 read -rp "业务用户名: " db_user
                 read -rsp "业务密码: " db_pass
                 echo
 
+                db_port="${db_port:-3306}"
                 db_name="${db_name:-3xui}"
+                if ! validate_tcp_port "$db_port"; then
+                    echo -e "${red}本地 MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+                    return 1
+                fi
                 if [[ -z "$db_user" || -z "$db_pass" ]]; then
                     echo -e "${red}本地 MariaDB 的业务用户名和业务密码不能为空${plain}"
                     return 1
@@ -1213,6 +1380,7 @@ config_after_install() {
                     echo -e "${red}准备本地 MariaDB 失败${plain}"
                     return 1
                 }
+                configure_local_mariadb_server_network "$db_port" "127.0.0.1" || return 1
                 ensure_local_mariadb_admin_access "$db_port" || return 1
                 ensure_mariadb_database_and_user "$db_name" "$db_user" "$db_pass" || {
                     echo -e "${red}创建本地 MariaDB 业务库或业务账号失败${plain}"
