@@ -1092,22 +1092,21 @@ config_after_install() {
             echo -e "${green}已生成随机 Web 路径：${config_webBasePath}${plain}"
         fi
 
-        read -rp "是否要自定义面板端口？（否则将使用随机端口）[y/n]：" config_confirm
-        if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-            while true; do
-                read -rp "请设置面板端口：" config_port
-                config_port="${config_port// /}"
-                if ! [[ "${config_port}" =~ ^[0-9]+$ ]] || ((config_port < 1 || config_port > 65535)); then
-                    echo -e "${red}无效端口，请输入 1-65535 之间的数字。${plain}"
-                    continue
-                fi
+        while true; do
+            read -rp "请输入面板端口（留空将随机生成）：" config_port
+            config_port="${config_port// /}"
+            if [[ -z "${config_port}" ]]; then
+                config_port=$(shuf -i 1024-62000 -n 1)
+                echo -e "${yellow}已生成随机端口：${config_port}${plain}"
                 break
-            done
+            fi
+            if ! [[ "${config_port}" =~ ^[0-9]+$ ]] || ((config_port < 1 || config_port > 65535)); then
+                echo -e "${red}无效端口，请输入 1-65535 之间的数字。${plain}"
+                continue
+            fi
             echo -e "${yellow}您的面板端口为：${config_port}${plain}"
-        else
-            local config_port=$(shuf -i 1024-62000 -n 1)
-            echo -e "${yellow}已生成随机端口：${config_port}${plain}"
-        fi
+            break
+        done
 
         read -rp "Database type [mariadb]: " db_type
         db_type=$(echo "${db_type:-mariadb}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
