@@ -1312,7 +1312,15 @@ config_after_install() {
         echo -e "${green}访问地址：https://${final_host}:${existing_port}/${config_webBasePath}${plain}"
     fi
 
-    ${xui_folder}/x-ui migrate
+    if command -v timeout >/dev/null 2>&1; then
+        if ! timeout 30 ${xui_folder}/x-ui migrate; then
+            echo -e "${yellow}数据库迁移未在 30 秒内完成或执行失败，已跳过阻塞，安装继续。${plain}"
+            echo -e "${yellow}可在安装后手动执行：${xui_folder}/x-ui migrate${plain}"
+        fi
+    elif ! ${xui_folder}/x-ui migrate; then
+        echo -e "${yellow}数据库迁移执行失败，安装继续。${plain}"
+        echo -e "${yellow}可在安装后手动执行：${xui_folder}/x-ui migrate${plain}"
+    fi
 }
 
 get_releases() {
