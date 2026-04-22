@@ -1139,6 +1139,11 @@ config_after_install() {
                 db_host="${db_host:-127.0.0.1}"
                 db_port="${db_port:-3306}"
                 db_name="${db_name:-3xui}"
+                while ! [[ "${db_port}" =~ ^[0-9]+$ ]] || ((db_port < 1 || db_port > 65535)); do
+                    echo -e "${red}远程 MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+                    read -rp "远程 MariaDB port [3306]: " db_port
+                    db_port="${db_port:-3306}"
+                done
 
                 if [[ -z "$db_user" || -z "$db_pass" ]]; then
                     echo -e "${red}远程 MariaDB 的业务用户名和业务密码不能为空${plain}"
