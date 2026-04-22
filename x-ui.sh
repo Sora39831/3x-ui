@@ -2655,6 +2655,7 @@ ensure_local_mariadb_ready() {
         echo -e "${yellow}未检测到本地 MariaDB 服务${plain}"
         confirm "是否安装本地 MariaDB？" "y" || return 1
         install_local_mariadb_server || return 1
+        LOCAL_MARIADB_JUST_INSTALLED="1"
     fi
     ensure_mariadb_client_ready || return 1
     start_mariadb_service || true
@@ -2664,15 +2665,27 @@ ensure_local_mariadb_ready() {
 test_mariadb_server_connection() {
     local host="$1" port="$2" user="$3" pass="$4"
     local bin
+    local -a cmd
     bin=$(mariadb_cli_bin) || return 1
-    "$bin" -h "$host" -P "$port" -u "$user" -p"$pass" -e "SELECT 1;" >/dev/null 2>&1
+    cmd=("$bin" -h "$host" -P "$port" -u "$user")
+    if [[ -n "$pass" ]]; then
+        cmd+=("-p$pass")
+    fi
+    cmd+=(-e "SELECT 1;")
+    "${cmd[@]}" >/dev/null 2>&1
 }
 
 test_mariadb_database_connection() {
     local host="$1" port="$2" dbname="$3" user="$4" pass="$5"
     local bin
+    local -a cmd
     bin=$(mariadb_cli_bin) || return 1
-    "$bin" -h "$host" -P "$port" -u "$user" -p"$pass" -D "$dbname" -e "SELECT 1;" >/dev/null 2>&1
+    cmd=("$bin" -h "$host" -P "$port" -u "$user" -D "$dbname")
+    if [[ -n "$pass" ]]; then
+        cmd+=("-p$pass")
+    fi
+    cmd+=(-e "SELECT 1;")
+    "${cmd[@]}" >/dev/null 2>&1
 }
 
 is_safe_mariadb_identifier() {
@@ -2687,6 +2700,7 @@ LOCAL_MARIADB_ADMIN_MODE=""
 LOCAL_MARIADB_ADMIN_USER=""
 LOCAL_MARIADB_ADMIN_PASS=""
 LOCAL_MARIADB_ADMIN_PORT="3306"
+LOCAL_MARIADB_JUST_INSTALLED="0"
 
 try_local_mariadb_socket_admin() {
     local bin
@@ -2696,10 +2710,24 @@ try_local_mariadb_socket_admin() {
 
 ensure_local_mariadb_admin_access() {
     local port="${1:-3306}"
+    local i
     LOCAL_MARIADB_ADMIN_PORT="$port"
 
-    if try_local_mariadb_socket_admin; then
-        LOCAL_MARIADB_ADMIN_MODE="socket"
+    for ((i = 0; i < 10; i++)); do
+        if try_local_mariadb_socket_admin; then
+            LOCAL_MARIADB_ADMIN_MODE="socket"
+            return 0
+        fi
+        sleep 1
+    done
+
+    if test_mariadb_server_connection "127.0.0.1" "$port" "root" ""; then
+        LOCAL_MARIADB_ADMIN_MODE="password"
+        LOCAL_MARIADB_ADMIN_USER="root"
+        LOCAL_MARIADB_ADMIN_PASS=""
+        if [[ "$LOCAL_MARIADB_JUST_INSTALLED" == "1" ]]; then
+            echo -e "${green}检测到新安装 MariaDB，已自动使用 root 免密权限初始化数据库。${plain}"
+        fi
         return 0
     fi
 
@@ -2707,7 +2735,7 @@ ensure_local_mariadb_admin_access() {
     echo -e "${yellow}无法通过 root socket 直接连接本地 MariaDB，请输入管理员账号信息。${plain}"
     read -rp "MariaDB 管理员用户名 [root]: " admin_user
     admin_user="${admin_user:-root}"
-    read -rsp "MariaDB 管理员密码: " admin_pass
+    read -rsp "MariaDB 管理员密码（可留空）: " admin_pass
     echo
 
     if ! test_mariadb_server_connection "127.0.0.1" "$port" "$admin_user" "$admin_pass"; then
@@ -2723,6 +2751,7 @@ ensure_local_mariadb_admin_access() {
 run_local_mariadb_admin_sql() {
     local sql="$1"
     local bin
+    local -a cmd
     bin=$(mariadb_cli_bin) || return 1
 
     case "$LOCAL_MARIADB_ADMIN_MODE" in
@@ -2730,7 +2759,12 @@ run_local_mariadb_admin_sql() {
         "$bin" -e "$sql" >/dev/null 2>&1 || "$bin" -uroot -e "$sql" >/dev/null 2>&1
         ;;
     password)
-        "$bin" -h "127.0.0.1" -P "$LOCAL_MARIADB_ADMIN_PORT" -u "$LOCAL_MARIADB_ADMIN_USER" -p"$LOCAL_MARIADB_ADMIN_PASS" -e "$sql" >/dev/null 2>&1
+        cmd=("$bin" -h "127.0.0.1" -P "$LOCAL_MARIADB_ADMIN_PORT" -u "$LOCAL_MARIADB_ADMIN_USER")
+        if [[ -n "$LOCAL_MARIADB_ADMIN_PASS" ]]; then
+            cmd+=("-p$LOCAL_MARIADB_ADMIN_PASS")
+        fi
+        cmd+=(-e "$sql")
+        "${cmd[@]}" >/dev/null 2>&1
         ;;
     *)
         return 1
