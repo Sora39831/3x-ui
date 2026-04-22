@@ -769,6 +769,9 @@ update_shell() {
 check_status() {
     if [[ $release == "alpine" ]]; then
         if [[ ! -f /etc/init.d/x-ui ]]; then
+            if [[ -x "${xui_folder}/x-ui" || -d /etc/x-ui || -d "${xui_folder}" ]]; then
+                return 1
+            fi
             return 2
         fi
         if [[ $(rc-service x-ui status | grep -F 'status: started' -c) == 1 ]]; then
@@ -778,6 +781,9 @@ check_status() {
         fi
     else
         if [[ ! -f ${xui_service}/x-ui.service ]]; then
+            if [[ -x "${xui_folder}/x-ui" || -d /etc/x-ui || -d "${xui_folder}" ]]; then
+                return 1
+            fi
             return 2
         fi
         temp=$(systemctl status x-ui | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
