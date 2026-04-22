@@ -2666,6 +2666,215 @@ set_remote_database_connection() {
     fi
 }
 
+validate_tcp_port() {
+    local port="$1"
+    [[ "$port" =~ ^[0-9]+$ ]] && ((port >= 1 && port <= 65535))
+}
+
+is_local_mariadb_host() {
+    case "$1" in
+    "" | "127.0.0.1" | "localhost" | "::1")
+        return 0
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
+mariadb_server_override_path() {
+    local dir=""
+    for dir in /etc/mysql/mariadb.conf.d /etc/mysql/conf.d /etc/my.cnf.d /etc/mariadb.conf.d; do
+        if [ -d "$dir" ]; then
+            echo "${dir}/60-x-ui.cnf"
+            return 0
+        fi
+    done
+    echo "/etc/my.cnf"
+}
+
+mariadb_server_config_candidates() {
+    local override_path
+    override_path=$(mariadb_server_override_path)
+    echo "$override_path"
+
+    local path=""
+    for path in \
+        /etc/mysql/mariadb.conf.d/50-server.cnf \
+        /etc/mysql/mariadb.cnf \
+        /etc/mysql/my.cnf \
+        /etc/mysql/conf.d/mysql.cnf \
+        /etc/my.cnf.d/mariadb-server.cnf \
+        /etc/my.cnf.d/server.cnf \
+        /etc/mariadb.conf.d/50-server.cnf \
+        /etc/my.cnf; do
+        if [ -f "$path" ] && [ "$path" != "$override_path" ]; then
+            echo "$path"
+        fi
+    done
+}
+
+ensure_mariadb_override_file() {
+    local path
+    path=$(mariadb_server_override_path)
+    mkdir -p "$(dirname "$path")"
+    if [ ! -f "$path" ]; then
+        printf "[mysqld]\n" >"$path"
+    elif ! grep -q '^\[mysqld\]' "$path" 2>/dev/null; then
+        printf "\n[mysqld]\n" >>"$path"
+    fi
+    echo "$path"
+}
+
+upsert_mariadb_mysqld_option() {
+    local file="$1"
+    local key="$2"
+    local value="$3"
+    local tmp_file
+    tmp_file=$(mktemp)
+
+    awk -v key="$key" -v value="$value" '
+    BEGIN {
+        in_section = 0
+        section_seen = 0
+        key_written = 0
+    }
+    /^\[.*\][[:space:]]*$/ {
+        if (in_section && !key_written) {
+            print key " = " value
+            key_written = 1
+        }
+        if ($0 == "[mysqld]") {
+            in_section = 1
+            section_seen = 1
+        } else {
+            in_section = 0
+        }
+        print
+        next
+    }
+    {
+        if (in_section && $0 ~ "^[[:space:]]*[#;]?[[:space:]]*" key "[[:space:]]*=") {
+            if (!key_written) {
+                print key " = " value
+                key_written = 1
+            }
+            next
+        }
+        print
+    }
+    END {
+        if (!section_seen) {
+            print "[mysqld]"
+        }
+        if (!key_written) {
+            print key " = " value
+        }
+    }' "$file" >"$tmp_file"
+
+    cat "$tmp_file" >"$file"
+    rm -f "$tmp_file"
+}
+
+disable_mariadb_skip_networking() {
+    local file=""
+    local tmp_file=""
+    while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        tmp_file=$(mktemp)
+        awk '
+        {
+            if ($0 ~ /^[[:space:]]*skip-networking([[:space:]]*=[[:space:]]*.*)?[[:space:]]*$/) {
+                print "# x-ui disabled skip-networking to allow managed remote access"
+                next
+            }
+            print
+        }' "$file" >"$tmp_file"
+        cat "$tmp_file" >"$file"
+        rm -f "$tmp_file"
+    done < <(mariadb_server_config_candidates)
+}
+
+read_mariadb_server_option() {
+    local key="$1"
+    local default_value="$2"
+    local file=""
+    local value=""
+    local result=""
+
+    while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        value=$(awk -v key="$key" '
+        BEGIN {
+            in_section = 0
+            value = ""
+        }
+        /^\[.*\][[:space:]]*$/ {
+            in_section = ($0 == "[mysqld]")
+            next
+        }
+        {
+            if (in_section && $0 !~ /^[[:space:]]*[#;]/ && $0 ~ "^[[:space:]]*" key "[[:space:]]*=") {
+                sub(/^[[:space:]]*[^=]+=[[:space:]]*/, "", $0)
+                gsub(/[[:space:]]+$/, "", $0)
+                value = $0
+            }
+        }
+        END {
+            print value
+        }' "$file")
+        if [ -n "$value" ]; then
+            result="$value"
+        fi
+    done < <(mariadb_server_config_candidates)
+
+    echo "${result:-$default_value}"
+}
+
+restart_mariadb_service() {
+    local svc_name=""
+    if command -v systemctl >/dev/null 2>&1; then
+        if systemctl list-unit-files 2>/dev/null | grep -q "^mariadb.service"; then
+            svc_name="mariadb"
+        elif systemctl list-unit-files 2>/dev/null | grep -q "^mysql.service"; then
+            svc_name="mysql"
+        fi
+    fi
+
+    if [ -n "$svc_name" ]; then
+        systemctl restart "$svc_name" 2>/dev/null
+        return $?
+    fi
+    if [[ $release == "alpine" ]]; then
+        rc-service mariadb restart 2>/dev/null
+        return $?
+    fi
+
+    start_mariadb_service
+}
+
+configure_local_mariadb_server_network() {
+    local db_port="$1"
+    local bind_address="$2"
+    local override_file=""
+
+    if ! validate_tcp_port "$db_port"; then
+        echo -e "${red}MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+        return 1
+    fi
+
+    override_file=$(ensure_mariadb_override_file) || return 1
+    upsert_mariadb_mysqld_option "$override_file" "port" "$db_port"
+    upsert_mariadb_mysqld_option "$override_file" "bind-address" "$bind_address"
+    disable_mariadb_skip_networking
+
+    if ! restart_mariadb_service; then
+        echo -e "${red}重启 MariaDB 失败，请检查配置文件${plain}"
+        return 1
+    fi
+    return 0
+}
+
 has_mariadb_cli() {
     command -v mariadb >/dev/null 2>&1 || command -v mysql >/dev/null 2>&1
 }
@@ -2920,6 +3129,30 @@ run_local_mariadb_admin_sql() {
     esac
 }
 
+run_local_mariadb_admin_query() {
+    local sql="$1"
+    local bin
+    local -a cmd
+    bin=$(mariadb_cli_bin) || return 1
+
+    case "$LOCAL_MARIADB_ADMIN_MODE" in
+    socket)
+        "$bin" -N -B -e "$sql" 2>/dev/null || "$bin" -uroot -N -B -e "$sql" 2>/dev/null
+        ;;
+    password)
+        cmd=("$bin" -h "127.0.0.1" -P "$LOCAL_MARIADB_ADMIN_PORT" -u "$LOCAL_MARIADB_ADMIN_USER")
+        if [[ -n "$LOCAL_MARIADB_ADMIN_PASS" ]]; then
+            cmd+=("-p$LOCAL_MARIADB_ADMIN_PASS")
+        fi
+        cmd+=(-N -B -e "$sql")
+        "${cmd[@]}" 2>/dev/null
+        ;;
+    *)
+        return 1
+        ;;
+    esac
+}
+
 ensure_mariadb_database_and_user() {
     local dbname="$1" dbuser="$2" dbpass="$3"
     local escaped_pass
@@ -2947,6 +3180,229 @@ ensure_mariadb_database_and_user() {
 
     echo -e "${green}正在确保本地 MariaDB 的业务库和业务账号存在...${plain}"
     run_local_mariadb_admin_sql "$sql"
+}
+
+CURRENT_LOCAL_DB_PORT=""
+CURRENT_LOCAL_DB_USER=""
+CURRENT_LOCAL_DB_PASS=""
+CURRENT_LOCAL_DB_NAME=""
+
+load_local_mariadb_business_context() {
+    local db_type=""
+    local db_host=""
+
+    db_type=$(read_json_dbtype)
+    if [ "$db_type" != "mariadb" ]; then
+        echo -e "${red}当前数据库类型不是 MariaDB${plain}"
+        return 1
+    fi
+
+    db_host=$(get_database_setting '.dbHost' '127.0.0.1')
+    if ! is_local_mariadb_host "$db_host"; then
+        echo -e "${red}当前面板使用的是远程 MariaDB，无法管理本机 MariaDB 远程访问${plain}"
+        return 1
+    fi
+
+    CURRENT_LOCAL_DB_PORT=$(get_database_setting '.dbPort' '3306')
+    CURRENT_LOCAL_DB_USER=$(get_database_setting '.dbUser' '')
+    CURRENT_LOCAL_DB_PASS=$(get_database_setting '.dbPassword' '')
+    CURRENT_LOCAL_DB_NAME=$(get_database_setting '.dbName' '3xui')
+
+    if ! validate_tcp_port "$CURRENT_LOCAL_DB_PORT"; then
+        echo -e "${red}当前配置中的本地 MariaDB 端口无效${plain}"
+        return 1
+    fi
+    if [ -z "$CURRENT_LOCAL_DB_USER" ]; then
+        echo -e "${red}当前配置缺少 MariaDB 业务用户名${plain}"
+        return 1
+    fi
+    if [ -z "$CURRENT_LOCAL_DB_NAME" ]; then
+        echo -e "${red}当前配置缺少 MariaDB 业务数据库名${plain}"
+        return 1
+    fi
+    if ! is_safe_mariadb_identifier "$CURRENT_LOCAL_DB_USER"; then
+        echo -e "${red}当前配置中的 MariaDB 业务用户名不支持自动远程授权${plain}"
+        return 1
+    fi
+    if ! is_safe_mariadb_identifier "$CURRENT_LOCAL_DB_NAME"; then
+        echo -e "${red}当前配置中的 MariaDB 业务数据库名不支持自动远程授权${plain}"
+        return 1
+    fi
+
+    ensure_local_mariadb_ready || return 1
+    ensure_local_mariadb_admin_access "$CURRENT_LOCAL_DB_PORT" || return 1
+    return 0
+}
+
+list_remote_mariadb_hosts() {
+    local escaped_user=""
+    escaped_user=$(escape_sql_string "$CURRENT_LOCAL_DB_USER")
+    run_local_mariadb_admin_query "SELECT Host FROM mysql.user WHERE User = '${escaped_user}' AND Host NOT IN ('localhost', '127.0.0.1', '::1') ORDER BY Host;"
+}
+
+show_mariadb_remote_access_status() {
+    local bind_address=""
+    local server_port=""
+    local hosts=""
+
+    load_local_mariadb_business_context || return 1
+
+    bind_address=$(read_mariadb_server_option "bind-address" "127.0.0.1")
+    server_port=$(read_mariadb_server_option "port" "$CURRENT_LOCAL_DB_PORT")
+    hosts=$(list_remote_mariadb_hosts | sed '/^$/d')
+
+    echo -e "${green}MariaDB 服务端口: ${server_port}${plain}"
+    echo -e "${green}MariaDB 监听地址: ${bind_address}${plain}"
+    if [ "$bind_address" = "127.0.0.1" ]; then
+        echo -e "${yellow}远程访问状态: 已关闭${plain}"
+    else
+        echo -e "${yellow}远程访问状态: 已开启${plain}"
+    fi
+    if [ -n "$hosts" ]; then
+        echo -e "${green}允许的远程 IP:${plain}"
+        printf '%s\n' "$hosts"
+    else
+        echo -e "${yellow}允许的远程 IP: <empty>${plain}"
+    fi
+}
+
+add_mariadb_remote_ip_grant() {
+    local remote_ip="$1"
+    local escaped_user=""
+    local escaped_pass=""
+    local escaped_ip=""
+
+    if ! is_ip "$remote_ip"; then
+        echo -e "${red}仅支持输入单个 IP 地址${plain}"
+        return 1
+    fi
+
+    load_local_mariadb_business_context || return 1
+    escaped_user=$(escape_sql_string "$CURRENT_LOCAL_DB_USER")
+    escaped_pass=$(escape_sql_string "$CURRENT_LOCAL_DB_PASS")
+    escaped_ip=$(escape_sql_string "$remote_ip")
+
+    run_local_mariadb_admin_sql "CREATE USER IF NOT EXISTS '${escaped_user}'@'${escaped_ip}' IDENTIFIED BY '${escaped_pass}'; ALTER USER '${escaped_user}'@'${escaped_ip}' IDENTIFIED BY '${escaped_pass}'; GRANT ALL PRIVILEGES ON \`${CURRENT_LOCAL_DB_NAME}\`.* TO '${escaped_user}'@'${escaped_ip}'; FLUSH PRIVILEGES;"
+}
+
+remove_mariadb_remote_ip_grant() {
+    local remote_ip="$1"
+    local escaped_user=""
+    local escaped_ip=""
+
+    if ! is_ip "$remote_ip"; then
+        echo -e "${red}仅支持输入单个 IP 地址${plain}"
+        return 1
+    fi
+
+    load_local_mariadb_business_context || return 1
+    escaped_user=$(escape_sql_string "$CURRENT_LOCAL_DB_USER")
+    escaped_ip=$(escape_sql_string "$remote_ip")
+
+    run_local_mariadb_admin_sql "DROP USER IF EXISTS '${escaped_user}'@'${escaped_ip}'; FLUSH PRIVILEGES;"
+}
+
+set_local_mariadb_port() {
+    local current_port=""
+    local current_bind=""
+    local new_port=""
+
+    load_local_mariadb_business_context || return 1
+
+    current_port=$(read_mariadb_server_option "port" "$CURRENT_LOCAL_DB_PORT")
+    current_bind=$(read_mariadb_server_option "bind-address" "127.0.0.1")
+    read -rp "本地 MariaDB port [${current_port:-3306}]: " new_port
+    new_port="${new_port// /}"
+    new_port="${new_port:-$current_port}"
+
+    if ! validate_tcp_port "$new_port"; then
+        echo -e "${red}本地 MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+        return 1
+    fi
+    if ! configure_local_mariadb_server_network "$new_port" "$current_bind"; then
+        return 1
+    fi
+    if ! ${xui_folder}/x-ui setting -dbPort "$new_port" >/dev/null 2>&1; then
+        echo -e "${red}写入面板数据库端口配置失败${plain}"
+        return 1
+    fi
+
+    echo -e "${yellow}本地 MariaDB 端口已更新为 ${new_port}，建议重启面板使其完全生效。${plain}"
+}
+
+enable_mariadb_remote_access() {
+    local hosts=""
+
+    load_local_mariadb_business_context || return 1
+    hosts=$(list_remote_mariadb_hosts | sed '/^$/d')
+    if [ -z "$hosts" ]; then
+        echo -e "${red}请先添加至少一个允许的远程 IP${plain}"
+        return 1
+    fi
+    if ! configure_local_mariadb_server_network "$CURRENT_LOCAL_DB_PORT" "0.0.0.0"; then
+        return 1
+    fi
+
+    echo -e "${yellow}MariaDB 远程访问已开启，仅已授权的远程 IP 可连接。${plain}"
+}
+
+disable_mariadb_remote_access() {
+    local hosts=""
+    local host=""
+
+    load_local_mariadb_business_context || return 1
+    hosts=$(list_remote_mariadb_hosts | sed '/^$/d')
+    if [ -n "$hosts" ]; then
+        while IFS= read -r host; do
+            [ -n "$host" ] || continue
+            remove_mariadb_remote_ip_grant "$host" >/dev/null 2>&1 || true
+        done <<<"$hosts"
+    fi
+    if ! configure_local_mariadb_server_network "$CURRENT_LOCAL_DB_PORT" "127.0.0.1"; then
+        return 1
+    fi
+
+    echo -e "${yellow}MariaDB 远程访问已关闭，并已清理远程 IP 授权。${plain}"
+}
+
+show_mariadb_remote_ips() {
+    local hosts=""
+
+    load_local_mariadb_business_context || return 1
+    hosts=$(list_remote_mariadb_hosts | sed '/^$/d')
+    if [ -z "$hosts" ]; then
+        echo -e "${yellow}当前没有已授权的远程 IP${plain}"
+        return 0
+    fi
+
+    echo -e "${green}当前已授权的远程 IP:${plain}"
+    printf '%s\n' "$hosts"
+}
+
+add_mariadb_remote_ip() {
+    local remote_ip=""
+
+    read -rp "输入允许连接 MariaDB 的远程 IP: " remote_ip
+    remote_ip="${remote_ip// /}"
+    if ! add_mariadb_remote_ip_grant "$remote_ip"; then
+        echo -e "${red}添加 MariaDB 允许 IP 失败${plain}"
+        return 1
+    fi
+
+    echo -e "${yellow}已添加 MariaDB 允许 IP: ${remote_ip}${plain}"
+}
+
+remove_mariadb_remote_ip() {
+    local remote_ip=""
+
+    read -rp "输入要移除的远程 IP: " remote_ip
+    remote_ip="${remote_ip// /}"
+    if ! remove_mariadb_remote_ip_grant "$remote_ip"; then
+        echo -e "${red}移除 MariaDB 允许 IP 失败${plain}"
+        return 1
+    fi
+
+    echo -e "${yellow}已移除 MariaDB 允许 IP: ${remote_ip}${plain}"
 }
 
 # Switch to MariaDB
@@ -3008,13 +3464,19 @@ db_switch_to_mariadb() {
         fi
     else
         db_host="127.0.0.1"
-        db_port="3306"
+        read -rp "本地 MariaDB port [3306]: " db_port
         read -rp "业务数据库名 [3xui]: " db_name
         read -rp "业务用户名: " db_user
         read -rsp "业务密码: " db_pass
         echo
 
+        db_port=${db_port:-3306}
         db_name=${db_name:-3xui}
+        if ! validate_tcp_port "$db_port"; then
+            echo -e "${red}本地 MariaDB 端口无效，请输入 1-65535 之间的数字${plain}"
+            db_menu
+            return
+        fi
         if [[ -z "$db_user" || -z "$db_pass" ]]; then
             echo -e "${red}业务用户名和业务密码不能为空${plain}"
             db_menu
@@ -3023,6 +3485,10 @@ db_switch_to_mariadb() {
 
         ensure_local_mariadb_ready || {
             echo -e "${yellow}本地 MariaDB 未准备完成，返回数据库菜单${plain}"
+            db_menu
+            return
+        }
+        configure_local_mariadb_server_network "$db_port" "127.0.0.1" || {
             db_menu
             return
         }
@@ -3099,9 +3565,16 @@ db_menu() {
 │   ${green}7.${plain} 设置同步间隔                                │
 │   ${green}8.${plain} 设置流量回刷间隔                            │
 │   ${green}9.${plain} 设置远程数据库连接                          │
+│  ${green}10.${plain} 设置本地 MariaDB 端口                       │
+│  ${green}11.${plain} 查看 MariaDB 远程访问状态                   │
+│  ${green}12.${plain} 开启 MariaDB 远程访问                       │
+│  ${green}13.${plain} 关闭 MariaDB 远程访问                       │
+│  ${green}14.${plain} 查看 MariaDB 允许 IP                        │
+│  ${green}15.${plain} 添加 MariaDB 允许 IP                        │
+│  ${green}16.${plain} 移除 MariaDB 允许 IP                        │
 ╚════════════════════════════════════════════════╝
 "
-    read -rp "请输入选择 [0-9]：" num
+    read -rp "请输入选择 [0-16]：" num
     case "${num}" in
     0)
         show_menu
@@ -3138,6 +3611,34 @@ db_menu() {
         ;;
     9)
         set_remote_database_connection
+        db_menu
+        ;;
+    10)
+        set_local_mariadb_port
+        db_menu
+        ;;
+    11)
+        show_mariadb_remote_access_status
+        db_menu
+        ;;
+    12)
+        enable_mariadb_remote_access
+        db_menu
+        ;;
+    13)
+        disable_mariadb_remote_access
+        db_menu
+        ;;
+    14)
+        show_mariadb_remote_ips
+        db_menu
+        ;;
+    15)
+        add_mariadb_remote_ip
+        db_menu
+        ;;
+    16)
+        remove_mariadb_remote_ip
         db_menu
         ;;
     *)
