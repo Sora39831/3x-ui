@@ -188,6 +188,7 @@ install_local_mariadb_server() {
 
 start_mariadb_service() {
     local svc_name=""
+    local output=""
     if command -v systemctl >/dev/null 2>&1; then
         if systemctl list-unit-files 2>/dev/null | grep -q "^mariadb.service"; then
             svc_name="mariadb"
@@ -197,8 +198,8 @@ start_mariadb_service() {
     fi
 
     if [ -n "$svc_name" ]; then
-        systemctl start "$svc_name" 2>/dev/null
-        systemctl enable "$svc_name" 2>/dev/null
+        systemctl start "$svc_name" 2>/dev/null || true
+        systemctl enable "$svc_name" 2>/dev/null || true
         return 0
     fi
 
@@ -383,6 +384,7 @@ disable_mariadb_skip_networking() {
 
 restart_mariadb_service() {
     local svc_name=""
+    local output=""
     if command -v systemctl >/dev/null 2>&1; then
         if systemctl list-unit-files 2>/dev/null | grep -q "^mariadb.service"; then
             svc_name="mariadb"
@@ -392,11 +394,21 @@ restart_mariadb_service() {
     fi
 
     if [ -n "$svc_name" ]; then
-        systemctl restart "$svc_name" 2>/dev/null
-        return $?
+        output=$(systemctl restart "$svc_name" 2>&1) || {
+            echo -e "${red}systemctl restart $svc_name 失败:${plain}" >&2
+            echo "$output" >&2
+            echo -e "${yellow}systemctl status $svc_name:${plain}" >&2
+            systemctl status "$svc_name" --no-pager -l 2>&1 | head -20 >&2
+            return 1
+        }
+        return 0
     fi
     if [[ $release == "alpine" ]]; then
-        rc-service mariadb restart 2>/dev/null
+        output=$(rc-service mariadb restart 2>&1) || {
+            echo -e "${red}rc-service mariadb restart 失败:${plain}" >&2
+            echo "$output" >&2
+            return 1
+        }
         return $?
     fi
 
