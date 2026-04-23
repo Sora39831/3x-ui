@@ -139,6 +139,8 @@ type Server struct {
 
 	cron *cron.Cron
 
+	trafficStore *service.TrafficPendingStore
+
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -351,7 +353,7 @@ func (s *Server) startTask() {
 	go func() {
 		time.Sleep(time.Second * 5)
 		// Statistics every 10 seconds, start the delay for 5 seconds for the first time, and staggered with the time to restart xray
-		s.cron.AddJob("@every 10s", job.NewXrayTrafficJob())
+		s.cron.AddJob("@every 10s", job.NewXrayTrafficJob(s.trafficStore))
 	}()
 
 	// check client ips from log file every 10 sec
@@ -428,8 +430,7 @@ func (s *Server) startTrafficFlushLoop() {
 	if !service.IsSharedModeEnabled() {
 		return
 	}
-	store := service.NewTrafficPendingStore(config.GetTrafficPendingPath())
-	flushService := service.NewTrafficFlushService(store)
+	flushService := service.NewTrafficFlushService(s.trafficStore)
 	go flushService.Run(s.ctx)
 }
 
@@ -448,6 +449,8 @@ func (s *Server) Start() (err error) {
 	}
 	s.cron = cron.New(cron.WithLocation(loc), cron.WithSeconds())
 	s.cron.Start()
+
+	s.trafficStore = service.NewTrafficPendingStore(config.GetTrafficPendingPath())
 
 	engine, err := s.initRouter()
 	if err != nil {

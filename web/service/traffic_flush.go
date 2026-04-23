@@ -143,6 +143,11 @@ func (s *TrafficFlushService) flushToDatabase(deltas []TrafficDelta) error {
 				kind = TrafficDeltaKindClient
 			}
 
+			if delta.InboundID == 0 {
+				logger.Warningf("skip traffic delta with inbound_id=0: kind=%s email=%s", kind, delta.Email)
+				continue
+			}
+
 			if err := tx.Model(&model.Inbound{}).
 				Where("id = ?", delta.InboundID).
 				Updates(map[string]any{

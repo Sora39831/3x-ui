@@ -370,3 +370,46 @@ func TestCollectSkipsUnknownEmail(t *testing.T) {
 		t.Fatalf("unexpected residual: %+v", deltas[0])
 	}
 }
+
+func TestFlushOnceSkipsZeroInboundIdDelta(t *testing.T) {
+	setupTestDB(t)
+
+	if err := database.GetDB().Create(&model.Inbound{Id: 1, Tag: "inbound-443", Enable: true}).Error; err != nil {
+		t.Fatalf("seed inbound failed: %v", err)
+	}
+	if err := database.GetDB().Create(&xray.ClientTraffic{InboundId: 1, Email: "alice@example.com", Enable: true}).Error; err != nil {
+		t.Fatalf("seed client traffic failed: %v", err)
+	}
+
+	store := NewTrafficPendingStore(filepath.Join(t.TempDir(), "traffic-pending.json"))
+	// Simulate stale delta with inbound_id=0 (from before fix) mixed with valid delta
+	if err := store.Merge([]TrafficDelta{
+		{Kind: TrafficDeltaKindClient, InboundID: 0, Email: "alice@example.com", UpDelta: 100, DownDelta: 200},
+		{Kind: TrafficDeltaKindClient, InboundID: 1, Email: "alice@example.com", UpDelta: 7, DownDelta: 9},
+	}); err != nil {
+		t.Fatalf("Merge error: %v", err)
+	}
+
+	svc := NewTrafficFlushService(store)
+	if err := svc.FlushOnce(); err != nil {
+		t.Fatalf("FlushOnce error: %v", err)
+	}
+
+	// Verify valid delta was flushed
+	var clientTraffic xray.ClientTraffic
+	if err := database.GetDB().First(&clientTraffic, "inbound_id = ? AND email = ?", 1, "alice@example.com").Error; err != nil {
+		t.Fatalf("lookup client traffic failed: %v", err)
+	}
+	if clientTraffic.Up != 7 || clientTraffic.Down != 9 {
+		t.Fatalf("unexpected flushed traffic (should only include valid delta): %+v", clientTraffic)
+	}
+
+	// Verify pending is cleared (zero InboundID delta was skipped, not re-queued)
+	deltas, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if len(deltas) != 0 {
+		t.Fatalf("expected pending deltas to be cleared, got %+v", deltas)
+	}
+}

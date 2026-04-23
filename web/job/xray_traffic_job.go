@@ -3,7 +3,6 @@ package job
 import (
 	"encoding/json"
 
-	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/web/websocket"
@@ -22,11 +21,9 @@ type XrayTrafficJob struct {
 }
 
 // NewXrayTrafficJob creates a new traffic collection job instance.
-func NewXrayTrafficJob() *XrayTrafficJob {
+func NewXrayTrafficJob(store *service.TrafficPendingStore) *XrayTrafficJob {
 	return &XrayTrafficJob{
-		trafficFlushSvc: service.NewTrafficFlushService(
-			service.NewTrafficPendingStore(config.GetTrafficPendingPath()),
-		),
+		trafficFlushSvc: service.NewTrafficFlushService(store),
 	}
 }
 
