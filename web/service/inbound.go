@@ -2642,6 +2642,14 @@ func (s *InboundService) GetOnlineClients() []string {
 	return p.GetOnlineClients()
 }
 
+// SetOnlineClients updates the in-memory online clients list used by websocket broadcasts.
+// This is needed in shared mode where addClientTraffic is bypassed.
+func (s *InboundService) SetOnlineClients(clients []string) {
+	if p != nil {
+		p.SetOnlineClients(clients)
+	}
+}
+
 func (s *InboundService) GetClientsLastOnline() (map[string]int64, error) {
 	db := database.GetDB()
 	var rows []xray.ClientTraffic

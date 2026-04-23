@@ -40,13 +40,18 @@ func TestCollectPersistsInboundOnlyDeltaFromDifference(t *testing.T) {
 	if err := database.GetDB().Create(&model.Inbound{Id: 1, Tag: "inbound-443", Enable: true}).Error; err != nil {
 		t.Fatalf("seed inbound failed: %v", err)
 	}
+	// Seed client_traffics so Collect can resolve email → InboundId
+	if err := database.GetDB().Create(&xray.ClientTraffic{InboundId: 1, Email: "alice@example.com", Enable: true}).Error; err != nil {
+		t.Fatalf("seed client traffic failed: %v", err)
+	}
 
 	store := NewTrafficPendingStore(filepath.Join(t.TempDir(), "traffic-pending.json"))
 	svc := NewTrafficFlushService(store)
 
+	// Xray API returns InboundId=0; Collect resolves it from DB
 	err := svc.Collect(
 		[]*xray.Traffic{{Tag: "inbound-443", IsInbound: true, Up: 100, Down: 50}},
-		[]*xray.ClientTraffic{{InboundId: 1, Email: "alice@example.com", Up: 70, Down: 20}},
+		[]*xray.ClientTraffic{{InboundId: 0, Email: "alice@example.com", Up: 70, Down: 20}},
 	)
 	if err != nil {
 		t.Fatalf("Collect error: %v", err)
@@ -176,13 +181,18 @@ func TestCollectClampsNegativeResidualAndLogsDetailedWarning(t *testing.T) {
 	if err := database.GetDB().Create(&model.Inbound{Id: 1, Tag: "inbound-443", Enable: true}).Error; err != nil {
 		t.Fatalf("seed inbound failed: %v", err)
 	}
+	// Seed client_traffics so Collect can resolve email → InboundId
+	if err := database.GetDB().Create(&xray.ClientTraffic{InboundId: 1, Email: "alice@example.com", Enable: true}).Error; err != nil {
+		t.Fatalf("seed client traffic failed: %v", err)
+	}
 
 	store := NewTrafficPendingStore(filepath.Join(t.TempDir(), "traffic-pending.json"))
 	svc := NewTrafficFlushService(store)
 
+	// Xray API returns InboundId=0; Collect resolves it from DB
 	err := svc.Collect(
 		[]*xray.Traffic{{Tag: "inbound-443", IsInbound: true, Up: 10, Down: 5}},
-		[]*xray.ClientTraffic{{InboundId: 1, Email: "alice@example.com", Up: 12, Down: 7}},
+		[]*xray.ClientTraffic{{InboundId: 0, Email: "alice@example.com", Up: 12, Down: 7}},
 	)
 	if err != nil {
 		t.Fatalf("Collect error: %v", err)
@@ -265,5 +275,98 @@ func TestFlushOnceMarksRestartWhenReconciliationRequiresIt(t *testing.T) {
 	}
 	if !restartMarked {
 		t.Fatal("expected flush to mark restart when reconciliation requires it")
+	}
+}
+
+func TestCollectResolvesInboundIdFromDB(t *testing.T) {
+	setupTestDB(t)
+	if err := database.GetDB().Create(&model.Inbound{Id: 5, Tag: "inbound-8443", Enable: true}).Error; err != nil {
+		t.Fatalf("seed inbound failed: %v", err)
+	}
+	if err := database.GetDB().Create(&xray.ClientTraffic{InboundId: 5, Email: "bob@example.com", Enable: true}).Error; err != nil {
+		t.Fatalf("seed client traffic failed: %v", err)
+	}
+
+	store := NewTrafficPendingStore(filepath.Join(t.TempDir(), "traffic-pending.json"))
+	svc := NewTrafficFlushService(store)
+
+	// Simulate Xray API: InboundId is always 0, only email is set
+	err := svc.Collect(
+		[]*xray.Traffic{{Tag: "inbound-8443", IsInbound: true, Up: 200, Down: 100}},
+		[]*xray.ClientTraffic{{InboundId: 0, Email: "bob@example.com", Up: 150, Down: 80}},
+	)
+	if err != nil {
+		t.Fatalf("Collect error: %v", err)
+	}
+
+	deltas, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	var clientDelta *TrafficDelta
+	var inboundOnlyDelta *TrafficDelta
+	for i := range deltas {
+		switch deltas[i].Kind {
+		case TrafficDeltaKindClient:
+			clientDelta = &deltas[i]
+		case TrafficDeltaKindInboundOnly:
+			inboundOnlyDelta = &deltas[i]
+		}
+	}
+
+	if clientDelta == nil {
+		t.Fatal("expected client delta")
+	}
+	// InboundId must be resolved to 5 from DB, not 0 from Xray API
+	if clientDelta.InboundID != 5 {
+		t.Fatalf("expected InboundID=5, got %d", clientDelta.InboundID)
+	}
+	if clientDelta.Email != "bob@example.com" || clientDelta.UpDelta != 150 || clientDelta.DownDelta != 80 {
+		t.Fatalf("unexpected client delta: %+v", *clientDelta)
+	}
+
+	// Residual: 200-150=50 up, 100-80=20 down
+	if inboundOnlyDelta == nil {
+		t.Fatal("expected inbound-only delta")
+	}
+	if inboundOnlyDelta.InboundID != 5 || inboundOnlyDelta.UpDelta != 50 || inboundOnlyDelta.DownDelta != 20 {
+		t.Fatalf("unexpected inbound-only delta: %+v", *inboundOnlyDelta)
+	}
+}
+
+func TestCollectSkipsUnknownEmail(t *testing.T) {
+	setupTestDB(t)
+	if err := database.GetDB().Create(&model.Inbound{Id: 1, Tag: "inbound-443", Enable: true}).Error; err != nil {
+		t.Fatalf("seed inbound failed: %v", err)
+	}
+	// No client_traffic seeded → email is unknown
+
+	store := NewTrafficPendingStore(filepath.Join(t.TempDir(), "traffic-pending.json"))
+	svc := NewTrafficFlushService(store)
+
+	err := svc.Collect(
+		[]*xray.Traffic{{Tag: "inbound-443", IsInbound: true, Up: 100, Down: 50}},
+		[]*xray.ClientTraffic{{InboundId: 0, Email: "unknown@example.com", Up: 30, Down: 10}},
+	)
+	if err != nil {
+		t.Fatalf("Collect error: %v", err)
+	}
+
+	deltas, err := store.Load()
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	// Unknown email should be skipped; only inbound-only residual remains
+	if len(deltas) != 1 {
+		t.Fatalf("expected 1 delta (inbound-only), got %d: %+v", len(deltas), deltas)
+	}
+	if deltas[0].Kind != TrafficDeltaKindInboundOnly {
+		t.Fatalf("expected inbound-only delta, got %+v", deltas[0])
+	}
+	// Full inbound traffic becomes residual since no client traffic matched
+	if deltas[0].UpDelta != 100 || deltas[0].DownDelta != 50 {
+		t.Fatalf("unexpected residual: %+v", deltas[0])
 	}
 }

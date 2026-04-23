@@ -74,28 +74,40 @@ install_base() {
             apt-get update && apt-get install -y -q cron curl tar tzdata socat ca-certificates openssl
         ;;
         fedora | amzn | virtuozzo | rhel | almalinux | rocky | ol)
-            dnf -y update && dnf install -y -q curl tar tzdata socat ca-certificates openssl
+            dnf -y update && dnf install -y -q cronie curl tar tzdata socat ca-certificates openssl
         ;;
         centos)
             if [[ "${VERSION_ID}" =~ ^7 ]]; then
-                yum -y update && yum install -y curl tar tzdata socat ca-certificates openssl
+                yum -y update && yum install -y cronie curl tar tzdata socat ca-certificates openssl
             else
-                dnf -y update && dnf install -y -q curl tar tzdata socat ca-certificates openssl
+                dnf -y update && dnf install -y -q cronie curl tar tzdata socat ca-certificates openssl
             fi
         ;;
         arch | manjaro | parch)
-            pacman -Syu && pacman -Syu --noconfirm curl tar tzdata socat ca-certificates openssl
+            pacman -Syu && pacman -Syu --noconfirm cronie curl tar tzdata socat ca-certificates openssl
         ;;
         opensuse-tumbleweed | opensuse-leap)
-            zypper refresh && zypper -q install -y curl tar timezone socat ca-certificates openssl
+            zypper refresh && zypper -q install -y cronie curl tar timezone socat ca-certificates openssl
         ;;
         alpine)
-            apk update && apk add curl tar tzdata socat ca-certificates openssl
+            apk update && apk add dcron curl tar tzdata socat ca-certificates openssl
         ;;
         *)
-            apt-get update && apt-get install -y -q curl tar tzdata socat ca-certificates openssl
+            apt-get update && apt-get install -y -q cron curl tar tzdata socat ca-certificates openssl
         ;;
     esac
+}
+
+ensure_cron_running() {
+    if [[ "$release" == "alpine" ]]; then
+        rc-service dcron start 2>/dev/null || true
+        rc-update add dcron 2>/dev/null || true
+    elif command -v systemctl >/dev/null 2>&1; then
+        if systemctl list-unit-files 2>/dev/null | grep -qE '^(crond|cron)\.service$'; then
+            systemctl enable crond 2>/dev/null || systemctl enable cron 2>/dev/null || true
+            systemctl start crond 2>/dev/null || systemctl start cron 2>/dev/null || true
+        fi
+    fi
 }
 
 has_mariadb_cli() {
@@ -250,26 +262,38 @@ test_mariadb_server_connection() {
     local host="$1" port="$2" user="$3" pass="$4"
     local bin
     local -a cmd
+    local err_output
     bin=$(mariadb_cli_bin) || return 1
     cmd=("$bin" -h "$host" -P "$port" -u "$user")
     if [[ -n "$pass" ]]; then
         cmd+=("-p$pass")
     fi
     cmd+=(-e "SELECT 1;")
-    "${cmd[@]}" >/dev/null 2>&1
+    err_output=$("${cmd[@]}" 2>&1)
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo -e "${red}MariaDB 连接失败: ${err_output}${plain}" >&2
+        return 1
+    fi
 }
 
 test_mariadb_database_connection() {
     local host="$1" port="$2" dbname="$3" user="$4" pass="$5"
     local bin
     local -a cmd
+    local err_output
     bin=$(mariadb_cli_bin) || return 1
     cmd=("$bin" -h "$host" -P "$port" -u "$user" -D "$dbname")
     if [[ -n "$pass" ]]; then
         cmd+=("-p$pass")
     fi
     cmd+=(-e "SELECT 1;")
-    "${cmd[@]}" >/dev/null 2>&1
+    err_output=$("${cmd[@]}" 2>&1)
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo -e "${red}MariaDB 连接失败: ${err_output}${plain}" >&2
+        return 1
+    fi
 }
 
 is_safe_mariadb_identifier() {
@@ -299,7 +323,6 @@ mariadb_server_override_path() {
 mariadb_server_config_candidates() {
     local override_path
     override_path=$(mariadb_server_override_path)
-    echo "$override_path"
 
     local path=""
     for path in \
@@ -315,6 +338,8 @@ mariadb_server_config_candidates() {
             echo "$path"
         fi
     done
+
+    echo "$override_path"
 }
 
 ensure_mariadb_override_file() {
@@ -1799,4 +1824,5 @@ install_x-ui() {
 
 echo -e "${green}正在执行...${plain}"
 install_base
+ensure_cron_running
 install_x-ui $1

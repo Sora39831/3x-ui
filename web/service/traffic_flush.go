@@ -32,6 +32,30 @@ func NewTrafficFlushService(store *TrafficPendingStore) *TrafficFlushService {
 }
 
 func (s *TrafficFlushService) Collect(inboundTraffics []*xray.Traffic, clientTraffics []*xray.ClientTraffic) error {
+	// Resolve email → InboundId mapping from database, since Xray API only
+	// returns email for client traffic without the InboundId.
+	emailToInboundID := map[string]int{}
+	if len(clientTraffics) > 0 {
+		emails := make([]string, 0, len(clientTraffics))
+		for _, ct := range clientTraffics {
+			if ct != nil && ct.Email != "" {
+				emails = append(emails, ct.Email)
+			}
+		}
+		if len(emails) > 0 {
+			var rows []xray.ClientTraffic
+			if err := database.GetDB().Model(&xray.ClientTraffic{}).
+				Select("inbound_id, email").
+				Where("email IN (?)", emails).
+				Find(&rows).Error; err != nil {
+				logger.Warning("resolve email to inbound_id failed:", err)
+			}
+			for _, r := range rows {
+				emailToInboundID[r.Email] = r.InboundId
+			}
+		}
+	}
+
 	deltas := make([]TrafficDelta, 0, len(clientTraffics)+len(inboundTraffics))
 	clientTotals := map[int]TrafficDelta{}
 
@@ -39,18 +63,23 @@ func (s *TrafficFlushService) Collect(inboundTraffics []*xray.Traffic, clientTra
 		if traffic == nil || (traffic.Up == 0 && traffic.Down == 0) {
 			continue
 		}
+		resolvedID := emailToInboundID[traffic.Email]
+		if resolvedID == 0 {
+			logger.Warningf("skip client traffic for unknown email %q (no inbound_id in DB)", traffic.Email)
+			continue
+		}
 		delta := TrafficDelta{
 			Kind:      TrafficDeltaKindClient,
-			InboundID: traffic.InboundId,
+			InboundID: resolvedID,
 			Email:     traffic.Email,
 			UpDelta:   traffic.Up,
 			DownDelta: traffic.Down,
 		}
 		deltas = append(deltas, delta)
-		total := clientTotals[traffic.InboundId]
+		total := clientTotals[resolvedID]
 		total.UpDelta += traffic.Up
 		total.DownDelta += traffic.Down
-		clientTotals[traffic.InboundId] = total
+		clientTotals[resolvedID] = total
 	}
 
 	for _, traffic := range inboundTraffics {
