@@ -2696,7 +2696,6 @@ mariadb_server_override_path() {
 mariadb_server_config_candidates() {
     local override_path
     override_path=$(mariadb_server_override_path)
-    echo "$override_path"
 
     local path=""
     for path in \
@@ -2712,6 +2711,8 @@ mariadb_server_config_candidates() {
             echo "$path"
         fi
     done
+
+    echo "$override_path"
 }
 
 ensure_mariadb_override_file() {
@@ -3050,26 +3051,38 @@ test_mariadb_server_connection() {
     local host="$1" port="$2" user="$3" pass="$4"
     local bin
     local -a cmd
+    local err_output
     bin=$(mariadb_cli_bin) || return 1
     cmd=("$bin" -h "$host" -P "$port" -u "$user")
     if [[ -n "$pass" ]]; then
         cmd+=("-p$pass")
     fi
     cmd+=(-e "SELECT 1;")
-    "${cmd[@]}" >/dev/null 2>&1
+    err_output=$("${cmd[@]}" 2>&1)
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo -e "${red}MariaDB 连接失败: ${err_output}${plain}" >&2
+        return 1
+    fi
 }
 
 test_mariadb_database_connection() {
     local host="$1" port="$2" dbname="$3" user="$4" pass="$5"
     local bin
     local -a cmd
+    local err_output
     bin=$(mariadb_cli_bin) || return 1
     cmd=("$bin" -h "$host" -P "$port" -u "$user" -D "$dbname")
     if [[ -n "$pass" ]]; then
         cmd+=("-p$pass")
     fi
     cmd+=(-e "SELECT 1;")
-    "${cmd[@]}" >/dev/null 2>&1
+    err_output=$("${cmd[@]}" 2>&1)
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo -e "${red}MariaDB 连接失败: ${err_output}${plain}" >&2
+        return 1
+    fi
 }
 
 is_safe_mariadb_identifier() {

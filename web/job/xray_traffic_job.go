@@ -44,6 +44,15 @@ func (j *XrayTrafficJob) Run() {
 		if err := j.trafficFlushSvc.Collect(traffics, clientTraffics); err != nil {
 			logger.Warning("collect shared traffic failed:", err)
 		}
+		// In shared mode, addClientTraffic is bypassed so p.SetOnlineClients
+		// is never called. Compute and set online clients here instead.
+		online := make([]string, 0, len(clientTraffics))
+		for _, ct := range clientTraffics {
+			if ct != nil && ct.Up+ct.Down > 0 {
+				online = append(online, ct.Email)
+			}
+		}
+		j.inboundService.SetOnlineClients(online)
 	} else {
 		err, needRestart0 = j.inboundService.AddTraffic(traffics, clientTraffics)
 		if err != nil {
