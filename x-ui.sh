@@ -2904,7 +2904,23 @@ mariadb_cli_bin() {
 
 has_local_mariadb_service() {
     if command -v systemctl >/dev/null 2>&1; then
-        systemctl list-unit-files 2>/dev/null | grep -qE '^(mariadb|mysql)\.service$' && return 0
+        # Also verify the server package is actually installed (not just a stale service file)
+        if systemctl list-unit-files 2>/dev/null | grep -qE '^(mariadb|mysql)\.service$'; then
+            case "${release}" in
+                ubuntu | debian | armbian | linuxmint)
+                    dpkg -s mariadb-server >/dev/null 2>&1 && return 0
+                    # Package missing but service file exists — stale state
+                    return 1
+                ;;
+                centos | rhel | almalinux | rocky | ol | alinux | amzn | fedora)
+                    rpm -q mariadb-server >/dev/null 2>&1 && return 0
+                    return 1
+                ;;
+                *)
+                    return 0
+                ;;
+            esac
+        fi
     fi
     [[ -f /etc/init.d/mariadb ]]
 }
