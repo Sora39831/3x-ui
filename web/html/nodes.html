@@ -147,12 +147,15 @@
   </a-layout>
 </a-layout>
 {{template "page/body_scripts" .}}
+{{template "component/aSidebar" .}}
+{{template "component/aThemeSwitch" .}}
 <script>
   const app = new Vue({
     el: '#app',
     delimiters: ['[[', ']]'],
     data() {
       return {
+        themeSwitcher,
         loading: false,
         saving: false,
         nodeRole: '',
@@ -189,7 +192,7 @@
     methods: {
       async loadNodes() {
         try {
-          const res = await axios.get('api/nodes/list');
+          const res = await axios.get('/panel/api/nodes/list');
           if (res.data.success) {
             this.nodes = res.data.obj;
           }
@@ -199,7 +202,7 @@
       },
       async loadConfig() {
         try {
-          const res = await axios.get('api/nodes/config');
+          const res = await axios.get('/panel/api/nodes/config');
           if (res.data.success) {
             Object.assign(this.nodeConfig, res.data.obj);
             this.nodeRole = res.data.obj.role;
@@ -211,7 +214,7 @@
       async saveConfig() {
         this.saving = true;
         try {
-          const res = await axios.post('api/nodes/config', {
+          const res = await axios.post('/panel/api/nodes/config', {
             syncInterval: this.nodeConfig.syncInterval,
             trafficFlushInterval: this.nodeConfig.trafficFlushInterval,
             dbType: this.nodeConfig.dbType,
