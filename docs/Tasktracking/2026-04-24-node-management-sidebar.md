@@ -3,7 +3,7 @@
 **Date:** 2026-04-24
 **Branch:** fix
 **Status:** Done
-**Tags:** v1.6.0-beta, v1.6.1, v1.6.3, v1.6.4
+**Tags:** v1.6.0-beta, v1.6.1, v1.6.3, v1.6.4, v1.6.5
 
 ## Overview
 
