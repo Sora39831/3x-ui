@@ -1,4 +1,6 @@
 {{ template "page/head_start" .}}
+<link rel="stylesheet" href="{{ asset "codemirror/codemirror.min.css" }}">
+<link rel="stylesheet" href="{{ asset "codemirror/xq.min.css" }}">
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -62,7 +64,7 @@
                 </a-card>
               </a-col>
               <a-col>
-                <a-tabs default-active-key="1">
+                <a-tabs default-active-key="1" @change="onSettingsTabChange">
                   <a-tab-pane key="1" :style="{ paddingTop: '20px' }">
                     <template #tab>
                       <a-icon type="setting"></a-icon>
@@ -137,6 +139,7 @@
       allSetting: new AllSetting(),
       loadFailed: false,
       saveBtnDisable: true,
+      clashCm: null,
       entryHost: null,
       entryPort: null,
       entryProtocol: null,
@@ -251,6 +254,31 @@
       }
     },
     methods: {
+      onSettingsTabChange(key) {
+        if (key === '6') {
+          this.$nextTick(() => this.initClashCodeMirror());
+        }
+      },
+      initClashCodeMirror() {
+        if (this.clashCm != null) {
+          this.clashCm.toTextArea();
+        }
+        const el = document.getElementById('clashTemplate');
+        if (!el) return;
+        el.value = this.allSetting.subClashTemplate;
+        this.clashCm = CodeMirror.fromTextArea(el, {
+          lineNumbers: true,
+          mode: "text/x-yaml",
+          theme: "xq",
+          lineWrapping: true,
+          indentUnit: 2,
+          tabSize: 2,
+          smartIndent: true,
+        });
+        this.clashCm.on('change', editor => {
+          this.allSetting.subClashTemplate = editor.getValue();
+        });
+      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },
@@ -620,15 +648,18 @@
           const panelPath = window.location.pathname.split('/').length < 4
           if (panelPath && this.allSetting.webBasePath == '/') alerts.push('{{ i18n "secAlertPanelURI" }}');
           if (this.allSetting.subEnable) {
-            const subPath = this.allSetting.subURI.length > 0 ? new URL(this.allSetting.subURI).pathname : this.allSetting.subPath;
+            const subURI = this.allSetting.subURI || '';
+            const subPath = subURI.length > 0 ? new URL(subURI).pathname : this.allSetting.subPath;
             if (subPath == '/sub/') alerts.push('{{ i18n "secAlertSubURI" }}');
           }
           if (this.allSetting.subJsonEnable) {
-            const subJsonPath = this.allSetting.subJsonURI.length > 0 ? new URL(this.allSetting.subJsonURI).pathname : this.allSetting.subJsonPath;
+            const subJsonURI = this.allSetting.subJsonURI || '';
+            const subJsonPath = subJsonURI.length > 0 ? new URL(subJsonURI).pathname : this.allSetting.subJsonPath;
             if (subJsonPath == '/json/') alerts.push('{{ i18n "secAlertSubJsonURI" }}');
           }
           if (this.allSetting.subClashEnable) {
-            const subClashPath = this.allSetting.subClashURI.length > 0 ? new URL(this.allSetting.subClashURI).pathname : this.allSetting.subClashPath;
+            const subClashURI = this.allSetting.subClashURI || '';
+            const subClashPath = subClashURI.length > 0 ? new URL(subClashURI).pathname : this.allSetting.subClashPath;
             if (subClashPath == '/clash/') alerts.push('Consider changing the default Clash subscription path for security.');
           }
           return alerts
@@ -661,4 +692,6 @@
     }
   });
 </script>
+<script src="{{ asset "codemirror/codemirror.min.js" }}"></script>
+<script src="{{ asset "codemirror/yaml.js" }}"></script>
 {{ template "page/body_end" .}}
