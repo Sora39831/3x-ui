@@ -83,7 +83,7 @@
                         <a-form-item>
                             <a-space direction="vertical" align="center">
                                 <a-row type="flex" :gutter="[8,8]" justify="center" style="width:100%">
-                                    <a-col :xs="24" :sm="app.subJsonUrl ? 12 : 24" style="text-align:center;">
+                                    <a-col :xs="24" :sm="app.subJsonUrl || app.subClashUrl ? (app.subJsonUrl && app.subClashUrl ? 8 : 12) : 24" style="text-align:center;">
                                         <tr-qr-box class="qr-box">
                                             <a-tag color="purple" class="qr-tag">
                                                 <span>{{ i18n
@@ -97,7 +97,7 @@
                                             </tr-qr-bg>
                                         </tr-qr-box>
                                     </a-col>
-                                    <a-col v-if="app.subJsonUrl" :xs="24" :sm="12" style="text-align:center;">
+                                    <a-col v-if="app.subJsonUrl" :xs="24" :sm="app.subClashUrl ? 8 : (app.subJsonUrl ? 12 : 24)" style="text-align:center;">
                                         <tr-qr-box class="qr-box">
                                             <a-tag color="purple" class="qr-tag">
                                                 <span>{{ i18n
@@ -108,6 +108,21 @@
                                                 <tr-qr-bg-inner class="qr-bg-sub-inner">
                                                     <canvas id="qrcode-subjson" class="qr-cv" title='{{ i18n "copy" }}'
                                                         @click="copy(app.subJsonUrl)"></canvas>
+                                                </tr-qr-bg-inner>
+                                            </tr-qr-bg>
+                                        </tr-qr-box>
+                                    </a-col>
+                                    <a-col v-if="app.subClashUrl" :xs="24" :sm="app.subJsonUrl ? 8 : 12" style="text-align:center;">
+                                        <tr-qr-box class="qr-box">
+                                            <a-tag color="purple" class="qr-tag">
+                                                <span>{{ i18n
+                                                    "pages.settings.subSettings"}}
+                                                    Clash</span>
+                                            </a-tag>
+                                            <tr-qr-bg class="qr-bg-sub">
+                                                <tr-qr-bg-inner class="qr-bg-sub-inner">
+                                                    <canvas id="qrcode-subclash" class="qr-cv" title='{{ i18n "copy" }}'
+                                                        @click="copy(app.subClashUrl)"></canvas>
                                                 </tr-qr-bg-inner>
                                             </tr-qr-bg>
                                         </tr-qr-box>
@@ -187,7 +202,7 @@
                     <a-form layout="vertical">
                         <a-form-item>
                             <a-row type="flex" justify="center" :gutter="[8,8]" style="width:100%">
-                                <a-col :xs="24" :sm="12" style="text-align:center;">
+                                <a-col :xs="24" :sm="8" style="text-align:center;">
                                     <!-- Android dropdown -->
                                     <a-dropdown :trigger="['click']">
                                         <a-button icon="android" :block="isMobile"
@@ -207,10 +222,12 @@
                                                 Tunnel</a-menu-item>
                                             <a-menu-item key="android-happ"
                                                 @click="open('happ://add/' + app.subUrl)">Happ</a-menu-item>
+                                            <a-menu-item key="android-clashverge"
+                                                @click="open(clashvergeUrl)">Clash Verge</a-menu-item>
                                         </a-menu>
                                     </a-dropdown>
                                 </a-col>
-                                <a-col :xs="24" :sm="12" style="text-align:center;">
+                                <a-col :xs="24" :sm="8" style="text-align:center;">
                                     <!-- iOS dropdown -->
                                     <a-dropdown :trigger="['click']">
                                         <a-button icon="apple" :block="isMobile"
@@ -229,6 +246,21 @@
                                                 Tunnel
                                             </a-menu-item>
                                             <a-menu-item key="ios-happ" @click="open(happUrl)">Happ</a-menu-item>
+                                            <a-menu-item key="ios-clashverge"
+                                                @click="open(clashvergeUrl)">Clash Verge</a-menu-item>
+                                        </a-menu>
+                                    </a-dropdown>
+                                </a-col>
+                                <a-col :xs="24" :sm="8" style="text-align:center;">
+                                    <!-- Desktop dropdown -->
+                                    <a-dropdown :trigger="['click']">
+                                        <a-button icon="laptop" :block="isMobile"
+                                            :style="{ marginTop: isMobile ? '6px' : 0 }" size="large" type="primary">
+                                            Desktop <a-icon type="down" />
+                                        </a-button>
+                                        <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
+                                            <a-menu-item key="desktop-clashverge"
+                                                @click="open(clashvergeUrl)">Clash Verge</a-menu-item>
                                         </a-menu>
                                     </a-dropdown>
                                 </a-col>
@@ -242,7 +274,7 @@
 </a-layout>
 
 <!-- Bootstrap data for external JS -->
-<template id="subscription-data" data-sid="{{ .sId }}" data-sub-url="{{ .subUrl }}" data-subjson-url="{{ .subJsonUrl }}"
+<template id="subscription-data" data-sid="{{ .sId }}" data-sub-url="{{ .subUrl }}" data-subjson-url="{{ .subJsonUrl }}" data-subclash-url="{{ .subClashUrl }}"
     data-download="{{ .download }}" data-upload="{{ .upload }}" data-used="{{ .used }}" data-total="{{ .total }}"
     data-remained="{{ .remained }}" data-expire="{{ .expire }}" data-lastonline="{{ .lastOnline }}"
     data-downloadbyte="{{ .downloadByte }}" data-uploadbyte="{{ .uploadByte }}" data-totalbyte="{{ .totalByte }}"

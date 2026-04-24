@@ -52,6 +52,10 @@ class AllSetting {
         this.subJsonNoises = "";
         this.subJsonMux = "";
         this.subJsonRules = "";
+        this.subClashEnable = false;
+        this.subClashPath = "/clash/";
+        this.subClashURI = "";
+        this.subClashTemplate = "";
 
         this.timeLocation = "Local";
 

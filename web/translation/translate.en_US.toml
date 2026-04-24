@@ -437,6 +437,7 @@
 "subEnable" = "Subscription Service"
 "subEnableDesc" = "Enable/Disable the subscription service."
 "subJsonEnable" = "Enable/Disable the JSON subscription endpoint independently."
+"subClashEnable" = "Enable/Disable the Clash YAML subscription endpoint independently."
 "subTitle" = "Subscription Title"
 "subTitleDesc" = "Title shown in VPN client"
 "subSupportUrl" = "Support URL"

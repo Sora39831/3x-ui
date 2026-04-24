@@ -365,6 +365,18 @@
               <a :href="[[ infoModal.subJsonLink ]]" target="_blank">[[
                 infoModal.subJsonLink ]]</a>
             </tr-info-row>
+            <tr-info-row class="tr-info-row"
+              v-if="app.subSettings.subClashEnable">
+              <tr-info-title class="tr-info-title">
+                <a-tag color="purple">Clash Link</a-tag>
+                <a-tooltip title='{{ i18n "copy" }}'>
+                  <a-button size="small" icon="snippets"
+                    @click="copy(infoModal.subClashLink)"></a-button>
+                </a-tooltip>
+              </tr-info-title>
+              <a :href="[[ infoModal.subClashLink ]]" target="_blank">[[
+                infoModal.subClashLink ]]</a>
+            </tr-info-row>
           </template>
           <template v-if="app.tgBotEnable && infoModal.clientSettings.tgId">
             <a-divider>Telegram ChatID</a-divider>
@@ -642,6 +654,7 @@
     isExpired: false,
     subLink: '',
     subJsonLink: '',
+    subClashLink: '',
     clientIps: '',
     clientIpsArray: [],
     show(dbInbound, index) {
@@ -678,6 +691,7 @@
         if (this.clientSettings.subId) {
           this.subLink = this.genSubLink(this.clientSettings.subId);
           this.subJsonLink = app.subSettings.subJsonEnable ? this.genSubJsonLink(this.clientSettings.subId) : '';
+          this.subClashLink = app.subSettings.subClashEnable ? this.genSubClashLink(this.clientSettings.subId) : '';
         }
       }
       this.visible = true;
@@ -690,6 +704,9 @@
     },
     genSubJsonLink(subID) {
       return app.subSettings.subJsonURI + subID;
+    },
+    genSubClashLink(subID) {
+      return app.subSettings.subClashURI + subID;
     }
   };
   const infoModalApp = new Vue({
