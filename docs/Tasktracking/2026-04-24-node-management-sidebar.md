@@ -3,7 +3,7 @@
 **Date:** 2026-04-24
 **Branch:** fix
 **Status:** Done
-**Tags:** v1.6.0-beta, v1.6.1, v1.6.3
+**Tags:** v1.6.0-beta, v1.6.1, v1.6.3, v1.6.4
 
 ## Overview
 
@@ -24,6 +24,7 @@ Adding a Node Management sidebar page to the 3x-ui web panel for cluster node vi
 | 9 | Fix gofmt formatting | DONE | a3d8e9c5 |
 | 10 | Fix shared MariaDB query for node states | DONE | d5bf2858 |
 | 11 | Fix node settings not auto-created in x-ui.json | DONE | d733ff2a |
+| 12 | Fix master heartbeat not visible to workers | DONE | 226bae2b |
 
 ## v1.6.3 Fix Details
 
@@ -36,6 +37,17 @@ Adding a Node Management sidebar page to the 3x-ui web panel for cluster node vi
 - Added `"node"` group to `settingGroups`
 - Updated `settingGroupAliases` in `config/config.go` to look in `"node"` first, then `"other"` for backward compat
 - Updated `ensureDefaultNodeSettings` to write to `"node"` group
+
+## v1.6.4 Fix Details
+
+**Problem:** Worker node page showed no connected master node, even though master had nodeId configured and was running.
+
+**Root cause:** `updateNodeState()` in `node_sync.go` wrote heartbeats to `database.GetDB()` — the local SQLite for a master using SQLite. Workers query the shared MariaDB via `getNodeStatesFromShared()`, so the master's heartbeat was never visible to workers.
+
+**Fix (commit 226bae2b):**
+- Master now also writes heartbeat to shared MariaDB via `writeStateToSharedMariaDB()` when MariaDB connection settings are configured
+- Check uses `dbUser` (no default value) as the most reliable indicator that MariaDB is configured
+- This works even when `dbType` is "sqlite" (master uses SQLite locally but has shared MariaDB settings)
 
 ## Task 2 Details
 
