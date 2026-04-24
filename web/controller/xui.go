@@ -33,6 +33,7 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	g.GET("/inbounds", a.checkAdmin, a.inbounds)
 	g.GET("/settings", a.checkAdmin, a.settings)
 	g.GET("/xray", a.checkAdmin, a.xraySettings)
+	g.GET("/nodes", a.checkAdmin, a.nodes)
 	g.GET("/users", a.checkAdmin, a.users)
 
 	a.settingController = NewSettingController(g)
@@ -67,6 +68,11 @@ func (a *XUIController) settings(c *gin.Context) {
 // xraySettings renders the Xray settings page.
 func (a *XUIController) xraySettings(c *gin.Context) {
 	html(c, "xray.html", "pages.xray.title", nil)
+}
+
+// nodes renders the node management page.
+func (a *XUIController) nodes(c *gin.Context) {
+	html(c, "nodes.html", "pages.nodes.title", nil)
 }
 
 // users renders the admin user management page.

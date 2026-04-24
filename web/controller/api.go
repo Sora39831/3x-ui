@@ -12,9 +12,10 @@ import (
 // APIController handles the main API routes for the 3x-ui panel, including inbounds and server management.
 type APIController struct {
 	BaseController
-	inboundController *InboundController
-	serverController  *ServerController
-	userController    *UserController
+	inboundController  *InboundController
+	serverController   *ServerController
+	userController     *UserController
+	nodeController     *NodeController
 	Tgbot             service.Tgbot
 }
 
@@ -57,6 +58,11 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 	users := api.Group("/users")
 	users.Use(a.checkAdmin)
 	a.userController = NewUserController(users)
+
+	// Nodes API
+	nodes := api.Group("/nodes")
+	nodes.Use(a.checkAdmin)
+	a.nodeController = NewNodeController(nodes)
 
 	// Extra routes
 	api.GET("/backuptotgbot", a.checkAdmin, a.BackuptoTgbot)
