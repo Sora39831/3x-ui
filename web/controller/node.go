@@ -7,6 +7,7 @@ import (
 
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/database"
+	"github.com/mhsanaei/3x-ui/v2/database/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,10 +42,33 @@ type NodeView struct {
 	LastError       string `json:"lastError"`
 }
 
+// getNodeStatesFromShared queries node_states from the shared MariaDB.
+// In shared mode, the master may use SQLite locally, so we must query
+// the shared MariaDB directly to see worker heartbeats.
+func getNodeStatesFromShared() ([]model.NodeState, error) {
+	// If current DB is already MariaDB, use it directly
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		return database.GetNodeStates()
+	}
+
+	// Otherwise, open a temporary connection to the shared MariaDB
+	dbConfig := config.GetDBConfigFromJSON()
+	db, err := database.OpenMariaDB(dbConfig)
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, _ := db.DB()
+	defer sqlDB.Close()
+
+	var states []model.NodeState
+	err = db.Order("node_id").Find(&states).Error
+	return states, err
+}
+
 // list returns connected nodes. Master sees all workers; worker sees the master.
 func (a *NodeController) list(c *gin.Context) {
 	nodeCfg := config.GetNodeConfigFromJSON()
-	states, err := database.GetNodeStates()
+	states, err := getNodeStatesFromShared()
 	if err != nil {
 		jsonMsg(c, "get node states", err)
 		return
