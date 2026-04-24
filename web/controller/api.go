@@ -12,10 +12,10 @@ import (
 // APIController handles the main API routes for the 3x-ui panel, including inbounds and server management.
 type APIController struct {
 	BaseController
-	inboundController  *InboundController
-	serverController   *ServerController
-	userController     *UserController
-	nodeController     *NodeController
+	inboundController *InboundController
+	serverController  *ServerController
+	userController    *UserController
+	nodeController    *NodeController
 	Tgbot             service.Tgbot
 }
 
