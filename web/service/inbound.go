@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
@@ -1525,14 +1526,27 @@ func (s *InboundService) GetInboundTags() (string, error) {
 
 func (s *InboundService) MigrationRemoveOrphanedTraffics() {
 	db := database.GetDB()
-	db.Exec(`
-		DELETE FROM client_traffics
-		WHERE email NOT IN (
-			SELECT JSON_EXTRACT(client.value, '$.email')
-			FROM inbounds,
-				JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
-		)
-	`)
+
+	var query string
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		query = `
+			DELETE FROM client_traffics
+			WHERE email NOT IN (
+				SELECT JSON_EXTRACT(client.value, '$.email')
+				FROM inbounds,
+					JSON_TABLE(inbounds.settings, '$.clients[*]' COLUMNS(value JSON PATH '$')) AS client
+			)`
+	} else {
+		query = `
+			DELETE FROM client_traffics
+			WHERE email NOT IN (
+				SELECT JSON_EXTRACT(client.value, '$.email')
+				FROM inbounds,
+					JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
+			)`
+	}
+
+	db.Exec(query)
 }
 
 func (s *InboundService) AddClientStat(tx *gorm.DB, inboundId int, client *model.Client) error {
@@ -2327,13 +2341,26 @@ func (s *InboundService) GetClientTrafficByID(id string) ([]xray.ClientTraffic, 
 	db := database.GetDB()
 	var traffics []xray.ClientTraffic
 
-	err := db.Model(xray.ClientTraffic{}).Where(`email IN(
-		SELECT JSON_EXTRACT(client.value, '$.email') as email
-		FROM inbounds,
-	  	JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
-		WHERE
-	  	JSON_EXTRACT(client.value, '$.id') in (?)
-		)`, id).Find(&traffics).Error
+	var query string
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		query = `email IN(
+			SELECT JSON_EXTRACT(client.value, '$.email') as email
+			FROM inbounds,
+				JSON_TABLE(inbounds.settings, '$.clients[*]' COLUMNS(value JSON PATH '$')) AS client
+			WHERE
+				JSON_EXTRACT(client.value, '$.id') in (?)
+			)`
+	} else {
+		query = `email IN(
+			SELECT JSON_EXTRACT(client.value, '$.email') as email
+			FROM inbounds,
+				JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
+			WHERE
+				JSON_EXTRACT(client.value, '$.id') in (?)
+			)`
+	}
+
+	err := db.Model(xray.ClientTraffic{}).Where(query, id).Find(&traffics).Error
 
 	if err != nil {
 		logger.Debug(err)
