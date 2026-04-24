@@ -142,20 +142,16 @@ func GetLogFolder() string {
 }
 
 var settingGroupAliases = map[string][]string{
-	"dbType":     {"databaseConnection", "other"},
-	"dbHost":     {"databaseConnection", "other"},
-	"dbPort":     {"databaseConnection", "other"},
-	"dbUser":     {"databaseConnection", "other"},
-	"dbPassword": {"databaseConnection", "other"},
-	"dbName":     {"databaseConnection", "other"},
-	"nodeRole":   {"other"},
-	"nodeId":     {"other"},
-	"syncInterval": {
-		"other",
-	},
-	"trafficFlushInterval": {
-		"other",
-	},
+	"dbType":               {"databaseConnection", "other"},
+	"dbHost":               {"databaseConnection", "other"},
+	"dbPort":               {"databaseConnection", "other"},
+	"dbUser":               {"databaseConnection", "other"},
+	"dbPassword":           {"databaseConnection", "other"},
+	"dbName":               {"databaseConnection", "other"},
+	"nodeRole":             {"node", "other"},
+	"nodeId":               {"node", "other"},
+	"syncInterval":         {"node", "other"},
+	"trafficFlushInterval": {"node", "other"},
 }
 
 func readGroupedString(settings map[string]any, key string) string {
@@ -214,10 +210,10 @@ func settingsLayoutMeta() map[string]any {
 }
 
 func ensureDefaultNodeSettings(settings map[string]any) {
-	group, ok := settings["other"].(map[string]any)
+	group, ok := settings["node"].(map[string]any)
 	if !ok {
 		group = make(map[string]any)
-		settings["other"] = group
+		settings["node"] = group
 	}
 
 	defaults := map[string]string{
@@ -228,6 +224,13 @@ func ensureDefaultNodeSettings(settings map[string]any) {
 	}
 	for key, value := range defaults {
 		if existing, exists := group[key]; !exists || existing == nil {
+			// Also check "other" group for backward compatibility
+			if otherGroup, ok := settings["other"].(map[string]any); ok {
+				if val, ok := otherGroup[key].(string); ok && val != "" {
+					group[key] = val
+					continue
+				}
+			}
 			group[key] = value
 		}
 	}

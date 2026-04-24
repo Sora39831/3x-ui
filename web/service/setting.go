@@ -140,6 +140,12 @@ rules:
 	"dbUser":     "",
 	"dbPassword": "",
 	"dbName":     "3xui",
+
+	// Node settings
+	"nodeRole":             "master",
+	"nodeId":               "",
+	"syncInterval":         "30",
+	"trafficFlushInterval": "10",
 }
 
 // settingGroups defines the nested JSON structure for on-disk settings.
@@ -250,6 +256,12 @@ var settingGroups = map[string]map[string]string{
 		"dbUser":     "dbUser",
 		"dbPassword": "dbPassword",
 		"dbName":     "dbName",
+	},
+	"node": {
+		"nodeRole":             "nodeRole",
+		"nodeId":               "nodeId",
+		"syncInterval":         "syncInterval",
+		"trafficFlushInterval": "trafficFlushInterval",
 	},
 }
 
