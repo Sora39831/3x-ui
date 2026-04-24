@@ -81,6 +81,12 @@ type AllSetting struct {
 	SubJsonMux                  string `json:"subJsonMux" form:"subJsonMux"`                                   // JSON subscription mux configuration
 	SubJsonRules                string `json:"subJsonRules" form:"subJsonRules"`
 
+	// Clash subscription settings
+	SubClashEnable   bool   `json:"subClashEnable" form:"subClashEnable"`     // Enable Clash subscription endpoint
+	SubClashPath     string `json:"subClashPath" form:"subClashPath"`         // Path for Clash subscription endpoint
+	SubClashURI      string `json:"subClashURI" form:"subClashURI"`           // Clash subscription server URI
+	SubClashTemplate string `json:"subClashTemplate" form:"subClashTemplate"` // Clash YAML template content
+
 	// LDAP settings
 	LdapEnable     bool   `json:"ldapEnable" form:"ldapEnable"`
 	LdapHost       string `json:"ldapHost" form:"ldapHost"`
@@ -177,6 +183,13 @@ func (s *AllSetting) CheckValid() error {
 	}
 	if !strings.HasSuffix(s.SubJsonPath, "/") {
 		s.SubJsonPath += "/"
+	}
+
+	if !strings.HasPrefix(s.SubClashPath, "/") {
+		s.SubClashPath = "/" + s.SubClashPath
+	}
+	if !strings.HasSuffix(s.SubClashPath, "/") {
+		s.SubClashPath += "/"
 	}
 
 	_, err := time.LoadLocation(s.TimeLocation)

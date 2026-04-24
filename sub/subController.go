@@ -25,8 +25,12 @@ type SUBController struct {
 	subEncrypt       bool
 	updateInterval   string
 
-	subService     *SubService
-	subJsonService *SubJsonService
+	clashEnabled bool
+	subClashPath string
+
+	subService      *SubService
+	subJsonService  *SubJsonService
+	subClashService *SubClashService
 }
 
 // NewSUBController creates a new subscription controller with the given configuration.
@@ -49,6 +53,9 @@ func NewSUBController(
 	subAnnounce string,
 	subEnableRouting bool,
 	subRoutingRules string,
+	clashEnabled bool,
+	subClashPath string,
+	subClashTemplate string,
 ) *SUBController {
 	sub := NewSubService(showInfo, rModel)
 	a := &SUBController{
@@ -64,8 +71,12 @@ func NewSUBController(
 		subEncrypt:       encrypt,
 		updateInterval:   update,
 
-		subService:     sub,
-		subJsonService: NewSubJsonService(jsonFragment, jsonNoise, jsonMux, jsonRules, sub),
+		clashEnabled: clashEnabled,
+		subClashPath: subClashPath,
+
+		subService:      sub,
+		subJsonService:  NewSubJsonService(jsonFragment, jsonNoise, jsonMux, jsonRules, sub),
+		subClashService: NewSubClashService(subClashTemplate, sub),
 	}
 	a.initRouter(g)
 	return a
@@ -79,6 +90,10 @@ func (a *SUBController) initRouter(g *gin.RouterGroup) {
 	if a.jsonEnabled {
 		gJson := g.Group(a.subJsonPath)
 		gJson.GET(":subid", a.subJsons)
+	}
+	if a.clashEnabled {
+		gClash := g.Group(a.subClashPath)
+		gClash.GET(":subid", a.clashSubs)
 	}
 }
 
@@ -102,6 +117,10 @@ func (a *SUBController) subs(c *gin.Context) {
 			subURL, subJsonURL := a.subService.BuildURLs(scheme, hostWithPort, a.subPath, a.subJsonPath, subId)
 			if !a.jsonEnabled {
 				subJsonURL = ""
+			}
+			subClashURL := ""
+			if a.clashEnabled {
+				subClashURL = a.subService.buildSingleURL("", scheme, hostWithPort, a.subClashPath, subId)
 			}
 			// Get base_path from context (set by middleware)
 			basePath, exists := c.Get("base_path")
@@ -136,6 +155,7 @@ func (a *SUBController) subs(c *gin.Context) {
 				"totalByte":    page.TotalByte,
 				"subUrl":       page.SubUrl,
 				"subJsonUrl":   page.SubJsonUrl,
+				"subClashUrl":  subClashURL,
 				"result":       page.Result,
 			})
 			return
@@ -173,6 +193,26 @@ func (a *SUBController) subJsons(c *gin.Context) {
 		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
 
 		c.String(200, jsonSub)
+	}
+}
+
+// clashSubs handles HTTP requests for Clash YAML subscription configurations.
+func (a *SUBController) clashSubs(c *gin.Context) {
+	subId := c.Param("subid")
+	scheme, _, hostWithPort, _ := a.subService.ResolveRequest(c)
+	clashYaml, header, err := a.subClashService.GetClash(subId)
+	if err != nil || len(clashYaml) == 0 {
+		c.String(400, "Error!")
+	} else {
+		// Add headers
+		profileUrl := a.subProfileUrl
+		if profileUrl == "" {
+			profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
+		}
+		a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+
+		c.Header("Content-Type", "text/yaml; charset=utf-8")
+		c.String(200, clashYaml)
 	}
 }
 

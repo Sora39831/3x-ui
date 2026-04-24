@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/goccy/go-json"
 
+	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/database/model"
 	"github.com/mhsanaei/3x-ui/v2/logger"
@@ -115,14 +116,29 @@ func (s *SubService) GetSubs(subId string, host string) ([]string, int64, xray.C
 func (s *SubService) getInboundsBySubId(subId string) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("ClientStats").Where(`id in (
-		SELECT DISTINCT inbounds.id
-		FROM inbounds,
-			JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client 
-		WHERE
-			protocol in ('vmess','vless','trojan','shadowsocks')
-			AND JSON_EXTRACT(client.value, '$.subId') = ? AND enable = ?
-	)`, subId, true).Find(&inbounds).Error
+
+	var query string
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		query = `id in (
+			SELECT DISTINCT inbounds.id
+			FROM inbounds,
+				JSON_TABLE(inbounds.settings, '$.clients[*]' COLUMNS(value JSON PATH '$')) AS client
+			WHERE
+				protocol in ('vmess','vless','trojan','shadowsocks')
+				AND JSON_EXTRACT(client.value, '$.subId') = ? AND enable = ?
+		)`
+	} else {
+		query = `id in (
+			SELECT DISTINCT inbounds.id
+			FROM inbounds,
+				JSON_EACH(JSON_EXTRACT(inbounds.settings, '$.clients')) AS client
+			WHERE
+				protocol in ('vmess','vless','trojan','shadowsocks')
+				AND JSON_EXTRACT(client.value, '$.subId') = ? AND enable = ?
+		)`
+	}
+
+	err := db.Model(model.Inbound{}).Preload("ClientStats").Where(query, subId, true).Find(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}
@@ -141,9 +157,17 @@ func (s *SubService) getClientTraffics(traffics []xray.ClientTraffic, email stri
 func (s *SubService) getFallbackMaster(dest string, streamSettings string) (string, int, string, error) {
 	db := database.GetDB()
 	var inbound *model.Inbound
+
+	var jsonQuery string
+	if config.GetDBTypeFromJSON() == "mariadb" {
+		jsonQuery = "EXISTS (SELECT * FROM JSON_TABLE(settings, '$.fallbacks[*]' COLUMNS(value JSON PATH '$')) AS jt WHERE JSON_EXTRACT(jt.value, '$.dest') = ?)"
+	} else {
+		jsonQuery = "EXISTS (SELECT * FROM json_each(settings, '$.fallbacks') WHERE json_extract(value, '$.dest') = ?)"
+	}
+
 	err := db.Model(model.Inbound{}).
 		Where("JSON_TYPE(settings, '$.fallbacks') = 'array'").
-		Where("EXISTS (SELECT * FROM json_each(settings, '$.fallbacks') WHERE json_extract(value, '$.dest') = ?)", dest).
+		Where(jsonQuery, dest).
 		Find(&inbound).Error
 	if err != nil {
 		return "", 0, "", err
