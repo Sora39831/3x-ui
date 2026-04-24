@@ -51,3 +51,10 @@ func UpsertNodeState(tx *gorm.DB, state *model.NodeState) error {
 	state.UpdatedAt = time.Now().Unix()
 	return txOrDB(tx).Save(state).Error
 }
+
+// GetNodeStates returns all node_state records ordered by node_id.
+func GetNodeStates() ([]model.NodeState, error) {
+	var states []model.NodeState
+	err := GetDB().Order("node_id").Find(&states).Error
+	return states, err
+}
