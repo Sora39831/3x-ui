@@ -209,9 +209,9 @@ jobs:
             echo "Using cached toolchain: $TOOLCHAIN_DIR"
           fi
 
-          export PATH="$(realpath "/tmp/toolchain/$TOOLCHAIN_DIR")/bin:$PATH"
-          export CC=$(realpath "$(find "/tmp/toolchain/$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
-          [ -z "$CC" ] && { echo "No gcc.br_real found in /tmp/toolchain/$TOOLCHAIN_DIR/bin" >&2; exit 1; }
+          export PATH="$(realpath "$TOOLCHAIN_DIR")/bin:$PATH"
+          export CC=$(realpath "$(find "$TOOLCHAIN_DIR/bin" -name '*-gcc.br_real' -type f -executable | head -n1)")
+          [ -z "$CC" ] && { echo "No gcc.br_real found in $TOOLCHAIN_DIR/bin" >&2; exit 1; }
           go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o xui-release -v main.go
           file xui-release
           ldd xui-release || echo "Static binary confirmed"
