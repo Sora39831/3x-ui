@@ -25,8 +25,8 @@ type SUBController struct {
 	subEncrypt       bool
 	updateInterval   string
 
-	clashEnabled  bool
-	subClashPath  string
+	clashEnabled bool
+	subClashPath string
 
 	subService      *SubService
 	subJsonService  *SubJsonService

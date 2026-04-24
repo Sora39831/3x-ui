@@ -13,7 +13,7 @@ import (
 
 // SubClashService handles Clash YAML subscription generation.
 type SubClashService struct {
-	template string
+	template       string
 	inboundService service.InboundService
 	SubService     *SubService
 }
