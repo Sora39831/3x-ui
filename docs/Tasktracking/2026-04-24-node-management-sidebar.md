@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-24
 **Branch:** fix
-**Status:** In Progress
+**Status:** Done
 
 ## Overview
 
@@ -17,8 +17,8 @@ Adding a Node Management sidebar page to the 3x-ui web panel for cluster node vi
 | 3 | Register `NodeController` routes in server | DONE | — |
 | 4 | Add i18n translations for node page | DONE | fc77154c |
 | 5 | Add sidebar menu item | DONE | c09c6182 |
-| 6 | Create `nodes.html` template page | PENDING | — |
-| 7 | Build and verify | PENDING | — |
+| 6 | Create `nodes.html` template page | DONE | 7d75d02c |
+| 7 | Build and verify | DONE | — |
 
 ## Task 2 Details
 
