@@ -396,11 +396,9 @@
             confirm: (success) => {
               if (success) {
                 Vue.prototype.$message['success']('{{ i18n "pages.settings.security.twoFactorModalSetSuccess" }}')
-
                 this.allSetting.twoFactorToken = newTwoFactorToken
+                this.allSetting.twoFactorEnable = true
               }
-
-              this.allSetting.twoFactorEnable = success
             }
           })
         } else {
@@ -412,7 +410,6 @@
             confirm: (success) => {
               if (success) {
                 Vue.prototype.$message['success']('{{ i18n "pages.settings.security.twoFactorModalDeleteSuccess" }}')
-
                 this.allSetting.twoFactorEnable = false
                 this.allSetting.twoFactorToken = ""
               }
@@ -655,7 +652,11 @@
       }
       while (true) {
         await PromiseUtil.sleep(1000);
-        this.saveBtnDisable = this.oldAllSetting.equals(this.allSetting);
+        try {
+          this.saveBtnDisable = this.oldAllSetting.equals(this.allSetting);
+        } catch (e) {
+          console.error('Settings change detection error:', e);
+        }
       }
     }
   });

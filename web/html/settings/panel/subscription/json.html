@@ -88,7 +88,7 @@
                         <template #title>Packet</template>
                         <template #control>
                             <a-input type="text" :value="noise.packet"
-                                @input="(value) => updateNoisePacket(index, event.target.value)"
+                                @input="(e) => updateNoisePacket(index, e.target.value)"
                                 placeholder="5-10"></a-input>
                         </template>
                     </a-setting-list-item>
@@ -96,7 +96,7 @@
                         <template #title>Delay (ms)</template>
                         <template #control>
                             <a-input type="text" :value="noise.delay"
-                                @input="(value) => updateNoiseDelay(index, event.target.value)"
+                                @input="(e) => updateNoiseDelay(index, e.target.value)"
                                 placeholder="10-20"></a-input>
                         </template>
                     </a-setting-list-item>
