@@ -880,6 +880,8 @@
 "save" = "保存"
 "saveSuccess" = "节点配置保存成功"
 "noWorkerNodes" = "暂无 Worker 节点连接"
+"noMasterNode" = "未找到主节点"
+"dbSettings" = "数据库设置"
 "masterNode" = "主节点"
 "workerNodes" = "Worker 节点"
 "currentNodeConfig" = "当前节点配置"

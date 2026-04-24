@@ -880,6 +880,8 @@
 "save" = "Save"
 "saveSuccess" = "Node configuration saved successfully"
 "noWorkerNodes" = "No worker nodes connected"
+"noMasterNode" = "Master node not found"
+"dbSettings" = "Database Settings"
 "masterNode" = "Master Node"
 "workerNodes" = "Worker Nodes"
 "currentNodeConfig" = "Current Node Configuration"
