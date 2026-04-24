@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -45,7 +46,10 @@ func (s *NodeSyncService) updateNodeState(version int64, syncErr error, didSync 
 	}
 	now := time.Now().Unix()
 	state := &model.NodeState{}
-	_ = database.GetDB().First(state, "node_id = ?", nodeCfg.NodeID).Error
+	if err := database.GetDB().First(state, "node_id = ?", nodeCfg.NodeID).Error; err != nil {
+		// First heartbeat — record doesn't exist yet, that's OK
+		state = &model.NodeState{}
+	}
 	state.NodeID = nodeCfg.NodeID
 	state.NodeRole = string(nodeCfg.Role)
 	state.LastHeartbeatAt = now
@@ -58,7 +62,9 @@ func (s *NodeSyncService) updateNodeState(version int64, syncErr error, didSync 
 	} else {
 		state.LastError = ""
 	}
-	_ = database.UpsertNodeState(database.GetDB(), state)
+	if err := database.UpsertNodeState(database.GetDB(), state); err != nil {
+		log.Printf("[NodeSync] failed to upsert node state for %s: %v", nodeCfg.NodeID, err)
+	}
 
 	// Master also writes heartbeat to shared MariaDB so workers can see it
 	if nodeCfg.Role == config.NodeRoleMaster {
@@ -78,11 +84,14 @@ func (s *NodeSyncService) writeStateToSharedMariaDB(state *model.NodeState) {
 	}
 	sharedDB, err := database.OpenMariaDB(dbConfig)
 	if err != nil {
+		log.Printf("[NodeSync] failed to open shared MariaDB for heartbeat: %v", err)
 		return
 	}
 	sqlDB, _ := sharedDB.DB()
 	defer sqlDB.Close()
-	_ = database.UpsertNodeState(sharedDB, state)
+	if err := database.UpsertNodeState(sharedDB, state); err != nil {
+		log.Printf("[NodeSync] failed to upsert node state to shared MariaDB: %v", err)
+	}
 }
 
 func (s *NodeSyncService) BootstrapFromCache() error {

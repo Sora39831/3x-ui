@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -48,13 +49,18 @@ type NodeView struct {
 func getNodeStatesFromShared() ([]model.NodeState, error) {
 	// If current DB is already MariaDB, use it directly
 	if config.GetDBTypeFromJSON() == "mariadb" {
-		return database.GetNodeStates()
+		states, err := database.GetNodeStates()
+		if err != nil {
+			log.Printf("[NodeList] GetNodeStates error: %v", err)
+		}
+		return states, err
 	}
 
 	// Otherwise, open a temporary connection to the shared MariaDB
 	dbConfig := config.GetDBConfigFromJSON()
 	db, err := database.OpenMariaDB(dbConfig)
 	if err != nil {
+		log.Printf("[NodeList] failed to open shared MariaDB: %v", err)
 		return nil, err
 	}
 	sqlDB, _ := db.DB()
@@ -62,6 +68,9 @@ func getNodeStatesFromShared() ([]model.NodeState, error) {
 
 	var states []model.NodeState
 	err = db.Order("node_id").Find(&states).Error
+	if err != nil {
+		log.Printf("[NodeList] failed to query shared MariaDB node_states: %v", err)
+	}
 	return states, err
 }
 
@@ -73,6 +82,7 @@ func (a *NodeController) list(c *gin.Context) {
 		jsonMsg(c, "get node states", err)
 		return
 	}
+	log.Printf("[NodeList] role=%s nodeId=%s, found %d states in shared DB", nodeCfg.Role, nodeCfg.NodeID, len(states))
 
 	syncInterval := nodeCfg.SyncIntervalSeconds
 	if syncInterval <= 0 {
