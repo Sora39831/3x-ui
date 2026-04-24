@@ -81,7 +81,26 @@ var defaultValueMap = map[string]string{
 	"subClashEnable":              "false",
 	"subClashPath":                "/clash/",
 	"subClashURI":                 "",
-	"subClashTemplate":            "",
+	"subClashTemplate": `port: 7890
+socks-port: 7891
+allow-lan: false
+mode: rule
+log-level: info
+proxies: []
+proxy-groups:
+  - name: Proxy
+    type: select
+    proxies:
+      - DIRECT
+dns:
+  enable: true
+  enhanced-mode: fake-ip
+  nameserver:
+    - 8.8.8.8
+    - 1.1.1.1
+rules:
+  - GEOIP,LAN,DIRECT
+  - MATCH,Proxy`,
 	"datepicker":                  "gregorian",
 	"warp":                        "",
 	"externalTrafficInformEnable": "false",

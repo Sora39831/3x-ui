@@ -199,8 +199,8 @@ func (a *SUBController) subJsons(c *gin.Context) {
 // clashSubs handles HTTP requests for Clash YAML subscription configurations.
 func (a *SUBController) clashSubs(c *gin.Context) {
 	subId := c.Param("subid")
-	scheme, host, hostWithPort, _ := a.subService.ResolveRequest(c)
-	clashYaml, header, err := a.subClashService.GetClash(subId, host)
+	scheme, _, hostWithPort, _ := a.subService.ResolveRequest(c)
+	clashYaml, header, err := a.subClashService.GetClash(subId)
 	if err != nil || len(clashYaml) == 0 {
 		c.String(400, "Error!")
 	} else {

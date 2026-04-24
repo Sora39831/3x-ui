@@ -26,8 +26,8 @@ func NewSubClashService(template string, subService *SubService) *SubClashServic
 	}
 }
 
-// GetClash generates a Clash YAML configuration for the given subscription ID and host.
-func (s *SubClashService) GetClash(subId string, host string) (string, string, error) {
+// GetClash generates a Clash YAML configuration for the given subscription ID.
+func (s *SubClashService) GetClash(subId string) (string, string, error) {
 	if s.template == "" {
 		return "", "", fmt.Errorf("clash template is empty")
 	}
@@ -112,7 +112,9 @@ func (s *SubClashService) GetClash(subId string, host string) (string, string, e
 func (s *SubClashService) getProxy(inbound *model.Inbound, client model.Client) []string {
 	var proxies []string
 	var stream map[string]any
-	json.Unmarshal([]byte(inbound.StreamSettings), &stream)
+	if err := json.Unmarshal([]byte(inbound.StreamSettings), &stream); err != nil {
+		logger.Warning("SubClashService - failed to parse StreamSettings for inbound", inbound.Tag, ":", err)
+	}
 
 	// Resolve address
 	var address string
@@ -184,34 +186,34 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	switch inbound.Protocol {
 	case model.VMESS:
 		parts = append(parts, "type: vmess")
-		parts = append(parts, fmt.Sprintf("server: %s", address))
+		parts = append(parts, fmt.Sprintf("server: %q", address))
 		parts = append(parts, fmt.Sprintf("port: %d", port))
-		parts = append(parts, fmt.Sprintf("uuid: %s", client.ID))
+		parts = append(parts, fmt.Sprintf("uuid: %q", client.ID))
 		parts = append(parts, "alterId: 0")
 		parts = append(parts, "cipher: auto")
 
 	case model.VLESS:
 		parts = append(parts, "type: vless")
-		parts = append(parts, fmt.Sprintf("server: %s", address))
+		parts = append(parts, fmt.Sprintf("server: %q", address))
 		parts = append(parts, fmt.Sprintf("port: %d", port))
-		parts = append(parts, fmt.Sprintf("uuid: %s", client.ID))
+		parts = append(parts, fmt.Sprintf("uuid: %q", client.ID))
 		if client.Flow != "" {
-			parts = append(parts, fmt.Sprintf("flow: %s", client.Flow))
+			parts = append(parts, fmt.Sprintf("flow: %q", client.Flow))
 		}
 
 	case model.Trojan:
 		parts = append(parts, "type: trojan")
-		parts = append(parts, fmt.Sprintf("server: %s", address))
+		parts = append(parts, fmt.Sprintf("server: %q", address))
 		parts = append(parts, fmt.Sprintf("port: %d", port))
-		parts = append(parts, fmt.Sprintf("password: %s", client.Password))
+		parts = append(parts, fmt.Sprintf("password: %q", client.Password))
 
 	case model.Shadowsocks:
 		parts = append(parts, "type: ss")
-		parts = append(parts, fmt.Sprintf("server: %s", address))
+		parts = append(parts, fmt.Sprintf("server: %q", address))
 		parts = append(parts, fmt.Sprintf("port: %d", port))
 		cipher, password := s.parseShadowsocksSettings(client)
-		parts = append(parts, fmt.Sprintf("cipher: %s", cipher))
-		parts = append(parts, fmt.Sprintf("password: %s", password))
+		parts = append(parts, fmt.Sprintf("cipher: %q", cipher))
+		parts = append(parts, fmt.Sprintf("password: %q", password))
 		parts = append(parts, "udp: true")
 		return strings.Join(parts, "\n  ")
 	}
@@ -222,9 +224,9 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 		if security == "reality" {
 			realitySetting, _ := stream["realitySettings"].(map[string]any)
 			if publicKey, ok := realitySetting["publicKey"].(string); ok && publicKey != "" {
-				realityOpts := fmt.Sprintf("reality-opts:\n    public-key: %s", publicKey)
+				realityOpts := fmt.Sprintf("reality-opts:\n    public-key: %q", publicKey)
 				if shortId, ok := realitySetting["shortId"].(string); ok && shortId != "" {
-					realityOpts += fmt.Sprintf("\n    short-id: %s", shortId)
+					realityOpts += fmt.Sprintf("\n    short-id: %q", shortId)
 				}
 				parts = append(parts, realityOpts)
 			}
@@ -232,13 +234,13 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			serverNames, _ := realitySetting["serverNames"].([]any)
 			if len(serverNames) > 0 {
 				sni := fmt.Sprintf("%v", serverNames[0])
-				parts = append(parts, fmt.Sprintf("sni: %s", sni))
+				parts = append(parts, fmt.Sprintf("sni: %q", sni))
 			}
 		} else {
 			// TLS settings
 			tlsSetting, _ := stream["tlsSettings"].(map[string]any)
 			if serverName, ok := tlsSetting["serverName"].(string); ok && serverName != "" {
-				parts = append(parts, fmt.Sprintf("sni: %s", serverName))
+				parts = append(parts, fmt.Sprintf("sni: %q", serverName))
 			}
 			if alpn, ok := tlsSetting["alpn"].([]any); ok && len(alpn) > 0 {
 				alpnStrs := make([]string, len(alpn))
@@ -250,7 +252,7 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 		}
 		// Fingerprint
 		if fp, ok := stream["fingerprint"].(string); ok && fp != "" {
-			parts = append(parts, fmt.Sprintf("client-fingerprint: %s", fp))
+			parts = append(parts, fmt.Sprintf("client-fingerprint: %q", fp))
 		}
 	} else {
 		parts = append(parts, "tls: false")
@@ -263,13 +265,13 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	case "ws":
 		ws, _ := stream["wsSettings"].(map[string]any)
 		if path, ok := ws["path"].(string); ok && path != "" {
-			wsOpts := fmt.Sprintf("ws-opts:\n    path: %s", path)
+			wsOpts := fmt.Sprintf("ws-opts:\n    path: %q", path)
 			if host, ok := ws["host"].(string); ok && host != "" {
-				wsOpts += fmt.Sprintf("\n    headers:\n      Host: %s", host)
+				wsOpts += fmt.Sprintf("\n    headers:\n      Host: %q", host)
 			} else {
 				headers, _ := ws["headers"].(map[string]any)
 				if h, ok := headers["Host"].(string); ok && h != "" {
-					wsOpts += fmt.Sprintf("\n    headers:\n      Host: %s", h)
+					wsOpts += fmt.Sprintf("\n    headers:\n      Host: %q", h)
 				}
 			}
 			parts = append(parts, wsOpts)
@@ -278,17 +280,17 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	case "grpc":
 		grpc, _ := stream["grpcSettings"].(map[string]any)
 		if serviceName, ok := grpc["serviceName"].(string); ok && serviceName != "" {
-			parts = append(parts, fmt.Sprintf("grpc-opts:\n    grpc-service-name: %s", serviceName))
+			parts = append(parts, fmt.Sprintf("grpc-opts:\n    grpc-service-name: %q", serviceName))
 		}
 
 	case "h2":
 		h2, _ := stream["h2Settings"].(map[string]any)
 		if path, ok := h2["path"].(string); ok && path != "" {
-			h2Opts := fmt.Sprintf("h2-opts:\n    path: %s", path)
+			h2Opts := fmt.Sprintf("h2-opts:\n    path: %q", path)
 			if host, ok := h2["host"].([]any); ok && len(host) > 0 {
 				hostStrs := make([]string, len(host))
 				for i, h := range host {
-					hostStrs[i] = fmt.Sprintf("%v", h)
+					hostStrs[i] = fmt.Sprintf("%q", fmt.Sprintf("%v", h))
 				}
 				h2Opts += fmt.Sprintf("\n    host: [%s]", strings.Join(hostStrs, ", "))
 			}
@@ -302,13 +304,13 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			request, _ := header["request"].(map[string]any)
 			httpOpts := "http-opts:"
 			if path, ok := request["path"].([]any); ok && len(path) > 0 {
-				httpOpts += fmt.Sprintf("\n    path:\n      - %v", path[0])
+				httpOpts += fmt.Sprintf("\n    path:\n      - %q", fmt.Sprintf("%v", path[0]))
 			}
 			if headers, ok := request["headers"].(map[string]any); ok && len(headers) > 0 {
 				httpOpts += "\n    headers:"
 				for k, v := range headers {
 					if vals, ok := v.([]any); ok && len(vals) > 0 {
-						httpOpts += fmt.Sprintf("\n      %s:\n        - %v", k, vals[0])
+						httpOpts += fmt.Sprintf("\n      %s:\n        - %q", k, fmt.Sprintf("%v", vals[0]))
 					}
 				}
 			}
@@ -318,13 +320,13 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	case "httpupgrade":
 		hu, _ := stream["httpupgradeSettings"].(map[string]any)
 		if path, ok := hu["path"].(string); ok && path != "" {
-			huOpts := fmt.Sprintf("httpupgrade-opts:\n    path: %s", path)
+			huOpts := fmt.Sprintf("httpupgrade-opts:\n    path: %q", path)
 			if host, ok := hu["host"].(string); ok && host != "" {
-				huOpts += fmt.Sprintf("\n    host: %s", host)
+				huOpts += fmt.Sprintf("\n    host: %q", host)
 			} else {
 				headers, _ := hu["headers"].(map[string]any)
 				if h, ok := headers["Host"].(string); ok && h != "" {
-					huOpts += fmt.Sprintf("\n    host: %s", h)
+					huOpts += fmt.Sprintf("\n    host: %q", h)
 				}
 			}
 			parts = append(parts, huOpts)

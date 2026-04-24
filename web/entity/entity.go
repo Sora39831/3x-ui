@@ -185,6 +185,13 @@ func (s *AllSetting) CheckValid() error {
 		s.SubJsonPath += "/"
 	}
 
+	if !strings.HasPrefix(s.SubClashPath, "/") {
+		s.SubClashPath = "/" + s.SubClashPath
+	}
+	if !strings.HasSuffix(s.SubClashPath, "/") {
+		s.SubClashPath += "/"
+	}
+
 	_, err := time.LoadLocation(s.TimeLocation)
 	if err != nil {
 		return common.NewError("time location not exist:", s.TimeLocation)
