@@ -40,11 +40,12 @@ func NewNodeSyncService() *NodeSyncService {
 
 func (s *NodeSyncService) updateNodeState(version int64, syncErr error, didSync bool) {
 	nodeCfg := config.GetNodeConfigFromJSON()
+	if nodeCfg.NodeID == "" {
+		return
+	}
 	now := time.Now().Unix()
 	state := &model.NodeState{}
-	if nodeCfg.NodeID != "" {
-		_ = database.GetDB().First(state, "node_id = ?", nodeCfg.NodeID).Error
-	}
+	_ = database.GetDB().First(state, "node_id = ?", nodeCfg.NodeID).Error
 	state.NodeID = nodeCfg.NodeID
 	state.NodeRole = string(nodeCfg.Role)
 	state.LastHeartbeatAt = now
@@ -58,6 +59,30 @@ func (s *NodeSyncService) updateNodeState(version int64, syncErr error, didSync 
 		state.LastError = ""
 	}
 	_ = database.UpsertNodeState(database.GetDB(), state)
+
+	// Master also writes heartbeat to shared MariaDB so workers can see it
+	if nodeCfg.Role == config.NodeRoleMaster {
+		s.writeStateToSharedMariaDB(state)
+	}
+}
+
+// writeStateToSharedMariaDB opens a temporary connection to the shared
+// MariaDB and upserts the given node state. This is needed when the master
+// uses SQLite locally but workers query the shared MariaDB for heartbeats.
+func (s *NodeSyncService) writeStateToSharedMariaDB(state *model.NodeState) {
+	dbConfig := config.GetDBConfigFromJSON()
+	// Only attempt shared write if MariaDB connection settings are configured.
+	// dbUser is the most reliable indicator — it has no default value.
+	if dbConfig.User == "" || dbConfig.Host == "" {
+		return
+	}
+	sharedDB, err := database.OpenMariaDB(dbConfig)
+	if err != nil {
+		return
+	}
+	sqlDB, _ := sharedDB.DB()
+	defer sqlDB.Close()
+	_ = database.UpsertNodeState(sharedDB, state)
 }
 
 func (s *NodeSyncService) BootstrapFromCache() error {
