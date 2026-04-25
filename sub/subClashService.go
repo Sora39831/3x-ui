@@ -14,16 +14,48 @@ import (
 // SubClashService handles Clash YAML subscription generation.
 type SubClashService struct {
 	template       string
+	servers        []ClashServer
 	inboundService service.InboundService
 	SubService     *SubService
 }
 
-// NewSubClashService creates a new Clash subscription service with the given template.
-func NewSubClashService(template string, subService *SubService) *SubClashService {
+// NewSubClashService creates a new Clash subscription service with the given template and servers.
+func NewSubClashService(template string, servers []ClashServer, subService *SubService) *SubClashService {
 	return &SubClashService{
 		template:   template,
+		servers:    servers,
 		SubService: subService,
 	}
+}
+
+// splitTemplate splits a full mihomo template at "proxies:" and "proxy-groups:" markers.
+// Returns header (everything before proxies) and footer (everything from proxy-groups onwards).
+func splitTemplate(template string) (header, footer string, err error) {
+	proxiesIdx := strings.Index(template, "\nproxies:")
+	if proxiesIdx == -1 {
+		if strings.HasPrefix(template, "proxies:") {
+			proxiesIdx = 0
+		} else {
+			return "", "", fmt.Errorf("template: 'proxies:' section not found")
+		}
+	} else {
+		proxiesIdx++ // skip the leading newline
+	}
+
+	proxyGroupsIdx := strings.Index(template, "\nproxy-groups:")
+	if proxyGroupsIdx == -1 {
+		if strings.HasPrefix(template[proxiesIdx:], "proxy-groups:") {
+			proxyGroupsIdx = proxiesIdx
+		} else {
+			return "", "", fmt.Errorf("template: 'proxy-groups:' section not found")
+		}
+	} else {
+		proxyGroupsIdx++ // skip the leading newline
+	}
+
+	header = template[:proxiesIdx]
+	footer = template[proxyGroupsIdx:]
+	return header, footer, nil
 }
 
 // GetClash generates a Clash YAML configuration for the given subscription ID.
@@ -101,14 +133,22 @@ func (s *SubClashService) GetClash(subId string) (string, string, error) {
 		proxiesYaml += "  - " + p + "\n"
 	}
 
-	// Inject proxies into template by replacing "proxies: []"
-	result := strings.Replace(s.template, "proxies: []", "proxies:\n"+proxiesYaml, 1)
+	// Try split-template approach first (for full mihomo templates)
+	var result string
+	if header, footer, err := splitTemplate(s.template); err == nil {
+		result = header + "proxies:\n" + proxiesYaml + footer
+	} else {
+		// Fall back to old "proxies: []" replacement for backward compatibility
+		result = strings.Replace(s.template, "proxies: []", "proxies:\n"+proxiesYaml, 1)
+	}
 
 	header = fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
 	return result, header, nil
 }
 
 // getProxy generates Clash proxy entries for a client.
+// If servers are configured, generates one entry per server using the server's name and address.
+// Otherwise, uses the inbound's own address (backward compatible).
 func (s *SubClashService) getProxy(inbound *model.Inbound, client model.Client) []string {
 	var proxies []string
 	var stream map[string]any
@@ -116,16 +156,13 @@ func (s *SubClashService) getProxy(inbound *model.Inbound, client model.Client) 
 		logger.Warning("SubClashService - failed to parse StreamSettings for inbound", inbound.Tag, ":", err)
 	}
 
-	// Resolve address
-	var address string
+	// Resolve default address from inbound
+	var defaultAddress string
 	if inbound.Listen == "" || inbound.Listen == "0.0.0.0" || inbound.Listen == "::" || inbound.Listen == "::0" {
-		address = s.SubService.address
+		defaultAddress = s.SubService.address
 	} else {
-		address = inbound.Listen
+		defaultAddress = inbound.Listen
 	}
-
-	// Get remark
-	remark := s.SubService.genRemark(inbound, client.Email, "")
 
 	// Parse stream settings
 	network, _ := stream["network"].(string)
@@ -141,9 +178,40 @@ func (s *SubClashService) getProxy(inbound *model.Inbound, client model.Client) 
 		}
 	}
 
+	// If servers are configured, generate one proxy per server
+	if len(s.servers) > 0 {
+		for _, server := range s.servers {
+			for _, ep := range externalProxies {
+				externalProxy, _ := ep.(map[string]any)
+				destPort := inbound.Port
+				if port, ok := externalProxy["port"].(float64); ok && port > 0 {
+					destPort = int(port)
+				}
+
+				forceTls, _ := externalProxy["forceTls"].(string)
+				tlsEnabled := false
+				switch forceTls {
+				case "tls":
+					tlsEnabled = true
+				case "none":
+					tlsEnabled = false
+				default: // "same"
+					tlsEnabled = security == "tls" || security == "reality"
+				}
+
+				proxy := s.buildProxyEntry(inbound, client, server.Server, destPort, network, security, tlsEnabled, server.Name, stream)
+				proxies = append(proxies, proxy)
+			}
+		}
+		return proxies
+	}
+
+	// No servers configured — use inbound's own address (backward compatible)
+	remark := s.SubService.genRemark(inbound, client.Email, "")
+
 	for _, ep := range externalProxies {
 		externalProxy, _ := ep.(map[string]any)
-		destAddress := address
+		destAddress := defaultAddress
 		destPort := inbound.Port
 
 		if dest, ok := externalProxy["dest"].(string); ok && dest != "" {

@@ -255,29 +255,6 @@
     },
     methods: {
       onSettingsTabChange(key) {
-        if (key === '6') {
-          this.$nextTick(() => this.initClashCodeMirror());
-        }
-      },
-      initClashCodeMirror() {
-        if (this.clashCm != null) {
-          this.clashCm.toTextArea();
-        }
-        const el = document.getElementById('clashTemplate');
-        if (!el) return;
-        el.value = this.allSetting.subClashTemplate;
-        this.clashCm = CodeMirror.fromTextArea(el, {
-          lineNumbers: true,
-          mode: "text/x-yaml",
-          theme: "xq",
-          lineWrapping: true,
-          indentUnit: 2,
-          tabSize: 2,
-          smartIndent: true,
-        });
-        this.clashCm.on('change', editor => {
-          this.allSetting.subClashTemplate = editor.getValue();
-        });
       },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;

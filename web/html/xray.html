@@ -274,6 +274,10 @@
       showAlert: false,
       advSettings: 'xraySetting',
       obsSettings: '',
+      clashTemplate: '',
+      oldClashTemplate: '',
+      servers: '',
+      oldServers: '',
       cm: null,
       cmOptions: {
         lineNumbers: true,
@@ -420,13 +424,55 @@
       },
       async updateXraySetting() {
         this.loading(true);
-        const msg = await HttpUtil.post("/panel/xray/update", {
-          xraySetting: this.xraySetting,
-          outboundTestUrl: this.outboundTestUrl || 'https://www.google.com/generate_204'
+        if (this.advSettings === 'clashTemplate') {
+          await this.saveClashTemplate();
+        } else if (this.advSettings === 'servers') {
+          await this.saveServers();
+        } else {
+          const msg = await HttpUtil.post("/panel/xray/update", {
+            xraySetting: this.xraySetting,
+            outboundTestUrl: this.outboundTestUrl || 'https://www.google.com/generate_204'
+          });
+          this.loading(false);
+          if (msg.success) {
+            await this.getXraySetting();
+          }
+          return;
+        }
+        this.loading(false);
+      },
+      async getClashTemplate() {
+        const msg = await HttpUtil.get("/panel/xray/clashTemplate");
+        if (msg.success) {
+          this.clashTemplate = msg.obj;
+          this.oldClashTemplate = msg.obj;
+        }
+      },
+      async saveClashTemplate() {
+        this.loading(true);
+        const msg = await HttpUtil.post("/panel/xray/clashTemplate", {
+          content: this.clashTemplate
         });
         this.loading(false);
         if (msg.success) {
-          await this.getXraySetting();
+          this.oldClashTemplate = this.clashTemplate;
+        }
+      },
+      async getServers() {
+        const msg = await HttpUtil.get("/panel/xray/servers");
+        if (msg.success) {
+          this.servers = msg.obj;
+          this.oldServers = msg.obj;
+        }
+      },
+      async saveServers() {
+        this.loading(true);
+        const msg = await HttpUtil.post("/panel/xray/servers", {
+          content: this.servers
+        });
+        this.loading(false);
+        if (msg.success) {
+          this.oldServers = this.servers;
         }
       },
       async restartXray() {
@@ -533,10 +579,15 @@
         }
         const textAreaObj = document.getElementById('xraySetting');
         textAreaObj.value = this[this.advSettings];
-        this.cm = CodeMirror.fromTextArea(textAreaObj, this.cmOptions);
+        const isYaml = this.advSettings === 'clashTemplate' || this.advSettings === 'servers';
+        const options = Object.assign({}, this.cmOptions, {
+          mode: isYaml ? "text/x-yaml" : "application/json",
+          lint: !isYaml,
+        });
+        this.cm = CodeMirror.fromTextArea(textAreaObj, options);
         this.cm.on('change', editor => {
           const value = editor.getValue();
-          if (this.isJsonString(value)) {
+          if (isYaml || this.isJsonString(value)) {
             this[this.advSettings] = value;
           }
         });
@@ -1079,6 +1130,8 @@
         settingsLoaded = await this.getXraySetting();
         await this.getXrayResult();
         await this.getOutboundsTraffic();
+        await this.getClashTemplate();
+        await this.getServers();
       } finally {
         this.loadingStates.fetched = true;
       }
@@ -1098,7 +1151,8 @@
 
       while (true) {
         await PromiseUtil.sleep(800);
-        this.saveBtnDisable = this.oldXraySetting === this.xraySetting && this.oldOutboundTestUrl === this.outboundTestUrl;
+        this.saveBtnDisable = this.oldXraySetting === this.xraySetting && this.oldOutboundTestUrl === this.outboundTestUrl
+          && this.oldClashTemplate === this.clashTemplate && this.oldServers === this.servers;
       }
     },
     computed: {

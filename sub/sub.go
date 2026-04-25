@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/goccy/go-yaml"
+	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
 	webpkg "github.com/mhsanaei/3x-ui/v2/web"
@@ -30,6 +32,26 @@ import (
 )
 
 type subscriptionAssetManifest map[string]string
+
+// ClashServer represents a proxy server entry from servers.yaml.
+type ClashServer struct {
+	Name   string `yaml:"name"`
+	Server string `yaml:"server"`
+}
+
+// serversConfig is the top-level structure of servers.yaml.
+type serversConfig struct {
+	Servers []ClashServer `yaml:"servers"`
+}
+
+// parseServers parses YAML data into a list of ClashServer entries.
+func parseServers(data []byte) ([]ClashServer, error) {
+	var cfg serversConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse servers: %w", err)
+	}
+	return cfg.Servers, nil
+}
 
 // setEmbeddedTemplates parses and sets embedded templates on the engine
 func setEmbeddedTemplates(engine *gin.Engine) error {
@@ -237,9 +259,24 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		SubClashPath = "/clash/"
 	}
 
-	SubClashTemplate, err := s.settingService.GetSubClashTemplate()
+	// Read clash template from file (alongside x-ui.json)
+	SubClashTemplate, err := config.ReadClashTemplate()
 	if err != nil {
+		logger.Warning("sub: failed to read clash template:", err)
 		SubClashTemplate = ""
+	}
+
+	// Read servers config from file
+	serversData, err := config.ReadServers()
+	var clashServers []ClashServer
+	if err != nil {
+		logger.Warning("sub: failed to read servers config:", err)
+	} else {
+		clashServers, err = parseServers([]byte(serversData))
+		if err != nil {
+			logger.Warning("sub: failed to parse servers config:", err)
+			clashServers = nil
+		}
 	}
 
 	// set per-request localizer from headers/cookies
@@ -323,7 +360,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		g, LinksPath, JsonPath, subJsonEnable, Encrypt, ShowInfo, RemarkModel, SubUpdates,
 		SubJsonFragment, SubJsonNoises, SubJsonMux, SubJsonRules, SubTitle, SubSupportUrl,
 		SubProfileUrl, SubAnnounce, SubEnableRouting, SubRoutingRules,
-		subClashEnable, SubClashPath, SubClashTemplate)
+		subClashEnable, SubClashPath, SubClashTemplate, clashServers)
 
 	return engine, nil
 }

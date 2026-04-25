@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 
+	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/util/common"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 
@@ -38,6 +39,11 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/update", a.updateSetting)
 	g.POST("/resetOutboundsTraffic", a.resetOutboundsTraffic)
 	g.POST("/testOutbound", a.testOutbound)
+
+	g.GET("/clashTemplate", a.getClashTemplate)
+	g.POST("/clashTemplate", a.saveClashTemplate)
+	g.GET("/servers", a.getServers)
+	g.POST("/servers", a.saveServers)
 }
 
 // getXraySetting retrieves the Xray configuration template, inbound tags, and outbound test URL.
@@ -165,4 +171,44 @@ func (a *XraySettingController) testOutbound(c *gin.Context) {
 	}
 
 	jsonObj(c, result, nil)
+}
+
+// getClashTemplate reads the clash_template.yaml file and returns its content.
+func (a *XraySettingController) getClashTemplate(c *gin.Context) {
+	content, err := config.ReadClashTemplate()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
+		return
+	}
+	jsonObj(c, content, nil)
+}
+
+// saveClashTemplate writes the clash_template.yaml file.
+func (a *XraySettingController) saveClashTemplate(c *gin.Context) {
+	content := c.PostForm("content")
+	if err := config.SaveClashTemplate(content); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), nil)
+}
+
+// getServers reads the servers.yaml file and returns its content.
+func (a *XraySettingController) getServers(c *gin.Context) {
+	content, err := config.ReadServers()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
+		return
+	}
+	jsonObj(c, content, nil)
+}
+
+// saveServers writes the servers.yaml file.
+func (a *XraySettingController) saveServers(c *gin.Context) {
+	content := c.PostForm("content")
+	if err := config.SaveServers(content); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), nil)
 }
