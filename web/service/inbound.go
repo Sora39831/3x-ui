@@ -232,6 +232,72 @@ func (s *InboundService) checkEmailExistInInbound(inbound *model.Inbound, email 
 	return false, nil
 }
 
+func shouldAutoFillVisionFlow(protocol model.Protocol, streamSettings string) bool {
+	if protocol != model.VLESS {
+		return false
+	}
+
+	var stream map[string]any
+	if err := json.Unmarshal([]byte(streamSettings), &stream); err != nil {
+		return false
+	}
+
+	network, _ := stream["network"].(string)
+	security, _ := stream["security"].(string)
+	return network == "tcp" && (security == "tls" || security == "reality")
+}
+
+func autoFillVisionFlowInSettings(settingsJSON string, protocol model.Protocol, streamSettings string, clientIDs map[string]struct{}) (string, bool, error) {
+	if !shouldAutoFillVisionFlow(protocol, streamSettings) {
+		return settingsJSON, false, nil
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
+		return settingsJSON, false, err
+	}
+
+	interfaceClients, ok := settings["clients"].([]any)
+	if !ok {
+		return settingsJSON, false, nil
+	}
+
+	changed := false
+	applyToAll := len(clientIDs) == 0
+	for i := range interfaceClients {
+		clientMap, ok := interfaceClients[i].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		if !applyToAll {
+			clientID, _ := clientMap["id"].(string)
+			if _, shouldApply := clientIDs[clientID]; !shouldApply {
+				continue
+			}
+		}
+
+		flow, hasFlow := clientMap["flow"]
+		flowStr, _ := flow.(string)
+		if !hasFlow || strings.TrimSpace(flowStr) == "" {
+			clientMap["flow"] = "xtls-rprx-vision"
+			interfaceClients[i] = clientMap
+			changed = true
+		}
+	}
+
+	if !changed {
+		return settingsJSON, false, nil
+	}
+
+	settings["clients"] = interfaceClients
+	bs, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return settingsJSON, false, err
+	}
+	return string(bs), true, nil
+}
+
 // AddInbound creates a new inbound configuration.
 // It validates port uniqueness, client email uniqueness, and required fields,
 // then saves the inbound to the database and optionally adds it to the running Xray instance.
@@ -247,6 +313,12 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) (*model.Inbound, boo
 	}
 	if exist {
 		return inbound, false, common.NewError("Port already exists:", inbound.Port)
+	}
+
+	if updatedSettings, changed, err := autoFillVisionFlowInSettings(inbound.Settings, inbound.Protocol, inbound.StreamSettings, nil); err != nil {
+		return inbound, false, err
+	} else if changed {
+		inbound.Settings = updatedSettings
 	}
 
 	existEmail, err := s.checkEmailExistForInbound(inbound)
@@ -526,6 +598,39 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) (*model.Inbound, 
 		return inbound, false, err
 	}
 
+	if inbound.Protocol == model.VLESS {
+		oldClients, err := s.GetClients(oldInbound)
+		if err != nil {
+			return inbound, false, err
+		}
+		newClients, err := s.GetClients(inbound)
+		if err != nil {
+			return inbound, false, err
+		}
+		oldIDs := make(map[string]struct{}, len(oldClients))
+		for _, c := range oldClients {
+			if c.ID != "" {
+				oldIDs[c.ID] = struct{}{}
+			}
+		}
+		newOnlyIDs := map[string]struct{}{}
+		for _, c := range newClients {
+			if c.ID == "" {
+				continue
+			}
+			if _, exists := oldIDs[c.ID]; !exists {
+				newOnlyIDs[c.ID] = struct{}{}
+			}
+		}
+		if len(newOnlyIDs) > 0 {
+			updatedSettings, _, err := autoFillVisionFlowInSettings(inbound.Settings, inbound.Protocol, inbound.StreamSettings, newOnlyIDs)
+			if err != nil {
+				return inbound, false, err
+			}
+			inbound.Settings = updatedSettings
+		}
+	}
+
 	tag := oldInbound.Tag
 
 	db := database.GetDB()
@@ -733,6 +838,20 @@ func (s *InboundService) AddInboundClient(data *model.Inbound) (bool, error) {
 	oldInbound, err := s.GetInbound(data.Id)
 	if err != nil {
 		return false, err
+	}
+
+	if updatedSettings, changed, err := autoFillVisionFlowInSettings(data.Settings, oldInbound.Protocol, oldInbound.StreamSettings, nil); err != nil {
+		return false, err
+	} else if changed {
+		data.Settings = updatedSettings
+		clients, err = s.GetClients(data)
+		if err != nil {
+			return false, err
+		}
+		if err = json.Unmarshal([]byte(data.Settings), &settings); err != nil {
+			return false, err
+		}
+		interfaceClients, _ = settings["clients"].([]any)
 	}
 
 	// Check email uniqueness within this inbound only
