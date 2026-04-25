@@ -285,3 +285,87 @@ func TestDeleteUser_RemovesClientsFromAllInbounds(t *testing.T) {
 		t.Fatalf("expected managed_user inbound_client_ips to be deleted, remaining=%d", ipsCount)
 	}
 }
+
+func TestRegisterUser_AutoFillFlowForEligibleVlessInbound(t *testing.T) {
+	setupTestDB(t)
+
+	db := database.GetDB()
+	userSvc := &UserService{}
+	inboundSvc := &InboundService{}
+
+	vlessSettingsBytes, err := json.Marshal(map[string]any{
+		"clients": []map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("marshal vless settings failed: %v", err)
+	}
+
+	vlessInbound := &model.Inbound{
+		UserId:         1,
+		Port:           21011,
+		Protocol:       model.VLESS,
+		Tag:            "register-flow-vless",
+		Settings:       string(vlessSettingsBytes),
+		StreamSettings: `{"network":"tcp","security":"tls"}`,
+	}
+	if err := db.Create(vlessInbound).Error; err != nil {
+		t.Fatalf("create vless inbound failed: %v", err)
+	}
+
+	vmessSettingsBytes, err := json.Marshal(map[string]any{
+		"clients": []map[string]any{},
+	})
+	if err != nil {
+		t.Fatalf("marshal vmess settings failed: %v", err)
+	}
+	vmessInbound := &model.Inbound{
+		UserId:         1,
+		Port:           21012,
+		Protocol:       model.VMESS,
+		Tag:            "register-flow-vmess",
+		Settings:       string(vmessSettingsBytes),
+		StreamSettings: `{"network":"tcp","security":"tls"}`,
+	}
+	if err := db.Create(vmessInbound).Error; err != nil {
+		t.Fatalf("create vmess inbound failed: %v", err)
+	}
+
+	if err := userSvc.RegisterUser("flow_user", "password123", inboundSvc); err != nil {
+		t.Fatalf("RegisterUser failed: %v", err)
+	}
+
+	assertClientFlow := func(inboundID int, expectedFlow string) {
+		t.Helper()
+		var inbound model.Inbound
+		if err := db.First(&inbound, inboundID).Error; err != nil {
+			t.Fatalf("load inbound %d failed: %v", inboundID, err)
+		}
+		var settings map[string]any
+		if err := json.Unmarshal([]byte(inbound.Settings), &settings); err != nil {
+			t.Fatalf("unmarshal inbound settings failed: %v", err)
+		}
+		clients, ok := settings["clients"].([]any)
+		if !ok {
+			t.Fatalf("invalid clients format in inbound %d", inboundID)
+		}
+		for _, clientRaw := range clients {
+			clientMap, ok := clientRaw.(map[string]any)
+			if !ok {
+				continue
+			}
+			email, _ := clientMap["email"].(string)
+			if email != "flow_user" {
+				continue
+			}
+			flow, _ := clientMap["flow"].(string)
+			if flow != expectedFlow {
+				t.Fatalf("unexpected flow for inbound %d: expected %q, got %q", inboundID, expectedFlow, flow)
+			}
+			return
+		}
+		t.Fatalf("flow_user not found in inbound %d", inboundID)
+	}
+
+	assertClientFlow(vlessInbound.Id, "xtls-rprx-vision")
+	assertClientFlow(vmessInbound.Id, "")
+}
