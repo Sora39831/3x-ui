@@ -210,28 +210,25 @@ func settingsLayoutMeta() map[string]any {
 }
 
 func ensureDefaultNodeSettings(settings map[string]any) {
-	group, ok := settings["node"].(map[string]any)
-	if !ok {
-		group = make(map[string]any)
-		settings["node"] = group
-	}
-
 	defaults := map[string]string{
 		"nodeRole":             string(NodeRoleMaster),
 		"nodeId":               "",
 		"syncInterval":         "30",
 		"trafficFlushInterval": "10",
 	}
-	for key, value := range defaults {
-		if existing, exists := group[key]; !exists || existing == nil {
-			// Also check "other" group for backward compatibility
-			if otherGroup, ok := settings["other"].(map[string]any); ok {
-				if val, ok := otherGroup[key].(string); ok && val != "" {
-					group[key] = val
-					continue
-				}
+
+	// Ensure both "node" and "other" groups have the defaults for backward
+	// compatibility.  Old code reads from "other", new code reads from "node".
+	for _, groupName := range []string{"node", "other"} {
+		group, ok := settings[groupName].(map[string]any)
+		if !ok {
+			group = make(map[string]any)
+			settings[groupName] = group
+		}
+		for key, value := range defaults {
+			if existing, exists := group[key]; !exists || existing == nil {
+				group[key] = value
 			}
-			group[key] = value
 		}
 	}
 }

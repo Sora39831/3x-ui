@@ -25,6 +25,8 @@ Adding a Node Management sidebar page to the 3x-ui web panel for cluster node vi
 | 10 | Fix shared MariaDB query for node states | DONE | d5bf2858 |
 | 11 | Fix node settings not auto-created in x-ui.json | DONE | d733ff2a |
 | 12 | Fix master heartbeat not visible to workers | DONE | 226bae2b |
+| 13 | Fix ensureDefaultNodeSettings to write both "node" and "other" groups | DONE | — |
+| 14 | Replace a-descriptions with HTML table (component missing from antd bundle) | DONE | — |
 
 ## v1.6.3 Fix Details
 

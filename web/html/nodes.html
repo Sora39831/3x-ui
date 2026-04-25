@@ -49,16 +49,36 @@
                 </a-table>
                 <div v-if="nodeRole === 'worker'">
                   <a-empty v-if="nodes.length === 0" :description="nodeRole === 'master' ? '{{ i18n "pages.nodes.noWorkerNodes" }}' : '{{ i18n "pages.nodes.noMasterNode" }}'" />
-                  <a-descriptions v-else bordered size="small" :column="isMobile ? 1 : 2">
-                    <a-descriptions-item label='{{ i18n "pages.nodes.nodeId" }}'>[[ nodes[0].nodeId ]]</a-descriptions-item>
-                    <a-descriptions-item label='{{ i18n "pages.nodes.status" }}'>
-                      <a-badge :status="nodes[0].online ? 'success' : 'error'" :text="nodes[0].online ? '{{ i18n "pages.nodes.online" }}' : '{{ i18n "pages.nodes.offline" }}'" />
-                    </a-descriptions-item>
-                    <a-descriptions-item label='{{ i18n "pages.nodes.lastHeartbeat" }}'>[[ nodes[0].lastHeartbeatAt ? formatTime(nodes[0].lastHeartbeatAt) : '-' ]]</a-descriptions-item>
-                    <a-descriptions-item label='{{ i18n "pages.nodes.lastSync" }}'>[[ nodes[0].lastSyncAt ? formatTime(nodes[0].lastSyncAt) : '-' ]]</a-descriptions-item>
-                    <a-descriptions-item label='{{ i18n "pages.nodes.syncVersion" }}'>[[ nodes[0].lastSeenVersion ]]</a-descriptions-item>
-                    <a-descriptions-item label='{{ i18n "pages.nodes.error" }}'>[[ nodes[0].lastError || '-' ]]</a-descriptions-item>
-                  </a-descriptions>
+                  <table v-else class="ant-descriptions-table" style="width:100%;border-collapse:collapse;">
+                    <tbody>
+                      <tr style="border-bottom:1px solid #e8e8e8;">
+                        <td style="padding:8px 12px;font-weight:500;background:#fafafa;width:30%;">{{ i18n "pages.nodes.nodeId" }}</td>
+                        <td style="padding:8px 12px;">[[ nodes[0].nodeId ]]</td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8e8e8;">
+                        <td style="padding:8px 12px;font-weight:500;background:#fafafa;">{{ i18n "pages.nodes.status" }}</td>
+                        <td style="padding:8px 12px;">
+                          <a-badge :status="nodes[0].online ? 'success' : 'error'" :text="nodes[0].online ? '{{ i18n "pages.nodes.online" }}' : '{{ i18n "pages.nodes.offline" }}'" />
+                        </td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8e8e8;">
+                        <td style="padding:8px 12px;font-weight:500;background:#fafafa;">{{ i18n "pages.nodes.lastHeartbeat" }}</td>
+                        <td style="padding:8px 12px;">[[ nodes[0].lastHeartbeatAt ? formatTime(nodes[0].lastHeartbeatAt) : '-' ]]</td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8e8e8;">
+                        <td style="padding:8px 12px;font-weight:500;background:#fafafa;">{{ i18n "pages.nodes.lastSync" }}</td>
+                        <td style="padding:8px 12px;">[[ nodes[0].lastSyncAt ? formatTime(nodes[0].lastSyncAt) : '-' ]]</td>
+                      </tr>
+                      <tr style="border-bottom:1px solid #e8e8e8;">
+                        <td style="padding:8px 12px;font-weight:500;background:#fafafa;">{{ i18n "pages.nodes.syncVersion" }}</td>
+                        <td style="padding:8px 12px;">[[ nodes[0].lastSeenVersion ]]</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 12px;font-weight:500;background:#fafafa;">{{ i18n "pages.nodes.error" }}</td>
+                        <td style="padding:8px 12px;">[[ nodes[0].lastError || '-' ]]</td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
                 <a-empty v-if="nodeRole === 'master' && nodes.length === 0" description='{{ i18n "pages.nodes.noWorkerNodes" }}' />
               </a-card>
