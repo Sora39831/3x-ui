@@ -73,7 +73,13 @@
         addClient(inbound, clients) {
             switch (inbound.protocol) {
                 case Protocols.VMESS: return clients.push(new Inbound.VmessSettings.VMESS());
-                case Protocols.VLESS: return clients.push(new Inbound.VLESSSettings.VLESS());
+                case Protocols.VLESS: {
+                    const client = new Inbound.VLESSSettings.VLESS();
+                    if (inbound.canEnableTlsFlow() && !client.flow) {
+                        client.flow = "xtls-rprx-vision";
+                    }
+                    return clients.push(client);
+                }
                 case Protocols.TROJAN: return clients.push(new Inbound.TrojanSettings.Trojan());
                 case Protocols.SHADOWSOCKS: return clients.push(new Inbound.ShadowsocksSettings.Shadowsocks(inbound.settings.method, RandomUtil.randomShadowsocksPassword(inbound.settings.method)));
                 default: return null;
