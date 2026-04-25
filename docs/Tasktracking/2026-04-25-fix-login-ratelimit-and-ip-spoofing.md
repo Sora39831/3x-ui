@@ -15,4 +15,6 @@
 - `web/middleware/ratelimit.go` — use RemoteAddr in rate limiter
 
 ## Note
-If the panel runs behind a reverse proxy, `RemoteAddr` will show the proxy IP. To restore header-based IP detection, configure `engine.SetTrustedProxies()` in `web/web.go` with the proxy's IP.
+- Trusts Cloudflare's `CF-Connecting-IP` header (CF overwrites it, clients cannot spoof)
+- Falls back to `RemoteAddr` for direct connections without CDN
+- `X-Real-IP` / `X-Forwarded-For` are NOT trusted (can be spoofed by clients)
