@@ -46,6 +46,7 @@ func (a *APIController) initRouter(g *gin.RouterGroup) {
 	inbounds := api.Group("/inbounds")
 	a.inboundController = &InboundController{}
 	inbounds.GET("/userInfo", a.inboundController.getUserInfo)
+	inbounds.GET("/userSubscriptions", a.inboundController.getUserSubscriptions)
 	inbounds.Use(a.checkAdmin)
 	a.inboundController.initRouter(inbounds)
 

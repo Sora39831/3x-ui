@@ -20,6 +20,7 @@ import (
 type InboundController struct {
 	inboundService service.InboundService
 	xrayService    service.XrayService
+	settingService service.SettingService
 }
 
 // NewInboundController creates a new InboundController and sets up its routes.
@@ -478,4 +479,54 @@ func (a *InboundController) getUserInfo(c *gin.Context) {
 		return
 	}
 	jsonObj(c, traffic, nil)
+}
+
+// getUserSubscriptions returns subscription URLs for the logged-in user.
+func (a *InboundController) getUserSubscriptions(c *gin.Context) {
+	user := session.GetLoginUser(c)
+	traffic, err := a.inboundService.GetClientTrafficByEmail(user.Username)
+	if err != nil || traffic == nil {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	subId := traffic.SubId
+	if subId == "" {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	settingsAny, err := a.settingService.GetDefaultSettings(c.Request.Host)
+	if err != nil {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	settings, ok := settingsAny.(map[string]any)
+	if !ok {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	subClashEnable := false
+	if v, ok := settings["subClashEnable"]; ok {
+		if b, ok2 := v.(bool); ok2 {
+			subClashEnable = b
+		}
+	}
+
+	subClashUrl := ""
+	if subClashEnable {
+		if uri, ok := settings["subClashURI"]; ok {
+			if s, ok2 := uri.(string); ok2 && s != "" {
+				subClashUrl = s + subId
+			}
+		}
+	}
+
+	jsonObj(c, gin.H{
+		"subId":          subId,
+		"subClashEnable": subClashEnable,
+		"subClashUrl":    subClashUrl,
+	}, nil)
 }

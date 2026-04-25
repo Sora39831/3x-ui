@@ -333,6 +333,13 @@
 "lastOnline" = "Last Online"
 "remained" = "Remained"
 "status" = "Status"
+"clashUrl" = "Clash Link"
+"quickImport" = "Quick Import"
+"android" = "Android"
+"ios" = "iOS"
+"desktop" = "Desktop"
+"copied" = "Copied"
+"noSubscription" = "No subscription available"
 
 [pages.users]
 "title" = "User Management"

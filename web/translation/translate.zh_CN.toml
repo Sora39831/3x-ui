@@ -333,6 +333,13 @@
 "lastOnline" = "上次在线"
 "remained" = "剩余流量"
 "status" = "状态"
+"clashUrl" = "Clash 链接"
+"quickImport" = "一键添加"
+"android" = "安卓"
+"ios" = "iOS"
+"desktop" = "桌面端"
+"copied" = "已复制"
+"noSubscription" = "暂无订阅"
 
 [pages.users]
 "title" = "用户管理"

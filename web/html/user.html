@@ -28,7 +28,8 @@
             </div>
           </template>
           <template v-else>
-            <a-card :class="themeSwitcher.currentTheme" class="user-card">
+            <!-- User Info Card -->
+            <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
               <div class="setting-section">
                 <a-popover :overlay-class-name="themeSwitcher.currentTheme" title='{{ i18n "menu.settings" }}'
                   placement="bottomRight" trigger="click">
@@ -48,15 +49,12 @@
                   <a-button shape="circle" icon="setting"></a-button>
                 </a-popover>
               </div>
-              <div class="text-center mb-24">
+              <div class="text-center mb-16">
                 <a-icon type="user" style="font-size: 48px; color: #008771;" />
-                <h2 class="mt-8">[[ username ]]</h2>
+                <h2 class="mt-8 mb-0">[[ username ]]</h2>
               </div>
-              <a-divider />
+              <a-divider style="margin: 12px 0;" />
               <a-descriptions :column="1" bordered size="small">
-                <a-descriptions-item label='{{ i18n "pages.user.username" }}'>
-                  [[ username ]]
-                </a-descriptions-item>
                 <a-descriptions-item label='{{ i18n "pages.user.upload" }}'>
                   [[ traffic ? SizeFormatter.sizeFormat(traffic.up) : '-' ]]
                 </a-descriptions-item>
@@ -108,12 +106,59 @@
                   <template v-else>-</template>
                 </a-descriptions-item>
               </a-descriptions>
-              <div class="mt-24 text-center">
-                <a-button type="primary" icon="logout" @click="logout">
-                  {{ i18n "menu.logout" }}
-                </a-button>
+            </a-card>
+
+            <!-- Clash Link Card -->
+            <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
+              <template #title>
+                <a-icon type="link" style="margin-right: 8px;" />{{ i18n "pages.user.clashUrl" }}
+              </template>
+              <template v-if="subClashEnable && subClashUrl">
+                <div class="clash-link-box" @click="copy(subClashUrl)">
+                  <code>[[ subClashUrl ]]</code>
+                </div>
+                <div class="mt-12 text-center">
+                  <a-button type="primary" icon="copy" size="small" @click="copy(subClashUrl)">
+                    {{ i18n "copy" }}
+                  </a-button>
+                </div>
+              </template>
+              <template v-else>
+                <a-empty :description='{{ i18n "pages.user.noSubscription" }}' />
+              </template>
+            </a-card>
+
+            <!-- Quick Import Button -->
+            <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
+              <div class="text-center">
+                <a-dropdown :trigger="['click']">
+                  <a-button type="primary" icon="import" size="large" block>
+                    {{ i18n "pages.user.quickImport" }} <a-icon type="down" />
+                  </a-button>
+                  <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
+                    <a-menu-item key="android">
+                      <a-icon type="android" style="margin-right: 8px; font-size: 16px;" />
+                      <span>{{ i18n "pages.user.android" }}</span>
+                    </a-menu-item>
+                    <a-menu-item key="ios">
+                      <a-icon type="apple" style="margin-right: 8px; font-size: 16px;" />
+                      <span>{{ i18n "pages.user.ios" }}</span>
+                    </a-menu-item>
+                    <a-menu-item key="desktop">
+                      <a-icon type="laptop" style="margin-right: 8px; font-size: 16px;" />
+                      <span>{{ i18n "pages.user.desktop" }}</span>
+                    </a-menu-item>
+                  </a-menu>
+                </a-dropdown>
               </div>
             </a-card>
+
+            <!-- Logout -->
+            <div class="text-center mt-16">
+              <a-button type="danger" icon="logout" @click="logout">
+                {{ i18n "menu.logout" }}
+              </a-button>
+            </div>
           </template>
         </a-col>
       </a-row>
@@ -132,10 +177,13 @@
       username: '',
       traffic: null,
       lang: '',
+      subClashEnable: false,
+      subClashUrl: '',
     },
     async mounted() {
       this.lang = LanguageManager.getLanguage();
-      await this.loadUserInfo();
+      await Promise.all([this.loadUserInfo(), this.loadSubscriptions()]);
+      this.loading = false;
     },
     methods: {
       async loadUserInfo() {
@@ -148,7 +196,23 @@
         } catch (e) {
           console.error("Failed to get user info:", e);
         }
-        this.loading = false;
+      },
+      async loadSubscriptions() {
+        try {
+          const msg = await HttpUtil.get('/panel/api/inbounds/userSubscriptions');
+          if (msg.success && msg.obj) {
+            this.subClashEnable = msg.obj.subClashEnable || false;
+            this.subClashUrl = msg.obj.subClashUrl || '';
+          }
+        } catch (e) {
+          console.error("Failed to get subscriptions:", e);
+        }
+      },
+      copy(text) {
+        ClipboardManager.copyText(text).then(ok => {
+          const messageType = ok ? 'success' : 'error';
+          this.$message[messageType](ok ? '{{ i18n "pages.user.copied" }}' : 'Copy failed');
+        });
       },
       formatExpiryTime(timestamp) {
         if (timestamp <= 0) return '{{ i18n "unlimited" }}';
@@ -166,4 +230,45 @@
     },
   });
 </script>
+<style>
+  .clash-link-box {
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 12px 16px;
+    word-break: break-all;
+    font-size: 13px;
+    line-height: 1.5;
+    text-align: left;
+    transition: all 0.3s;
+  }
+  .dark .clash-link-box {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #fff;
+  }
+  .dark .clash-link-box:hover {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .light .clash-link-box {
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: rgba(0, 0, 0, 0.85);
+  }
+  .light .clash-link-box:hover {
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.14);
+  }
+  .user-card .ant-card-head {
+    min-height: auto;
+    padding: 0 16px;
+  }
+  .user-card .ant-card-head-title {
+    padding: 12px 0;
+    font-size: 14px;
+  }
+  .user-card .ant-card-body {
+    padding: 16px;
+  }
+</style>
 {{ template "page/body_end" .}}
