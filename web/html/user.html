@@ -136,15 +136,15 @@
                     {{ i18n "pages.user.quickImport" }} <a-icon type="down" />
                   </a-button>
                   <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
-                    <a-menu-item key="android">
+                    <a-menu-item key="android" @click="quickImportAndroid">
                       <a-icon type="android" style="margin-right: 8px; font-size: 16px;" />
                       <span>{{ i18n "pages.user.android" }}</span>
                     </a-menu-item>
-                    <a-menu-item key="ios">
+                    <a-menu-item key="ios" @click="quickImportIOS">
                       <a-icon type="apple" style="margin-right: 8px; font-size: 16px;" />
                       <span>{{ i18n "pages.user.ios" }}</span>
                     </a-menu-item>
-                    <a-menu-item key="desktop">
+                    <a-menu-item key="desktop" @click="quickImportDesktop">
                       <a-icon type="laptop" style="margin-right: 8px; font-size: 16px;" />
                       <span>{{ i18n "pages.user.desktop" }}</span>
                     </a-menu-item>
@@ -177,6 +177,8 @@
       username: '',
       traffic: null,
       lang: '',
+      subEnable: false,
+      subUrl: '',
       subClashEnable: false,
       subClashUrl: '',
     },
@@ -201,6 +203,8 @@
         try {
           const msg = await HttpUtil.get('/panel/api/inbounds/userSubscriptions');
           if (msg.success && msg.obj) {
+            this.subEnable = msg.obj.subEnable || false;
+            this.subUrl = msg.obj.subUrl || '';
             this.subClashEnable = msg.obj.subClashEnable || false;
             this.subClashUrl = msg.obj.subClashUrl || '';
           }
@@ -213,6 +217,32 @@
           const messageType = ok ? 'success' : 'error';
           this.$message[messageType](ok ? '{{ i18n "pages.user.copied" }}' : 'Copy failed');
         });
+      },
+      quickImportAndroid() {
+        const url = this.subClashUrl || this.subUrl;
+        if (!url) {
+          this.$message.warning('{{ i18n "pages.user.noSubscription" }}');
+          return;
+        }
+        window.location.href = 'clash://install-config?url=' + encodeURIComponent(url);
+      },
+      quickImportIOS() {
+        const url = this.subUrl || this.subClashUrl;
+        if (!url) {
+          this.$message.warning('{{ i18n "pages.user.noSubscription" }}');
+          return;
+        }
+        const base64Url = btoa(url);
+        const remark = encodeURIComponent(this.username || 'Subscription');
+        window.location.href = 'shadowrocket://add/sub/' + base64Url + '?remark=' + remark;
+      },
+      quickImportDesktop() {
+        const url = this.subClashUrl || this.subUrl;
+        if (!url) {
+          this.$message.warning('{{ i18n "pages.user.noSubscription" }}');
+          return;
+        }
+        window.location.href = 'clash-verge://install-config?url=' + encodeURIComponent(url) + '&name=' + encodeURIComponent(this.username || 'Subscription');
       },
       formatExpiryTime(timestamp) {
         if (timestamp <= 0) return '{{ i18n "unlimited" }}';

@@ -508,6 +508,22 @@ func (a *InboundController) getUserSubscriptions(c *gin.Context) {
 		return
 	}
 
+	subEnable := false
+	if v, ok := settings["subEnable"]; ok {
+		if b, ok2 := v.(bool); ok2 {
+			subEnable = b
+		}
+	}
+
+	subUrl := ""
+	if subEnable {
+		if uri, ok := settings["subURI"]; ok {
+			if s, ok2 := uri.(string); ok2 && s != "" {
+				subUrl = s + subId
+			}
+		}
+	}
+
 	subClashEnable := false
 	if v, ok := settings["subClashEnable"]; ok {
 		if b, ok2 := v.(bool); ok2 {
@@ -526,6 +542,8 @@ func (a *InboundController) getUserSubscriptions(c *gin.Context) {
 
 	jsonObj(c, gin.H{
 		"subId":          subId,
+		"subEnable":      subEnable,
+		"subUrl":         subUrl,
 		"subClashEnable": subClashEnable,
 		"subClashUrl":    subClashUrl,
 	}, nil)
