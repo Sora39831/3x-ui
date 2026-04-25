@@ -286,6 +286,14 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 		return strings.Join(parts, "\n    ")
 	}
 
+	// Encryption from inbound settings (e.g. mlkem768x25519plus.native.0rtt)
+	var inboundSettings map[string]any
+	if err := json.Unmarshal([]byte(inbound.Settings), &inboundSettings); err == nil {
+		if enc, ok := inboundSettings["encryption"].(string); ok && enc != "" {
+			parts = append(parts, fmt.Sprintf("encryption: %s", enc))
+		}
+	}
+
 	// TLS settings
 	if tlsEnabled {
 		parts = append(parts, "tls: true")
@@ -300,11 +308,10 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 				}
 				parts = append(parts, realityOpts)
 			}
-			// Reality server names
+			// Reality server names → servername
 			serverNames, _ := realitySetting["serverNames"].([]any)
 			if len(serverNames) > 0 {
-				sni := fmt.Sprintf("%v", serverNames[0])
-				parts = append(parts, fmt.Sprintf("sni: %q", sni))
+				parts = append(parts, fmt.Sprintf("servername: %q", fmt.Sprintf("%v", serverNames[0])))
 			}
 			// Fingerprint from reality settings inner
 			if fp, ok := realityInner["fingerprint"].(string); ok && fp != "" {
@@ -314,7 +321,7 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			// TLS settings
 			tlsSetting, _ := stream["tlsSettings"].(map[string]any)
 			if serverName, ok := tlsSetting["serverName"].(string); ok && serverName != "" {
-				parts = append(parts, fmt.Sprintf("sni: %q", serverName))
+				parts = append(parts, fmt.Sprintf("servername: %q", serverName))
 			}
 			if alpn, ok := tlsSetting["alpn"].([]any); ok && len(alpn) > 0 {
 				alpnStrs := make([]string, len(alpn))
