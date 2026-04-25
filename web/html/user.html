@@ -131,21 +131,21 @@
             <!-- Quick Import Button -->
             <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
               <div class="text-center">
-                <a-dropdown :trigger="['click']">
+                <a-dropdown :trigger="['click']" :overlay-class-name="themeSwitcher.currentTheme + ' user-quick-import-dropdown'">
                   <a-button type="primary" icon="import" size="large" block>
                     {{ i18n "pages.user.quickImport" }} <a-icon type="down" />
                   </a-button>
-                  <a-menu slot="overlay" :class="themeSwitcher.currentTheme">
+                  <a-menu slot="overlay" :theme="themeSwitcher.currentTheme">
                     <a-menu-item key="android" @click="quickImportAndroid">
-                      <a-icon type="android" style="margin-right: 8px; font-size: 16px;" />
+                      <a-icon type="android" class="quick-import-icon" />
                       <span>{{ i18n "pages.user.android" }}</span>
                     </a-menu-item>
                     <a-menu-item key="ios" @click="quickImportIOS">
-                      <a-icon type="apple" style="margin-right: 8px; font-size: 16px;" />
+                      <a-icon type="apple" class="quick-import-icon" />
                       <span>{{ i18n "pages.user.ios" }}</span>
                     </a-menu-item>
                     <a-menu-item key="desktop" @click="quickImportDesktop">
-                      <a-icon type="laptop" style="margin-right: 8px; font-size: 16px;" />
+                      <a-icon type="laptop" class="quick-import-icon" />
                       <span>{{ i18n "pages.user.desktop" }}</span>
                     </a-menu-item>
                   </a-menu>
@@ -299,6 +299,18 @@
   }
   .user-card .ant-card-body {
     padding: 16px;
+  }
+  .user-quick-import-dropdown .ant-dropdown-menu {
+    min-width: 160px;
+  }
+  .user-quick-import-dropdown .ant-dropdown-menu-item {
+    display: flex;
+    align-items: center;
+    column-gap: 8px;
+  }
+  .user-quick-import-dropdown .quick-import-icon {
+    width: 16px;
+    font-size: 16px;
   }
 </style>
 {{ template "page/body_end" .}}
