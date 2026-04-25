@@ -51,6 +51,7 @@ type settingCommandOptions struct {
 	nodeIDSet               bool
 	syncIntervalSet         bool
 	trafficFlushIntervalSet bool
+	settingStatus           bool
 }
 
 func (o settingCommandOptions) needsDBInit() bool {
@@ -63,6 +64,7 @@ func (o settingCommandOptions) needsDBInit() bool {
 		o.show ||
 		o.getListen ||
 		o.getCert ||
+		o.settingStatus ||
 		o.resetTwoFactor ||
 		o.tgbotToken != "" ||
 		o.tgbotChatID != "" ||
@@ -256,6 +258,37 @@ func showSetting(show bool) {
 		fmt.Println("syncInterval:", nodeCfg.SyncIntervalSeconds)
 		fmt.Println("trafficFlushInterval:", nodeCfg.TrafficFlushSeconds)
 	}
+}
+
+// showSettingStatus outputs all settings in a single machine-parseable call.
+// This avoids multiple CLI invocations that each re-init the database.
+func showSettingStatus() {
+	settingService := service.SettingService{}
+
+	port, _ := settingService.GetPort()
+	webBasePath, _ := settingService.GetBasePath()
+	webDomain, _ := settingService.GetWebDomain()
+	certFile, _ := settingService.GetCertFile()
+	keyFile, _ := settingService.GetKeyFile()
+
+	userService := service.UserService{}
+	userModel, _ := userService.GetFirstUser()
+
+	hasDefaultCredential := userModel.Username == "admin" && crypto.CheckPasswordHash(userModel.Password, "admin")
+
+	nodeCfg := config.GetNodeConfigFromJSON()
+
+	fmt.Printf("port:%d\n", port)
+	fmt.Printf("webBasePath:%s\n", webBasePath)
+	fmt.Printf("webDomain:%s\n", webDomain)
+	fmt.Printf("certFile:%s\n", certFile)
+	fmt.Printf("keyFile:%s\n", keyFile)
+	fmt.Printf("hasDefaultCredential:%v\n", hasDefaultCredential)
+	fmt.Printf("username:%s\n", userModel.Username)
+	fmt.Printf("nodeRole:%s\n", nodeCfg.Role)
+	fmt.Printf("nodeId:%s\n", nodeCfg.NodeID)
+	fmt.Printf("syncInterval:%d\n", nodeCfg.SyncIntervalSeconds)
+	fmt.Printf("trafficFlushInterval:%d\n", nodeCfg.TrafficFlushSeconds)
 }
 
 // updateTgbotEnableSts enables or disables the Telegram bot notifications based on the status parameter.
@@ -545,8 +578,10 @@ func main() {
 	var show bool
 	var getCert bool
 	var resetTwoFactor bool
+	var settingStatus bool
 	settingCmd.BoolVar(&reset, "reset", false, "Reset all settings")
 	settingCmd.BoolVar(&show, "show", false, "Display current settings")
+	settingCmd.BoolVar(&settingStatus, "settingStatus", false, "Display all settings and cert info in one call")
 	settingCmd.IntVar(&port, "port", 0, "Set panel port number")
 	settingCmd.StringVar(&username, "username", "", "Set login username")
 	settingCmd.StringVar(&password, "password", "", "Set login password")
@@ -769,12 +804,17 @@ func main() {
 			nodeIDSet:               nodeIDSet,
 			syncIntervalSet:         syncIntervalSet,
 			trafficFlushIntervalSet: trafficFlushIntervalSet,
+			settingStatus:           settingStatus,
 		}
 		if opts.needsDBInit() {
 			if err := database.InitDB(); err != nil {
 				fmt.Println("Database initialization failed:", err)
 				return
 			}
+		}
+		if settingStatus {
+			showSettingStatus()
+			return
 		}
 		if reset {
 			resetSetting()

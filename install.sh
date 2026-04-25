@@ -1295,10 +1295,11 @@ config_after_install() {
         is_fresh_install=true
     fi
 
-    local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
-    local existing_port=$(${xui_folder}/x-ui setting -show true | grep '^port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
-    # 通过检查 cert: 行是否存在且之后有内容来正确检测空证书
-    local existing_cert=$(${xui_folder}/x-ui setting -getCert true | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    # Single CLI call for all settings (1 DB init instead of 3)
+    local settings_output=$(${xui_folder}/x-ui setting -settingStatus true 2>/dev/null)
+    local existing_webBasePath=$(echo "$settings_output" | grep '^webBasePath:' | cut -d: -f2-)
+    local existing_port=$(echo "$settings_output" | grep '^port:' | cut -d: -f2-)
+    local existing_cert=$(echo "$settings_output" | grep '^certFile:' | cut -d: -f2-)
     local URL_lists=(
         "https://api4.ipify.org"
         "https://ipv4.icanhazip.com"
@@ -1513,7 +1514,8 @@ config_after_install() {
             return 1
         fi
         local saved_port
-        saved_port=$(${xui_folder}/x-ui setting -show true 2>/dev/null | grep '^port:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+        local verify_output=$(${xui_folder}/x-ui setting -settingStatus true 2>/dev/null)
+        saved_port=$(echo "$verify_output" | grep '^port:' | cut -d: -f2-)
         if [[ "${saved_port}" != "${config_port}" ]]; then
             echo -e "${red}端口未写入配置文件：期望 ${config_port}，实际 ${saved_port:-空}${plain}"
             return 1
@@ -1551,7 +1553,7 @@ config_after_install() {
     else
         # 已有安装（存在 x-ui.json 或 x-ui.db）：保留所有配置，不重新输入
         local config_webBasePath="${existing_webBasePath}"
-        local existing_webDomain=$(${xui_folder}/x-ui setting -show true | grep '^webDomain:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
+        local existing_webDomain=$(echo "$settings_output" | grep '^webDomain:' | cut -d: -f2-)
         if [[ ${#config_webBasePath} -lt 4 ]]; then
             config_webBasePath=$(gen_random_string 18)
             echo -e "${yellow}WebBasePath 缺失或过短，正在生成新的...${plain}"
