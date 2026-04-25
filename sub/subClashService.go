@@ -283,7 +283,7 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 		parts = append(parts, fmt.Sprintf("cipher: %q", cipher))
 		parts = append(parts, fmt.Sprintf("password: %q", password))
 		parts = append(parts, "udp: true")
-		return strings.Join(parts, "\n  ")
+		return strings.Join(parts, "\n    ")
 	}
 
 	// TLS settings
@@ -294,9 +294,9 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			// publicKey and fingerprint are nested under realitySettings.settings
 			realityInner, _ := realitySetting["settings"].(map[string]any)
 			if publicKey, ok := realityInner["publicKey"].(string); ok && publicKey != "" {
-				realityOpts := fmt.Sprintf("reality-opts:\n    public-key: %q", publicKey)
+				realityOpts := fmt.Sprintf("reality-opts:\n      public-key: %q", publicKey)
 				if shortIds, ok := realitySetting["shortIds"].([]any); ok && len(shortIds) > 0 {
-					realityOpts += fmt.Sprintf("\n    short-id: %q", fmt.Sprintf("%v", shortIds[0]))
+					realityOpts += fmt.Sprintf("\n      short-id: %q", fmt.Sprintf("%v", shortIds[0]))
 				}
 				parts = append(parts, realityOpts)
 			}
@@ -345,13 +345,13 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	case "ws":
 		ws, _ := stream["wsSettings"].(map[string]any)
 		if path, ok := ws["path"].(string); ok && path != "" {
-			wsOpts := fmt.Sprintf("ws-opts:\n    path: %q", path)
+			wsOpts := fmt.Sprintf("ws-opts:\n      path: %q", path)
 			if host, ok := ws["host"].(string); ok && host != "" {
-				wsOpts += fmt.Sprintf("\n    headers:\n      Host: %q", host)
+				wsOpts += fmt.Sprintf("\n      headers:\n        Host: %q", host)
 			} else {
 				headers, _ := ws["headers"].(map[string]any)
 				if h, ok := headers["Host"].(string); ok && h != "" {
-					wsOpts += fmt.Sprintf("\n    headers:\n      Host: %q", h)
+					wsOpts += fmt.Sprintf("\n      headers:\n        Host: %q", h)
 				}
 			}
 			parts = append(parts, wsOpts)
@@ -360,19 +360,19 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	case "grpc":
 		grpc, _ := stream["grpcSettings"].(map[string]any)
 		if serviceName, ok := grpc["serviceName"].(string); ok && serviceName != "" {
-			parts = append(parts, fmt.Sprintf("grpc-opts:\n    grpc-service-name: %q", serviceName))
+			parts = append(parts, fmt.Sprintf("grpc-opts:\n      grpc-service-name: %q", serviceName))
 		}
 
 	case "h2":
 		h2, _ := stream["h2Settings"].(map[string]any)
 		if path, ok := h2["path"].(string); ok && path != "" {
-			h2Opts := fmt.Sprintf("h2-opts:\n    path: %q", path)
+			h2Opts := fmt.Sprintf("h2-opts:\n      path: %q", path)
 			if host, ok := h2["host"].([]any); ok && len(host) > 0 {
 				hostStrs := make([]string, len(host))
 				for i, h := range host {
 					hostStrs[i] = fmt.Sprintf("%q", fmt.Sprintf("%v", h))
 				}
-				h2Opts += fmt.Sprintf("\n    host: [%s]", strings.Join(hostStrs, ", "))
+				h2Opts += fmt.Sprintf("\n      host: [%s]", strings.Join(hostStrs, ", "))
 			}
 			parts = append(parts, h2Opts)
 		}
@@ -384,13 +384,13 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			request, _ := header["request"].(map[string]any)
 			httpOpts := "http-opts:"
 			if path, ok := request["path"].([]any); ok && len(path) > 0 {
-				httpOpts += fmt.Sprintf("\n    path:\n      - %q", fmt.Sprintf("%v", path[0]))
+				httpOpts += fmt.Sprintf("\n      path:\n        - %q", fmt.Sprintf("%v", path[0]))
 			}
 			if headers, ok := request["headers"].(map[string]any); ok && len(headers) > 0 {
-				httpOpts += "\n    headers:"
+				httpOpts += "\n      headers:"
 				for k, v := range headers {
 					if vals, ok := v.([]any); ok && len(vals) > 0 {
-						httpOpts += fmt.Sprintf("\n      %s:\n        - %q", k, fmt.Sprintf("%v", vals[0]))
+						httpOpts += fmt.Sprintf("\n        %s:\n          - %q", k, fmt.Sprintf("%v", vals[0]))
 					}
 				}
 			}
@@ -400,20 +400,20 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 	case "httpupgrade":
 		hu, _ := stream["httpupgradeSettings"].(map[string]any)
 		if path, ok := hu["path"].(string); ok && path != "" {
-			huOpts := fmt.Sprintf("httpupgrade-opts:\n    path: %q", path)
+			huOpts := fmt.Sprintf("httpupgrade-opts:\n      path: %q", path)
 			if host, ok := hu["host"].(string); ok && host != "" {
-				huOpts += fmt.Sprintf("\n    host: %q", host)
+				huOpts += fmt.Sprintf("\n      host: %q", host)
 			} else {
 				headers, _ := hu["headers"].(map[string]any)
 				if h, ok := headers["Host"].(string); ok && h != "" {
-					huOpts += fmt.Sprintf("\n    host: %q", h)
+					huOpts += fmt.Sprintf("\n      host: %q", h)
 				}
 			}
 			parts = append(parts, huOpts)
 		}
 	}
 
-	return strings.Join(parts, "\n  ")
+	return strings.Join(parts, "\n    ")
 }
 
 // parseShadowsocksSettings extracts cipher and password from shadowsocks client settings.
