@@ -37,8 +37,12 @@ func RateLimitMiddleware(maxRequests int, window time.Duration) gin.HandlerFunc 
 	}()
 
 	return func(c *gin.Context) {
-		// Use RemoteAddr directly to prevent IP spoofing via headers
-		ip := c.Request.RemoteAddr
+		// Trust Cloudflare's CF-Connecting-IP (overwritten by CF, not spoofable).
+		// Fall back to RemoteAddr for non-CDN deployments.
+		ip := c.GetHeader("CF-Connecting-IP")
+		if ip == "" {
+			ip = c.Request.RemoteAddr
+		}
 
 		mu.Lock()
 		now := time.Now()

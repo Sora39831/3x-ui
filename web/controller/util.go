@@ -12,11 +12,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// getRemoteIp extracts the real IP address from the direct connection.
-// Uses RemoteAddr to prevent IP spoofing via X-Real-IP/X-Forwarded-For headers.
-// If the panel is behind a trusted reverse proxy, configure Gin's SetTrustedProxies
-// to re-enable header-based IP detection.
+// getRemoteIp extracts the real IP address from the request.
+// Trusts Cloudflare's CF-Connecting-IP header (overwritten by CF, cannot be spoofed by clients).
+// Falls back to RemoteAddr for direct connections without a trusted proxy.
 func getRemoteIp(c *gin.Context) string {
+	// Cloudflare CDN sets CF-Connecting-IP to the real client IP and overwrites it,
+	// so it can be trusted even though it's a header.
+	if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
+		return cfIP
+	}
 	addr := c.Request.RemoteAddr
 	ip, _, _ := net.SplitHostPort(addr)
 	return ip
