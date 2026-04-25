@@ -128,28 +128,21 @@
               </template>
             </a-card>
 
-            <!-- Quick Import Button -->
+            <!-- Quick Import Actions -->
             <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
-              <div class="text-center">
-                <a-dropdown :trigger="['click']" :overlay-class-name="themeSwitcher.currentTheme + ' user-quick-import-dropdown'">
-                  <a-button type="primary" icon="import" size="large" block>
-                    {{ i18n "pages.user.quickImport" }} <a-icon type="down" />
+              <div class="quick-import-section">
+                <div class="quick-import-title">{{ i18n "pages.user.quickImport" }}</div>
+                <a-space direction="vertical" size="small" class="quick-import-actions">
+                  <a-button type="primary" block @click="quickImportAndroid">
+                    {{ i18n "pages.user.android" }}
                   </a-button>
-                  <a-menu slot="overlay" :theme="themeSwitcher.currentTheme">
-                    <a-menu-item key="android" @click="quickImportAndroid">
-                      <a-icon type="android" class="quick-import-icon" />
-                      <span>{{ i18n "pages.user.android" }}</span>
-                    </a-menu-item>
-                    <a-menu-item key="ios" @click="quickImportIOS">
-                      <a-icon type="apple" class="quick-import-icon" />
-                      <span>{{ i18n "pages.user.ios" }}</span>
-                    </a-menu-item>
-                    <a-menu-item key="desktop" @click="quickImportDesktop">
-                      <a-icon type="laptop" class="quick-import-icon" />
-                      <span>{{ i18n "pages.user.desktop" }}</span>
-                    </a-menu-item>
-                  </a-menu>
-                </a-dropdown>
+                  <a-button type="primary" block @click="quickImportIOS">
+                    {{ i18n "pages.user.ios" }}
+                  </a-button>
+                  <a-button type="primary" block @click="quickImportDesktop">
+                    {{ i18n "pages.user.desktop" }}
+                  </a-button>
+                </a-space>
               </div>
             </a-card>
 
@@ -300,17 +293,20 @@
   .user-card .ant-card-body {
     padding: 16px;
   }
-  .user-quick-import-dropdown .ant-dropdown-menu {
-    min-width: 160px;
+  .quick-import-section {
+    text-align: left;
   }
-  .user-quick-import-dropdown .ant-dropdown-menu-item {
+  .quick-import-title {
+    margin-bottom: 12px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .quick-import-actions {
     display: flex;
-    align-items: center;
-    column-gap: 8px;
+    width: 100%;
   }
-  .user-quick-import-dropdown .quick-import-icon {
-    width: 16px;
-    font-size: 16px;
+  .quick-import-actions .ant-space-item {
+    width: 100%;
   }
 </style>
 {{ template "page/body_end" .}}
