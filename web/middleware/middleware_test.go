@@ -238,7 +238,7 @@ func TestRateLimitMiddleware_ExceedsLimit(t *testing.T) {
 	}
 }
 
-func TestRateLimitMiddleware_XRealIP(t *testing.T) {
+func TestRateLimitMiddleware_CFConnectingIP(t *testing.T) {
 	r := gin.New()
 	r.Use(RateLimitMiddleware(2, time.Minute))
 	r.GET("/test", func(c *gin.Context) {
@@ -248,21 +248,21 @@ func TestRateLimitMiddleware_XRealIP(t *testing.T) {
 	for range 2 {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/test", nil)
-		req.Header.Set("X-Real-IP", "10.0.0.1")
+		req.Header.Set("CF-Connecting-IP", "10.0.0.1")
 		r.ServeHTTP(w, req)
 	}
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("X-Real-IP", "10.0.0.1")
+	req.Header.Set("CF-Connecting-IP", "10.0.0.1")
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusTooManyRequests {
-		t.Errorf("expected 429 with X-Real-IP, got %d", w.Code)
+		t.Errorf("expected 429 with CF-Connecting-IP, got %d", w.Code)
 	}
 }
 
-func TestRateLimitMiddleware_XForwardedFor(t *testing.T) {
+func TestRateLimitMiddleware_RemoteAddr(t *testing.T) {
 	r := gin.New()
 	r.Use(RateLimitMiddleware(2, time.Minute))
 	r.GET("/test", func(c *gin.Context) {
@@ -272,17 +272,17 @@ func TestRateLimitMiddleware_XForwardedFor(t *testing.T) {
 	for range 2 {
 		w := httptest.NewRecorder()
 		req, _ := http.NewRequest("GET", "/test", nil)
-		req.Header.Set("X-Forwarded-For", "10.0.0.2, 10.0.0.3")
+		req.RemoteAddr = "10.0.0.2:12345"
 		r.ServeHTTP(w, req)
 	}
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("X-Forwarded-For", "10.0.0.2, 10.0.0.3")
+	req.RemoteAddr = "10.0.0.2:12345"
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusTooManyRequests {
-		t.Errorf("expected 429 with X-Forwarded-For, got %d", w.Code)
+		t.Errorf("expected 429 with RemoteAddr, got %d", w.Code)
 	}
 }
 
@@ -296,12 +296,12 @@ func TestRateLimitMiddleware_DifferentIPsIndependent(t *testing.T) {
 	// Exhaust limit for IP 1
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("X-Real-IP", "10.0.0.10")
+	req.Header.Set("CF-Connecting-IP", "10.0.0.10")
 	r.ServeHTTP(w, req)
 
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("GET", "/test", nil)
-	req.Header.Set("X-Real-IP", "10.0.0.10")
+	req.Header.Set("CF-Connecting-IP", "10.0.0.10")
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusTooManyRequests {
@@ -311,7 +311,7 @@ func TestRateLimitMiddleware_DifferentIPsIndependent(t *testing.T) {
 	// IP 2 should still be allowed
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("GET", "/test", nil)
-	req.Header.Set("X-Real-IP", "10.0.0.20")
+	req.Header.Set("CF-Connecting-IP", "10.0.0.20")
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
