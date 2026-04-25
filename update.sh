@@ -668,14 +668,32 @@ prompt_and_setup_ssl() {
 }
 
 config_after_update() {
+    # Single CLI call for all settings (1 DB init instead of 5)
+    local settings_output=$(${xui_folder}/x-ui setting -settingStatus true 2>/dev/null)
+    local existing_port=$(echo "$settings_output" | grep '^port:' | cut -d: -f2-)
+    local existing_webBasePath=$(echo "$settings_output" | grep '^webBasePath:' | cut -d: -f2-)
+    local existing_cert=$(echo "$settings_output" | grep '^certFile:' | cut -d: -f2-)
+    local keyFile=$(echo "$settings_output" | grep '^keyFile:' | cut -d: -f2-)
+    local existing_webDomain=$(echo "$settings_output" | grep '^webDomain:' | cut -d: -f2-)
+
+    # Show human-readable settings
     echo -e "${yellow}x-ui settings:${plain}"
-    ${xui_folder}/x-ui setting -show true
+    echo "current panel settings as follows:"
+    if [[ -z "$existing_cert" || -z "$keyFile" ]]; then
+        echo "Warning: Panel is not secure with SSL"
+    else
+        echo "Panel is secure with SSL"
+    fi
+    echo "hasDefaultCredential: $(echo "$settings_output" | grep '^hasDefaultCredential:' | cut -d: -f2-)"
+    echo "port: $existing_port"
+    echo "webDomain: $existing_webDomain"
+    echo "webBasePath: $existing_webBasePath"
+    echo "nodeRole: $(echo "$settings_output" | grep '^nodeRole:' | cut -d: -f2-)"
+    echo "nodeId: $(echo "$settings_output" | grep '^nodeId:' | cut -d: -f2-)"
+    echo "syncInterval: $(echo "$settings_output" | grep '^syncInterval:' | cut -d: -f2-)"
+    echo "trafficFlushInterval: $(echo "$settings_output" | grep '^trafficFlushInterval:' | cut -d: -f2-)"
+
     ${xui_folder}/x-ui migrate
-    
-    # Properly detect empty cert by checking if cert: line exists and has content after it
-    local existing_cert=$(${xui_folder}/x-ui setting -getCert true 2>/dev/null | grep 'cert:' | awk -F': ' '{print $2}' | tr -d '[:space:]')
-    local existing_port=$(${xui_folder}/x-ui setting -show true | grep -Eo 'port: .+' | awk '{print $2}')
-    local existing_webBasePath=$(${xui_folder}/x-ui setting -show true | grep -Eo 'webBasePath: .+' | awk '{print $2}' | sed 's#^/##')
     
     # Get server IP
     local URL_lists=(

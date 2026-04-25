@@ -266,6 +266,15 @@ func buildMariaDBDSN(dbConfig config.DBConfig) string {
 	return cfg.FormatDSN()
 }
 
+// OpenMariaDB opens a new MariaDB connection from the given config.
+// Caller must close the returned db when done.
+func OpenMariaDB(dbConfig config.DBConfig) (*gorm.DB, error) {
+	dsn := buildMariaDBDSN(dbConfig)
+	return gorm.Open(mysql.Open(dsn), &gorm.Config{
+		Logger: logger.Discard,
+	})
+}
+
 // initMariaDB opens a MariaDB connection and runs model migrations.
 func initMariaDB() error {
 	dbConfig := config.GetDBConfigFromJSON()

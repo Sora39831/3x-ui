@@ -25,25 +25,7 @@
             <template #title>Template</template>
             <template #description>Complete Clash YAML template with proxies: [] placeholder. The panel will replace proxies: [] with generated proxy entries.</template>
             <template #control>
-                <a-textarea v-model="allSetting.subClashTemplate" :rows="15"
-                    placeholder="port: 7890
-socks-port: 7891
-allow-lan: false
-mode: rule
-log-level: info
-proxies: []
-proxy-groups:
-  - name: Proxy
-    type: select
-    proxies:
-      - DIRECT
-dns:
-  enable: true
-  enhanced-mode: fake-ip
-  nameserver:
-    - 8.8.8.8
-rules:
-  - MATCH,DIRECT"></a-textarea>
+                <textarea id="clashTemplate" style="display:none"></textarea>
             </template>
         </a-setting-list-item>
     </a-collapse-panel>

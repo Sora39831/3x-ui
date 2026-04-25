@@ -132,10 +132,11 @@ jobs:
           XRAY_FILE="${XRAY_MAP[${{ matrix.platform }}]}"
           [ -z "$XRAY_FILE" ] && { echo "Unknown platform: ${{ matrix.platform }}" >&2; exit 1; }
           mkdir -p /tmp/xray
-          curl -fL -sS --retry 3 --retry-delay 5 -o "/tmp/xray/$XRAY_FILE" "${Xray_URL}${XRAY_FILE}"
+          curl -fL -sS --retry 3 --retry-delay 5 -o "/tmp/xray/$XRAY_FILE" "${Xray_URL}${XRAY_FILE}" || { echo "Failed to download Xray" >&2; exit 1; }
           cd /tmp/xray
-          unzip -q "$XRAY_FILE"
+          unzip -q "$XRAY_FILE" || { echo "Failed to unzip Xray" >&2; exit 1; }
           rm -f "$XRAY_FILE"
+          [ -f xray ] || { echo "xray binary not found after extraction" >&2; exit 1; }
 
       - name: Get cache date
         id: cache_date
@@ -165,7 +166,17 @@ jobs:
             https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat &
           curl -fL -sS --retry 3 -o geosite_RU.dat \
             https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat &
-          wait
+          FAILED=0
+          for job in $(jobs -p); do wait "$job" || FAILED=1; done
+          if [ "$FAILED" -eq 1 ]; then
+            echo "One or more geo data downloads failed" >&2
+            exit 1
+          fi
+          for f in *.dat; do
+            if [ ! -s "$f" ]; then
+              echo "Geo file $f is empty" >&2; exit 1
+            fi
+          done
 
       - name: Cache Bootlin toolchain
         uses: actions/cache@v4
@@ -201,9 +212,9 @@ jobs:
             [ -z "$TARBALL_URL" ] && { echo "Failed to locate Bootlin musl toolchain for arch=$BOOTLIN_ARCH" >&2; exit 1; }
             echo "Downloading: $TARBALL_URL"
             cd /tmp/toolchain
-            curl -fL -sS --retry 3 --retry-delay 5 -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
-            tar -xf "$(basename "$TARBALL_URL")"
-            TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+            curl -fL -sS --retry 3 --retry-delay 5 -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL" || { echo "Failed to download toolchain" >&2; exit 1; }
+            tar -xf "$(basename "$TARBALL_URL")" || { echo "Failed to extract toolchain tarball" >&2; exit 1; }
+            TOOLCHAIN_DIR=$(find /tmp/toolchain -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
             cd -
           else
             echo "Using cached toolchain: $TOOLCHAIN_DIR"
@@ -253,8 +264,13 @@ jobs:
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" --prerelease --title "$TAG" --generate-notes \
               --notes "**Xray-core:** ${{ steps.xray_version.outputs.version }}"
+            sleep 5
           fi
-          gh release upload "$TAG" x-ui-linux-${{ matrix.platform }}.tar.gz --clobber
+          for i in 1 2 3; do
+            gh release upload "$TAG" x-ui-linux-${{ matrix.platform }}.tar.gz --clobber && break
+            echo "Upload attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
   # =================================
   #  Windows Build (disabled)

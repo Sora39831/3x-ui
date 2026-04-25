@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"time"
 
@@ -40,10 +41,14 @@ func NewNodeSyncService() *NodeSyncService {
 
 func (s *NodeSyncService) updateNodeState(version int64, syncErr error, didSync bool) {
 	nodeCfg := config.GetNodeConfigFromJSON()
+	if nodeCfg.NodeID == "" {
+		return
+	}
 	now := time.Now().Unix()
 	state := &model.NodeState{}
-	if nodeCfg.NodeID != "" {
-		_ = database.GetDB().First(state, "node_id = ?", nodeCfg.NodeID).Error
+	if err := database.GetDB().First(state, "node_id = ?", nodeCfg.NodeID).Error; err != nil {
+		// First heartbeat — record doesn't exist yet, that's OK
+		state = &model.NodeState{}
 	}
 	state.NodeID = nodeCfg.NodeID
 	state.NodeRole = string(nodeCfg.Role)
@@ -57,7 +62,36 @@ func (s *NodeSyncService) updateNodeState(version int64, syncErr error, didSync 
 	} else {
 		state.LastError = ""
 	}
-	_ = database.UpsertNodeState(database.GetDB(), state)
+	if err := database.UpsertNodeState(database.GetDB(), state); err != nil {
+		log.Printf("[NodeSync] failed to upsert node state for %s: %v", nodeCfg.NodeID, err)
+	}
+
+	// Master also writes heartbeat to shared MariaDB so workers can see it
+	if nodeCfg.Role == config.NodeRoleMaster {
+		s.writeStateToSharedMariaDB(state)
+	}
+}
+
+// writeStateToSharedMariaDB opens a temporary connection to the shared
+// MariaDB and upserts the given node state. This is needed when the master
+// uses SQLite locally but workers query the shared MariaDB for heartbeats.
+func (s *NodeSyncService) writeStateToSharedMariaDB(state *model.NodeState) {
+	dbConfig := config.GetDBConfigFromJSON()
+	// Only attempt shared write if MariaDB connection settings are configured.
+	// dbUser is the most reliable indicator — it has no default value.
+	if dbConfig.User == "" || dbConfig.Host == "" {
+		return
+	}
+	sharedDB, err := database.OpenMariaDB(dbConfig)
+	if err != nil {
+		log.Printf("[NodeSync] failed to open shared MariaDB for heartbeat: %v", err)
+		return
+	}
+	sqlDB, _ := sharedDB.DB()
+	defer sqlDB.Close()
+	if err := database.UpsertNodeState(sharedDB, state); err != nil {
+		log.Printf("[NodeSync] failed to upsert node state to shared MariaDB: %v", err)
+	}
 }
 
 func (s *NodeSyncService) BootstrapFromCache() error {

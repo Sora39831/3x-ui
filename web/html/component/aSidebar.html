@@ -59,6 +59,13 @@
                         icon: 'setting',
                         title: '{{ i18n "menu.settings"}}'
                     },
+                    {{if .is_admin}}
+                    {
+                        key: '{{ .base_path }}panel/nodes',
+                        icon: 'cluster',
+                        title: '{{ i18n "menu.nodes"}}'
+                    },
+                    {{end}}
                     {
                         key: '{{ .base_path }}panel/xray',
                         icon: 'tool',

@@ -142,20 +142,16 @@ func GetLogFolder() string {
 }
 
 var settingGroupAliases = map[string][]string{
-	"dbType":     {"databaseConnection", "other"},
-	"dbHost":     {"databaseConnection", "other"},
-	"dbPort":     {"databaseConnection", "other"},
-	"dbUser":     {"databaseConnection", "other"},
-	"dbPassword": {"databaseConnection", "other"},
-	"dbName":     {"databaseConnection", "other"},
-	"nodeRole":   {"other"},
-	"nodeId":     {"other"},
-	"syncInterval": {
-		"other",
-	},
-	"trafficFlushInterval": {
-		"other",
-	},
+	"dbType":               {"databaseConnection", "other"},
+	"dbHost":               {"databaseConnection", "other"},
+	"dbPort":               {"databaseConnection", "other"},
+	"dbUser":               {"databaseConnection", "other"},
+	"dbPassword":           {"databaseConnection", "other"},
+	"dbName":               {"databaseConnection", "other"},
+	"nodeRole":             {"node", "other"},
+	"nodeId":               {"node", "other"},
+	"syncInterval":         {"node", "other"},
+	"trafficFlushInterval": {"node", "other"},
 }
 
 func readGroupedString(settings map[string]any, key string) string {
@@ -214,21 +210,25 @@ func settingsLayoutMeta() map[string]any {
 }
 
 func ensureDefaultNodeSettings(settings map[string]any) {
-	group, ok := settings["other"].(map[string]any)
-	if !ok {
-		group = make(map[string]any)
-		settings["other"] = group
-	}
-
 	defaults := map[string]string{
 		"nodeRole":             string(NodeRoleMaster),
 		"nodeId":               "",
 		"syncInterval":         "30",
 		"trafficFlushInterval": "10",
 	}
-	for key, value := range defaults {
-		if existing, exists := group[key]; !exists || existing == nil {
-			group[key] = value
+
+	// Ensure both "node" and "other" groups have the defaults for backward
+	// compatibility.  Old code reads from "other", new code reads from "node".
+	for _, groupName := range []string{"node", "other"} {
+		group, ok := settings[groupName].(map[string]any)
+		if !ok {
+			group = make(map[string]any)
+			settings[groupName] = group
+		}
+		for key, value := range defaults {
+			if existing, exists := group[key]; !exists || existing == nil {
+				group[key] = value
+			}
 		}
 	}
 }

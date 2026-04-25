@@ -53,7 +53,7 @@ func (a *IndexController) initRouter(g *gin.RouterGroup) {
 	g.GET("/", a.index)
 	g.GET("/logout", a.logout)
 
-	g.POST("/login", a.login)
+	g.POST("/login", middleware.RateLimitMiddleware(10, time.Minute), a.login)
 	g.POST("/register", middleware.RateLimitMiddleware(5, time.Minute), a.register)
 	g.POST("/getTwoFactorEnable", a.getTwoFactorEnable)
 	g.POST("/getTurnstileSiteKey", a.getTurnstileSiteKey)

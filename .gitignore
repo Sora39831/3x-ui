@@ -39,9 +39,5 @@ docker-compose.override.yml
 # Ignore .env (Environment Variables) file
 .env
 
-# Ignore local docs directory
-/docs/
-/docs/*
-
 # Ignore local git worktrees
 /.worktrees/

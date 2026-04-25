@@ -1,0 +1,244 @@
+{{ template "page/head_start" .}}
+{{ template "page/head_end" .}}
+
+{{ template "page/body_start" .}}
+<a-layout id="app" v-cloak :class="themeSwitcher.currentTheme + ' nodes-page'">
+  <a-sidebar></a-sidebar>
+  <a-layout id="content-layout">
+    <a-layout-content>
+      <a-spin :spinning="loading" :delay="200" tip='{{ i18n "loading"}}'>
+        <transition name="list" appear>
+          <a-row :gutter="[isMobile ? 8 : 16, isMobile ? 8 : 12]">
+            <!-- Connected Nodes Section -->
+            <a-col :span="24">
+              <a-card hoverable>
+                <template #title>
+                  <a-row type="flex" justify="space-between" align="middle">
+                    <a-col>
+                      <a-space>
+                        <a-icon type="cluster"></a-icon>
+                        <span>{{ i18n "pages.nodes.connectedNodes" }}</span>
+                        <a-tag :color="nodeRole === 'master' ? 'blue' : 'green'">[[ nodeRole ]]</a-tag>
+                      </a-space>
+                    </a-col>
+                    <a-col>
+                      <a-button icon="reload" size="small" @click="loadNodes">{{ i18n "pages.nodes.refresh" }}</a-button>
+                    </a-col>
+                  </a-row>
+                </template>
+                <a-table
+                  :columns="nodeColumns"
+                  :data-source="nodes"
+                  :row-key="record => record.nodeId"
+                  :pagination="false"
+                  :scroll="isMobile ? { x: 700 } : undefined"
+                  size="middle"
+                  :locale="{ emptyText: nodeRole === 'master' ? '{{ i18n "pages.nodes.noWorkerNodes" }}' : '{{ i18n "pages.nodes.noMasterNode" }}' }">
+                  <template slot="status" slot-scope="text, record">
+                    <a-badge :status="record.online ? 'success' : 'error'" :text="record.online ? '{{ i18n "pages.nodes.online" }}' : '{{ i18n "pages.nodes.offline" }}'" />
+                  </template>
+                  <template slot="role" slot-scope="text, record">
+                    <a-tag :color="record.nodeRole === 'master' ? 'blue' : 'green'">[[ record.nodeRole ]]</a-tag>
+                  </template>
+                  <template slot="lastHeartbeat" slot-scope="text, record">
+                    [[ record.lastHeartbeatAt ? formatTime(record.lastHeartbeatAt) : '-' ]]
+                  </template>
+                  <template slot="lastSync" slot-scope="text, record">
+                    [[ record.lastSyncAt ? formatTime(record.lastSyncAt) : '-' ]]
+                  </template>
+                </a-table>
+              </a-card>
+            </a-col>
+
+            <!-- Current Node Config Section -->
+            <a-col :span="24">
+              <a-card hoverable>
+                <template #title>
+                  <a-space>
+                    <a-icon type="setting"></a-icon>
+                    <span>{{ i18n "pages.nodes.currentNodeConfig" }}</span>
+                  </a-space>
+                </template>
+                <a-form layout="vertical">
+                  <a-row :gutter="16">
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.role" }}'>
+                        <a-input :value="nodeConfig.role" disabled></a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.nodeId" }}'>
+                        <a-input :value="nodeConfig.nodeId" disabled></a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.dbType" }}'>
+                        <a-select v-model="nodeConfig.dbType" :disabled="saving">
+                          <a-select-option value="sqlite">SQLite</a-select-option>
+                          <a-select-option value="mariadb">MySQL/MariaDB</a-select-option>
+                        </a-select>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.syncInterval" }}'>
+                        <a-input-number v-model="nodeConfig.syncInterval" :min="5" :max="3600" style="width: 100%"></a-input-number>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.trafficFlushInterval" }}'>
+                        <a-input-number v-model="nodeConfig.trafficFlushInterval" :min="5" :max="3600" style="width: 100%"></a-input-number>
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-divider>{{ i18n "pages.nodes.dbSettings" }}</a-divider>
+                  <a-row :gutter="16">
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.dbHost" }}'>
+                        <a-input v-model="nodeConfig.dbHost" :disabled="saving"></a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.dbPort" }}'>
+                        <a-input v-model="nodeConfig.dbPort" :disabled="saving"></a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.dbName" }}'>
+                        <a-input v-model="nodeConfig.dbName" :disabled="saving"></a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.dbUser" }}'>
+                        <a-input v-model="nodeConfig.dbUser" :disabled="saving"></a-input>
+                      </a-form-item>
+                    </a-col>
+                    <a-col :xs="24" :sm="12" :md="8">
+                      <a-form-item label='{{ i18n "pages.nodes.dbPass" }}'>
+                        <a-input-password v-model="nodeConfig.dbPass" :disabled="saving"></a-input-password>
+                      </a-form-item>
+                    </a-col>
+                  </a-row>
+                  <a-form-item>
+                    <a-button type="primary" icon="save" :loading="saving" @click="saveConfig">
+                      {{ i18n "pages.nodes.save" }}
+                    </a-button>
+                  </a-form-item>
+                </a-form>
+              </a-card>
+            </a-col>
+          </a-row>
+        </transition>
+      </a-spin>
+    </a-layout-content>
+  </a-layout>
+</a-layout>
+{{template "page/body_scripts" .}}
+{{template "component/aSidebar" .}}
+{{template "component/aThemeSwitch" .}}
+<script>
+  const app = new Vue({
+    el: '#app',
+    delimiters: ['[[', ']]'],
+    data() {
+      return {
+        themeSwitcher,
+        loading: false,
+        saving: false,
+        nodeRole: '',
+        nodes: [],
+        nodeConfig: {
+          role: '',
+          nodeId: '',
+          syncInterval: 30,
+          trafficFlushInterval: 10,
+          dbType: '',
+          dbHost: '',
+          dbPort: '',
+          dbUser: '',
+          dbPass: '',
+          dbName: '',
+        },
+        nodeColumns: [
+          { title: '{{ i18n "pages.nodes.nodeId" }}', dataIndex: 'nodeId', width: 150 },
+          { title: '{{ i18n "pages.nodes.status" }}', scopedSlots: { customRender: 'status' }, width: 100 },
+          { title: '{{ i18n "pages.nodes.role" }}', scopedSlots: { customRender: 'role' }, width: 80 },
+          { title: '{{ i18n "pages.nodes.lastHeartbeat" }}', scopedSlots: { customRender: 'lastHeartbeat' }, width: 180 },
+          { title: '{{ i18n "pages.nodes.lastSync" }}', scopedSlots: { customRender: 'lastSync' }, width: 180 },
+          { title: '{{ i18n "pages.nodes.syncVersion" }}', dataIndex: 'lastSeenVersion', width: 120 },
+          { title: '{{ i18n "pages.nodes.error" }}', dataIndex: 'lastError', ellipsis: true },
+        ],
+        refreshTimer: null,
+      }
+    },
+    computed: {
+      isMobile() {
+        return window.innerWidth <= 768;
+      }
+    },
+    methods: {
+      async loadNodes() {
+        try {
+          const res = await axios.get('/panel/api/nodes/list');
+          if (res.data.success) {
+            this.nodes = res.data.obj;
+          }
+        } catch (e) {
+          console.error('Failed to load nodes', e);
+        }
+      },
+      async loadConfig() {
+        try {
+          const res = await axios.get('/panel/api/nodes/config');
+          if (res.data.success) {
+            Object.assign(this.nodeConfig, res.data.obj);
+            this.nodeRole = res.data.obj.role;
+          }
+        } catch (e) {
+          console.error('Failed to load node config', e);
+        }
+      },
+      async saveConfig() {
+        this.saving = true;
+        try {
+          const res = await axios.post('/panel/api/nodes/config', {
+            syncInterval: this.nodeConfig.syncInterval,
+            trafficFlushInterval: this.nodeConfig.trafficFlushInterval,
+            dbType: this.nodeConfig.dbType,
+            dbHost: this.nodeConfig.dbHost,
+            dbPort: this.nodeConfig.dbPort,
+            dbUser: this.nodeConfig.dbUser,
+            dbPass: this.nodeConfig.dbPass,
+            dbName: this.nodeConfig.dbName,
+          });
+          if (res.data.success) {
+            this.$message.success(res.data.msg);
+          } else {
+            this.$message.error(res.data.msg);
+          }
+        } catch (e) {
+          this.$message.error('Save failed');
+        } finally {
+          this.saving = false;
+        }
+      },
+      formatTime(ts) {
+        if (!ts) return '-';
+        return moment.unix(ts).format('YYYY-MM-DD HH:mm:ss');
+      },
+    },
+    mounted() {
+      this.loadNodes();
+      this.loadConfig();
+      this.refreshTimer = setInterval(() => {
+        this.loadNodes();
+      }, 10000);
+    },
+    beforeDestroy() {
+      if (this.refreshTimer) {
+        clearInterval(this.refreshTimer);
+      }
+    },
+  });
+</script>
+{{ template "page/body_end" }}
+</html>

@@ -3,7 +3,6 @@ package controller
 import (
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
@@ -13,16 +12,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// getRemoteIp extracts the real IP address from the request headers or remote address.
+// getRemoteIp extracts the real IP address from the request.
+// Trusts Cloudflare's CF-Connecting-IP header (overwritten by CF, cannot be spoofed by clients).
+// Falls back to RemoteAddr for direct connections without a trusted proxy.
 func getRemoteIp(c *gin.Context) string {
-	value := c.GetHeader("X-Real-IP")
-	if value != "" {
-		return value
-	}
-	value = c.GetHeader("X-Forwarded-For")
-	if value != "" {
-		ips := strings.Split(value, ",")
-		return ips[0]
+	// Cloudflare CDN sets CF-Connecting-IP to the real client IP and overwrites it,
+	// so it can be trusted even though it's a header.
+	if cfIP := c.GetHeader("CF-Connecting-IP"); cfIP != "" {
+		return cfIP
 	}
 	addr := c.Request.RemoteAddr
 	ip, _, _ := net.SplitHostPort(addr)
