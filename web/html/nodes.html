@@ -58,7 +58,7 @@
                   </template>
                 </a-table>
                 <div v-if="nodeRole === 'worker'">
-                  <a-empty v-if="nodes.length === 0" :description="nodeRole === 'master' ? '{{ i18n "pages.nodes.noWorkerNodes" }}' : '{{ i18n "pages.nodes.noMasterNode" }}'" />
+                  <a-empty v-if="nodes.length === 0" :description="nodeRole === 'master' ? '{{ i18n "pages.nodes.noWorkerNodes" }}' : '{{ i18n "pages.nodes.noMasterNode" }}'"></a-empty>
                   <div v-if="nodes.length > 0" class="node-info-wrap">
                     <table class="node-info-table">
                       <tbody>
@@ -92,7 +92,7 @@
                     </table>
                   </div>
                 </div>
-                <a-empty v-if="nodeRole === 'master' && nodes.length === 0" description='{{ i18n "pages.nodes.noWorkerNodes" }}' />
+                <a-empty v-if="nodeRole === 'master' && nodes.length === 0" description='{{ i18n "pages.nodes.noWorkerNodes" }}'></a-empty>
               </a-card>
             </a-col>
 
