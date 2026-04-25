@@ -291,10 +291,12 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 		parts = append(parts, "tls: true")
 		if security == "reality" {
 			realitySetting, _ := stream["realitySettings"].(map[string]any)
-			if publicKey, ok := realitySetting["publicKey"].(string); ok && publicKey != "" {
+			// publicKey and fingerprint are nested under realitySettings.settings
+			realityInner, _ := realitySetting["settings"].(map[string]any)
+			if publicKey, ok := realityInner["publicKey"].(string); ok && publicKey != "" {
 				realityOpts := fmt.Sprintf("reality-opts:\n    public-key: %q", publicKey)
-				if shortId, ok := realitySetting["shortId"].(string); ok && shortId != "" {
-					realityOpts += fmt.Sprintf("\n    short-id: %q", shortId)
+				if shortIds, ok := realitySetting["shortIds"].([]any); ok && len(shortIds) > 0 {
+					realityOpts += fmt.Sprintf("\n    short-id: %q", fmt.Sprintf("%v", shortIds[0]))
 				}
 				parts = append(parts, realityOpts)
 			}
@@ -303,6 +305,10 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			if len(serverNames) > 0 {
 				sni := fmt.Sprintf("%v", serverNames[0])
 				parts = append(parts, fmt.Sprintf("sni: %q", sni))
+			}
+			// Fingerprint from reality settings inner
+			if fp, ok := realityInner["fingerprint"].(string); ok && fp != "" {
+				parts = append(parts, fmt.Sprintf("client-fingerprint: %q", fp))
 			}
 		} else {
 			// TLS settings
@@ -317,16 +323,22 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 				}
 				parts = append(parts, fmt.Sprintf("alpn: [%s]", strings.Join(alpnStrs, ", ")))
 			}
-		}
-		// Fingerprint
-		if fp, ok := stream["fingerprint"].(string); ok && fp != "" {
-			parts = append(parts, fmt.Sprintf("client-fingerprint: %q", fp))
+			// Fingerprint for non-REALITY TLS
+			if fp, ok := stream["fingerprint"].(string); ok && fp != "" {
+				parts = append(parts, fmt.Sprintf("client-fingerprint: %q", fp))
+			}
 		}
 	} else {
 		parts = append(parts, "tls: false")
 	}
 
 	parts = append(parts, "udp: true")
+
+	// Network type
+	if network == "" {
+		network = "tcp"
+	}
+	parts = append(parts, fmt.Sprintf("network: %s", network))
 
 	// Network-specific settings
 	switch network {
