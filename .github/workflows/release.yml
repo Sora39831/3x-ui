@@ -264,8 +264,13 @@ jobs:
           if ! gh release view "$TAG" > /dev/null 2>&1; then
             gh release create "$TAG" --prerelease --title "$TAG" --generate-notes \
               --notes "**Xray-core:** ${{ steps.xray_version.outputs.version }}"
+            sleep 5
           fi
-          gh release upload "$TAG" x-ui-linux-${{ matrix.platform }}.tar.gz --clobber
+          for i in 1 2 3; do
+            gh release upload "$TAG" x-ui-linux-${{ matrix.platform }}.tar.gz --clobber && break
+            echo "Upload attempt $i failed, retrying in 5s..."
+            sleep 5
+          done
 
   # =================================
   #  Windows Build (disabled)
