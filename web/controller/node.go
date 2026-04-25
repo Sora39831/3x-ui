@@ -151,22 +151,22 @@ func (a *NodeController) getConfig(c *gin.Context) {
 	}, nil)
 }
 
-// updateConfigRequest is the JSON body for updating node config.
+// updateConfigRequest is the form body for updating node config.
 type updateConfigRequest struct {
-	SyncInterval         int    `json:"syncInterval"`
-	TrafficFlushInterval int    `json:"trafficFlushInterval"`
-	DBType               string `json:"dbType"`
-	DBHost               string `json:"dbHost"`
-	DBPort               string `json:"dbPort"`
-	DBUser               string `json:"dbUser"`
-	DBPass               string `json:"dbPass"`
-	DBName               string `json:"dbName"`
+	SyncInterval         int    `json:"syncInterval" form:"syncInterval"`
+	TrafficFlushInterval int    `json:"trafficFlushInterval" form:"trafficFlushInterval"`
+	DBType               string `json:"dbType" form:"dbType"`
+	DBHost               string `json:"dbHost" form:"dbHost"`
+	DBPort               string `json:"dbPort" form:"dbPort"`
+	DBUser               string `json:"dbUser" form:"dbUser"`
+	DBPass               string `json:"dbPass" form:"dbPass"`
+	DBName               string `json:"dbName" form:"dbName"`
 }
 
 // updateConfig updates the node configuration in x-ui.json.
 func (a *NodeController) updateConfig(c *gin.Context) {
 	var req updateConfigRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBind(&req); err != nil {
 		jsonMsg(c, "invalid request", err)
 		return
 	}
