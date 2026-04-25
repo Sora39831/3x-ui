@@ -3,7 +3,6 @@ package controller
 import (
 	"net"
 	"net/http"
-	"strings"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
 	"github.com/mhsanaei/3x-ui/v2/logger"
@@ -13,17 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// getRemoteIp extracts the real IP address from the request headers or remote address.
+// getRemoteIp extracts the real IP address from the direct connection.
+// Uses RemoteAddr to prevent IP spoofing via X-Real-IP/X-Forwarded-For headers.
+// If the panel is behind a trusted reverse proxy, configure Gin's SetTrustedProxies
+// to re-enable header-based IP detection.
 func getRemoteIp(c *gin.Context) string {
-	value := c.GetHeader("X-Real-IP")
-	if value != "" {
-		return value
-	}
-	value = c.GetHeader("X-Forwarded-For")
-	if value != "" {
-		ips := strings.Split(value, ",")
-		return ips[0]
-	}
 	addr := c.Request.RemoteAddr
 	ip, _, _ := net.SplitHostPort(addr)
 	return ip

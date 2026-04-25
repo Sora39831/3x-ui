@@ -37,24 +37,8 @@ func RateLimitMiddleware(maxRequests int, window time.Duration) gin.HandlerFunc 
 	}()
 
 	return func(c *gin.Context) {
-		ip := c.GetHeader("X-Real-IP")
-		if ip == "" {
-			ip = c.GetHeader("X-Forwarded-For")
-			if ip != "" {
-				// Take the first IP from X-Forwarded-For
-				if idx := len(ip); idx > 0 {
-					for i, ch := range ip {
-						if ch == ',' {
-							ip = ip[:i]
-							break
-						}
-					}
-				}
-			}
-		}
-		if ip == "" {
-			ip = c.Request.RemoteAddr
-		}
+		// Use RemoteAddr directly to prevent IP spoofing via headers
+		ip := c.Request.RemoteAddr
 
 		mu.Lock()
 		now := time.Now()
