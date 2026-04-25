@@ -1,14 +1,4 @@
 {{ template "page/head_start" .}}
-<style>
-  .node-info-table { width:100%; border-collapse:collapse; }
-  .node-info-table td { padding:8px 12px; border-bottom:1px solid #e8e8e8; }
-  .node-info-table tr:last-child td { border-bottom:none; }
-  .node-info-table .label { font-weight:500; background:#fafafa; width:30%; }
-  .node-info-wrap { border:1px solid #e8e8e8; border-radius:4px; overflow:hidden; }
-  .dark .node-info-wrap { border-color:var(--dark-color-stroke); }
-  .dark .node-info-table td { border-color:var(--dark-color-stroke); color:var(--dark-color-text-primary); }
-  .dark .node-info-table .label { background:var(--dark-color-surface-200); }
-</style>
 {{ template "page/head_end" .}}
 
 {{ template "page/body_start" .}}
@@ -37,13 +27,13 @@
                   </a-row>
                 </template>
                 <a-table
-                  v-if="nodeRole === 'master'"
                   :columns="nodeColumns"
                   :data-source="nodes"
                   :row-key="record => record.nodeId"
                   :pagination="false"
                   :scroll="isMobile ? { x: 700 } : undefined"
-                  size="middle">
+                  size="middle"
+                  :locale="{ emptyText: nodeRole === 'master' ? '{{ i18n "pages.nodes.noWorkerNodes" }}' : '{{ i18n "pages.nodes.noMasterNode" }}' }">
                   <template slot="status" slot-scope="text, record">
                     <a-badge :status="record.online ? 'success' : 'error'" :text="record.online ? '{{ i18n "pages.nodes.online" }}' : '{{ i18n "pages.nodes.offline" }}'" />
                   </template>
@@ -57,42 +47,6 @@
                     [[ record.lastSyncAt ? formatTime(record.lastSyncAt) : '-' ]]
                   </template>
                 </a-table>
-                <div v-if="nodeRole === 'worker'">
-                  <a-empty v-if="nodes.length === 0" :description="nodeRole === 'master' ? '{{ i18n "pages.nodes.noWorkerNodes" }}' : '{{ i18n "pages.nodes.noMasterNode" }}'"></a-empty>
-                  <div v-if="nodes.length > 0" class="node-info-wrap">
-                    <table class="node-info-table">
-                      <tbody>
-                        <tr>
-                          <td class="label">{{ i18n "pages.nodes.nodeId" }}</td>
-                          <td>[[ nodes[0].nodeId ]]</td>
-                        </tr>
-                        <tr>
-                          <td class="label">{{ i18n "pages.nodes.status" }}</td>
-                          <td>
-                            <a-badge :status="nodes[0].online ? 'success' : 'error'" :text="nodes[0].online ? '{{ i18n "pages.nodes.online" }}' : '{{ i18n "pages.nodes.offline" }}'" />
-                          </td>
-                        </tr>
-                        <tr>
-                          <td class="label">{{ i18n "pages.nodes.lastHeartbeat" }}</td>
-                          <td>[[ nodes[0].lastHeartbeatAt ? formatTime(nodes[0].lastHeartbeatAt) : '-' ]]</td>
-                        </tr>
-                        <tr>
-                          <td class="label">{{ i18n "pages.nodes.lastSync" }}</td>
-                          <td>[[ nodes[0].lastSyncAt ? formatTime(nodes[0].lastSyncAt) : '-' ]]</td>
-                        </tr>
-                        <tr>
-                          <td class="label">{{ i18n "pages.nodes.syncVersion" }}</td>
-                          <td>[[ nodes[0].lastSeenVersion ]]</td>
-                        </tr>
-                        <tr>
-                          <td class="label">{{ i18n "pages.nodes.error" }}</td>
-                          <td>[[ nodes[0].lastError || '-' ]]</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                <a-empty v-if="nodeRole === 'master' && nodes.length === 0" description='{{ i18n "pages.nodes.noWorkerNodes" }}'></a-empty>
               </a-card>
             </a-col>
 
