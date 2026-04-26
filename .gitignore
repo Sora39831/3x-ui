@@ -49,6 +49,8 @@ docker-compose.override.yml
 
 # Ignore AI agent instructions
 AGENTS.md
+.codex
+.github/copilot-instructions.md
 
 # Ignore backup files
 *.bak

@@ -584,16 +584,18 @@
                       </a-popover>
                     </template>
                     <template slot="expandedRowRender" slot-scope="record">
-                      <div v-if="clientSelection[record.id] && clientSelection[record.id].length > 0 && record.isMultiUser()" :style="{ marginBottom: '8px', display: 'flex', gap: '8px', alignItems: 'center' }">
-                        <span :style="{ marginInlineEnd: '8px' }">[[ clientSelection[record.id].length ]] {{ i18n "selected" }}</span>
-                        <a-button size="small" type="primary" @click="openBatchEditClient(record.id)">{{ i18n "pages.client.batchEdit" }}</a-button>
-                        <a-button size="small" @click="batchEnableClient(record.id, true)">{{ i18n "enable" }}</a-button>
-                        <a-button size="small" @click="batchEnableClient(record.id, false)">{{ i18n "disabled" }}</a-button>
-                        <a-button size="small" @click="batchResetClientTraffic(record.id)">{{ i18n "pages.inbounds.resetTraffic" }}</a-button>
-                        <a-popconfirm @confirm="batchDelClient(record.id)" title='{{ i18n "pages.inbounds.deleteClientContent"}}' :overlay-class-name="themeSwitcher.currentTheme" ok-text='{{ i18n "delete"}}' ok-type="danger" cancel-text='{{ i18n "cancel"}}'>
-                          <a-icon slot="icon" type="question-circle-o" :style="{ color: '#e04141' }"></a-icon>
-                          <a-button size="small" type="danger">{{ i18n "delete" }}</a-button>
-                        </a-popconfirm>
+                      <div v-if="clientSelection[record.id] && clientSelection[record.id].length > 0 && record.isMultiUser()" :style="{ marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', justifyContent: 'space-between' }">
+                        <div :style="{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }">
+                          <strong>[[ clientSelection[record.id].length ]] {{ i18n "selected" }}</strong>
+                          <a-button size="small" type="primary" @click="openBatchEditClient(record.id)">{{ i18n "pages.client.batchEdit" }}</a-button>
+                          <a-button size="small" @click="batchEnableClient(record.id, true)">{{ i18n "enable" }}</a-button>
+                          <a-button size="small" @click="batchEnableClient(record.id, false)">{{ i18n "disabled" }}</a-button>
+                          <a-button size="small" @click="batchResetClientTraffic(record.id)">{{ i18n "pages.inbounds.resetTraffic" }}</a-button>
+                          <a-popconfirm @confirm="batchDelClient(record.id)" title='{{ i18n "pages.inbounds.deleteClientContent"}}' :overlay-class-name="themeSwitcher.currentTheme" ok-text='{{ i18n "delete"}}' ok-type="danger" cancel-text='{{ i18n "cancel"}}'>
+                            <a-icon slot="icon" type="question-circle-o" :style="{ color: '#e04141' }"></a-icon>
+                            <a-button size="small" type="danger">{{ i18n "delete" }}</a-button>
+                          </a-popconfirm>
+                        </div>
                         <a-button size="small" @click="clearClientSelection(record.id)">{{ i18n "pages.client.batchDeselect" }}</a-button>
                       </div>
                       <a-table :row-key="client => getClientRowKey(record.protocol, client)" :columns="isMobile ? innerMobileColumns : innerColumns"
