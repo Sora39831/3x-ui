@@ -3588,6 +3588,61 @@ db_switch_to_sqlite() {
 }
 
 # Database management menu
+backup_db() {
+    echo -e "${green}Creating database backup...${plain}"
+    local xui_bin="${xui_folder}/x-ui"
+    if [[ ! -x "$xui_bin" ]]; then
+        echo -e "${red}x-ui binary not found at $xui_bin${plain}"
+        return 1
+    fi
+    "$xui_bin" backup
+}
+
+restore_db() {
+    local backup_file="$1"
+    if [[ -z "$backup_file" ]]; then
+        echo -e "${red}Usage: x-ui restore <backup-filename>${plain}"
+        list_backups
+        return 1
+    fi
+    local backup_dir="/etc/x-ui/backups"
+    local full_path="${backup_dir}/${backup_file}"
+    if [[ ! -f "$full_path" ]]; then
+        echo -e "${red}Backup file not found: $full_path${plain}"
+        list_backups
+        return 1
+    fi
+    echo -e "${yellow}WARNING: Restore will stop the panel and replace the database.${plain}"
+    read -p "Continue? (y/n) " confirm
+    if [[ "$confirm" != "y" ]]; then
+        echo "Cancelled."
+        return 0
+    fi
+    echo "Stopping panel..."
+    stop
+    echo "Restoring from $backup_file..."
+    local xui_bin="${xui_folder}/x-ui"
+    "$xui_bin" restore --file="$backup_file"
+    echo "Starting panel..."
+    start
+    echo -e "${green}Restore completed.${plain}"
+}
+
+list_backups() {
+    local backup_dir="/etc/x-ui/backups"
+    if [[ ! -d "$backup_dir" ]]; then
+        echo "No backups found."
+        return 0
+    fi
+    local count=$(ls -1 "$backup_dir" 2>/dev/null | wc -l)
+    if [[ "$count" -eq 0 ]]; then
+        echo "No backups found."
+        return 0
+    fi
+    echo -e "${green}Backups in ${backup_dir}:${plain}"
+    ls -lh "$backup_dir" | awk 'NR>1 {print $5, $6, $7, $8, $9}'
+}
+
 db_menu() {
     local current_type=$(read_json_dbtype)
 
@@ -3612,9 +3667,12 @@ db_menu() {
 │  ${green}14.${plain} 查看 MariaDB 允许 IP                        │
 │  ${green}15.${plain} 添加 MariaDB 允许 IP                        │
 │  ${green}16.${plain} 移除 MariaDB 允许 IP                        │
+│  ${green}17.${plain} 创建数据库备份                              │
+│  ${green}18.${plain} 从备份恢复数据库                            │
+│  ${green}19.${plain} 列出所有备份                                │
 ╚════════════════════════════════════════════════╝
 "
-    read -rp "请输入选择 [0-16]：" num
+    read -rp "请输入选择 [0-19]：" num
     case "${num}" in
     0)
         show_menu
@@ -3679,6 +3737,21 @@ db_menu() {
         ;;
     16)
         remove_mariadb_remote_ip
+        db_menu
+        ;;
+    17)
+        backup_db
+        db_menu
+        ;;
+    18)
+        list_backups
+        echo ""
+        read -p "Enter backup filename to restore: " restore_filename
+        restore_db "$restore_filename"
+        db_menu
+        ;;
+    19)
+        list_backups
         db_menu
         ;;
     *)
@@ -3869,6 +3942,15 @@ if [[ $# > 0 ]]; then
         ;;
     "update-all-geofiles")
         check_install 0 && update_all_geofiles 0 && restart 0
+        ;;
+    "backup")
+        check_install 0 && backup_db
+        ;;
+    "restore")
+        check_install 0 && restore_db "${2}"
+        ;;
+    "list-backups")
+        check_install 0 && list_backups
         ;;
     *) show_usage ;;
     esac

@@ -121,6 +121,12 @@ type AllSetting struct {
 	// Registration settings
 	TurnstileSiteKey   string `json:"turnstileSiteKey" form:"turnstileSiteKey"`
 	TurnstileSecretKey string `json:"-" form:"-"` // server-side only, never sent to frontend
+
+	// Backup settings
+	BackupEnabled   bool   `json:"backupEnabled" form:"backupEnabled"`
+	BackupFrequency string `json:"backupFrequency" form:"backupFrequency"`
+	BackupHour      int    `json:"backupHour" form:"backupHour"`
+	BackupMaxCount  int    `json:"backupMaxCount" form:"backupMaxCount"`
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.

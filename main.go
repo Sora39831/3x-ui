@@ -3,12 +3,20 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 	_ "unsafe"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
@@ -624,6 +632,12 @@ func main() {
 	var migrateDirection string
 	migrateDbCmd.StringVar(&migrateDirection, "direction", "", "Migration direction: sqlite-to-mariadb or mariadb-to-sqlite")
 
+	backupCmd := flag.NewFlagSet("backup", flag.ExitOnError)
+
+	restoreCmd := flag.NewFlagSet("restore", flag.ExitOnError)
+	var restoreFile string
+	restoreCmd.StringVar(&restoreFile, "file", "", "Backup file name to restore from")
+
 	// Allow dbPassword to be passed via env var to avoid leaking it in process args
 	if p := os.Getenv("XUI_DB_PASSWORD"); p != "" {
 		dbPassword = p
@@ -637,6 +651,8 @@ func main() {
 		fmt.Println("    run            run web panel")
 		fmt.Println("    migrate        migrate form other/old x-ui")
 		fmt.Println("    migrate-db     migrate data between SQLite and MariaDB")
+		fmt.Println("    backup         create a database backup")
+		fmt.Println("    restore        restore database from backup")
 		fmt.Println("    setting        set settings")
 	}
 
@@ -847,6 +863,24 @@ func main() {
 		} else {
 			updateCert(webCertFile, webKeyFile)
 		}
+	case "backup":
+		err := backupCmd.Parse(os.Args[2:])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		runBackup()
+	case "restore":
+		err := restoreCmd.Parse(os.Args[2:])
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		if restoreFile == "" {
+			fmt.Println("--file flag is required")
+			return
+		}
+		runRestore(restoreFile)
 	default:
 		fmt.Println("Invalid subcommands")
 		fmt.Println()
@@ -854,4 +888,240 @@ func main() {
 		fmt.Println()
 		settingCmd.Usage()
 	}
+}
+
+func runBackup() {
+	backupDir := "/etc/x-ui/backups"
+	os.MkdirAll(backupDir, 0755)
+
+	dbCfg := config.GetDBConfigFromJSON()
+	if dbCfg.Type == "" {
+		dbCfg.Type = "sqlite"
+	}
+
+	timestamp := time.Now().Format("2006-01-02-150405")
+	filename := fmt.Sprintf("backup-%s.tar.gz", timestamp)
+	filePath := filepath.Join(backupDir, filename)
+
+	var dumpSQL string
+	var err error
+
+	switch dbCfg.Type {
+	case "mariadb":
+		dumpSQL, err = dumpMariaDBCLI(dbCfg)
+	case "sqlite":
+		dumpSQL, err = dumpSQLiteCLI(config.GetDBPath())
+	default:
+		fmt.Println("unsupported database type:", dbCfg.Type)
+		os.Exit(1)
+	}
+	if err != nil {
+		fmt.Println("dump failed:", err)
+		os.Exit(1)
+	}
+
+	meta := map[string]string{
+		"dbType":    dbCfg.Type,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"version":   config.GetVersion(),
+	}
+
+	if err := createTarGzCLI(filePath, meta, dumpSQL); err != nil {
+		fmt.Println("archive creation failed:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("backup created:", filePath)
+}
+
+func runRestore(filename string) {
+	nodeCfg := config.GetNodeConfigFromJSON()
+	if nodeCfg.Role == config.NodeRoleWorker {
+		fmt.Println("backup and restore can only be performed on the master node")
+		os.Exit(1)
+	}
+
+	backupDir := "/etc/x-ui/backups"
+	filePath := filepath.Join(backupDir, filename)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		fmt.Println("backup file not found:", filePath)
+		os.Exit(1)
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		fmt.Println("cannot open backup:", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		fmt.Println("invalid backup file:", err)
+		os.Exit(1)
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	meta := make(map[string]string)
+	var dumpSQL strings.Builder
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Println("invalid backup:", err)
+			os.Exit(1)
+		}
+		var itemBuf strings.Builder
+		if _, err := io.Copy(&itemBuf, tr); err != nil {
+			fmt.Println("read error:", err)
+			os.Exit(1)
+		}
+		switch hdr.Name {
+		case "metadata.json":
+			json.Unmarshal([]byte(itemBuf.String()), &meta)
+		case "dump.sql":
+			dumpSQL.WriteString(itemBuf.String())
+		}
+	}
+
+	currentDBType := config.GetDBConfigFromJSON().Type
+	if currentDBType == "" {
+		currentDBType = "sqlite"
+	}
+	if meta["dbType"] != currentDBType {
+		fmt.Printf("backup type (%s) does not match current database (%s)\n", meta["dbType"], currentDBType)
+		os.Exit(1)
+	}
+
+	if dumpSQL.Len() == 0 {
+		fmt.Println("dump.sql not found in backup")
+		os.Exit(1)
+	}
+
+	// Create safety backup
+	safetyTimestamp := time.Now().Format("2006-01-02-150405")
+	safetyFile := filepath.Join(backupDir, "pre-restore-"+safetyTimestamp+".tar.gz")
+	var safetySQL string
+	var safetyErr error
+	switch currentDBType {
+	case "mariadb":
+		safetySQL, safetyErr = dumpMariaDBCLI(config.GetDBConfigFromJSON())
+	default:
+		safetySQL, safetyErr = dumpSQLiteCLI(config.GetDBPath())
+	}
+	if safetyErr == nil {
+		safetyMeta := map[string]string{
+			"dbType":    currentDBType,
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"version":   config.GetVersion(),
+		}
+		if err := createTarGzCLI(safetyFile, safetyMeta, safetySQL); err == nil {
+			fmt.Println("safety backup created:", safetyFile)
+		}
+	}
+
+	// Restore
+	switch currentDBType {
+	case "mariadb":
+		dbCfg := config.GetDBConfigFromJSON()
+		args := []string{
+			fmt.Sprintf("-h%s", dbCfg.Host), fmt.Sprintf("-P%s", dbCfg.Port),
+		}
+		if dbCfg.User != "" {
+			args = append(args, fmt.Sprintf("-u%s", dbCfg.User))
+		}
+		if dbCfg.Password != "" {
+			args = append(args, fmt.Sprintf("-p%s", dbCfg.Password))
+		}
+		args = append(args, dbCfg.Name)
+		cmd := exec.Command("mysql", args...)
+		cmd.Stdin = strings.NewReader(dumpSQL.String())
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Println("restore failed:", err, stderr.String())
+			os.Exit(1)
+		}
+	default:
+		cmd := exec.Command("sqlite3", config.GetDBPath())
+		cmd.Stdin = strings.NewReader(dumpSQL.String())
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Println("restore failed:", err, stderr.String())
+			os.Exit(1)
+		}
+	}
+
+	fmt.Println("restore completed successfully")
+}
+
+func dumpMariaDBCLI(dbCfg config.DBConfig) (string, error) {
+	args := []string{
+		"--single-transaction", "--routines", "--triggers", "--no-tablespaces",
+		fmt.Sprintf("-h%s", dbCfg.Host), fmt.Sprintf("-P%s", dbCfg.Port),
+	}
+	if dbCfg.User != "" {
+		args = append(args, fmt.Sprintf("-u%s", dbCfg.User))
+	}
+	if dbCfg.Password != "" {
+		args = append(args, fmt.Sprintf("-p%s", dbCfg.Password))
+	}
+	args = append(args, dbCfg.Name)
+	cmd := exec.Command("mysqldump", args...)
+	var out, stderr strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, stderr.String())
+	}
+	return out.String(), nil
+}
+
+func dumpSQLiteCLI(dbPath string) (string, error) {
+	cmd := exec.Command("sqlite3", dbPath, ".dump")
+	var out, stderr strings.Builder
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%w: %s", err, stderr.String())
+	}
+	return out.String(), nil
+}
+
+func createTarGzCLI(filePath string, meta map[string]string, dumpSQL string) error {
+	f, err := os.Create(filePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gw := gzip.NewWriter(f)
+	defer gw.Close()
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	metaBytes, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := tw.WriteHeader(&tar.Header{Name: "metadata.json", Size: int64(len(metaBytes)), Mode: 0644, Typeflag: tar.TypeReg}); err != nil {
+		return err
+	}
+	if _, err := tw.Write(metaBytes); err != nil {
+		return err
+	}
+
+	dumpBytes := []byte(dumpSQL)
+	if err := tw.WriteHeader(&tar.Header{Name: "dump.sql", Size: int64(len(dumpBytes)), Mode: 0644, Typeflag: tar.TypeReg}); err != nil {
+		return err
+	}
+	if _, err := tw.Write(dumpBytes); err != nil {
+		return err
+	}
+	return nil
 }

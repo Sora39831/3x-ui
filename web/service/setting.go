@@ -127,6 +127,12 @@ var defaultValueMap = map[string]string{
 	"nodeId":               "",
 	"syncInterval":         "30",
 	"trafficFlushInterval": "10",
+
+	// Backup settings
+	"backupEnabled":   "false",
+	"backupFrequency": "daily",
+	"backupHour":      "3",
+	"backupMaxCount":  "10",
 }
 
 // settingGroups defines the nested JSON structure for on-disk settings.
@@ -246,6 +252,12 @@ var settingGroups = map[string]map[string]string{
 		"nodeId":               "nodeId",
 		"syncInterval":         "syncInterval",
 		"trafficFlushInterval": "trafficFlushInterval",
+	},
+	"backup": {
+		"enabled":   "backupEnabled",
+		"frequency": "backupFrequency",
+		"hour":      "backupHour",
+		"maxCount":  "backupMaxCount",
 	},
 }
 
@@ -1136,6 +1148,22 @@ func (s *SettingService) GetTurnstileSecretKey() (string, error) {
 
 func (s *SettingService) SetTurnstileSecretKey(value string) error {
 	return s.setString("turnstileSecretKey", value)
+}
+
+func (s *SettingService) GetBackupEnabled() (bool, error) {
+	return s.getBool("backupEnabled")
+}
+
+func (s *SettingService) GetBackupFrequency() (string, error) {
+	return s.getString("backupFrequency")
+}
+
+func (s *SettingService) GetBackupHour() (int, error) {
+	return s.getInt("backupHour")
+}
+
+func (s *SettingService) GetBackupMaxCount() (int, error) {
+	return s.getInt("backupMaxCount")
 }
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, presentKeys map[string]struct{}) error {
