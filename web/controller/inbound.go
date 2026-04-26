@@ -20,6 +20,7 @@ import (
 type InboundController struct {
 	inboundService service.InboundService
 	xrayService    service.XrayService
+	settingService service.SettingService
 }
 
 // NewInboundController creates a new InboundController and sets up its routes.
@@ -54,6 +55,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/lastOnline", a.lastOnline)
 	g.POST("/updateClientTraffic/:email", a.updateClientTraffic)
 	g.POST("/:id/delClientByEmail/:email", a.delInboundClientByEmail)
+	g.POST("/batchUpdateClients", a.batchUpdateInboundClients)
 }
 
 // getInbounds retrieves the list of inbounds for the logged-in user.
@@ -469,6 +471,32 @@ func (a *InboundController) delInboundClientByEmail(c *gin.Context) {
 	}
 }
 
+// batchUpdateInboundClients updates multiple clients in an inbound with the same field changes.
+func (a *InboundController) batchUpdateInboundClients(c *gin.Context) {
+	var request struct {
+		InboundID    int      `json:"inboundId"`
+		ClientIDs    []string `json:"clientIds"`
+		UpdateFields string   `json:"updateFields"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
+		return
+	}
+
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.BatchUpdateInboundClientsForUser(
+		user.Id, user.Role == "admin", request.InboundID, request.ClientIDs, request.UpdateFields,
+	)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+}
+
 // getUserInfo returns client traffic information for the logged-in user.
 func (a *InboundController) getUserInfo(c *gin.Context) {
 	user := session.GetLoginUser(c)
@@ -478,4 +506,72 @@ func (a *InboundController) getUserInfo(c *gin.Context) {
 		return
 	}
 	jsonObj(c, traffic, nil)
+}
+
+// getUserSubscriptions returns subscription URLs for the logged-in user.
+func (a *InboundController) getUserSubscriptions(c *gin.Context) {
+	user := session.GetLoginUser(c)
+	traffic, err := a.inboundService.GetClientTrafficByEmail(user.Username)
+	if err != nil || traffic == nil {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	subId := traffic.SubId
+	if subId == "" {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	settingsAny, err := a.settingService.GetDefaultSettings(c.Request.Host)
+	if err != nil {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	settings, ok := settingsAny.(map[string]any)
+	if !ok {
+		jsonObj(c, gin.H{"subClashEnable": false}, nil)
+		return
+	}
+
+	subEnable := false
+	if v, ok := settings["subEnable"]; ok {
+		if b, ok2 := v.(bool); ok2 {
+			subEnable = b
+		}
+	}
+
+	subUrl := ""
+	if subEnable {
+		if uri, ok := settings["subURI"]; ok {
+			if s, ok2 := uri.(string); ok2 && s != "" {
+				subUrl = s + subId
+			}
+		}
+	}
+
+	subClashEnable := false
+	if v, ok := settings["subClashEnable"]; ok {
+		if b, ok2 := v.(bool); ok2 {
+			subClashEnable = b
+		}
+	}
+
+	subClashUrl := ""
+	if subClashEnable {
+		if uri, ok := settings["subClashURI"]; ok {
+			if s, ok2 := uri.(string); ok2 && s != "" {
+				subClashUrl = s + subId
+			}
+		}
+	}
+
+	jsonObj(c, gin.H{
+		"subId":          subId,
+		"subEnable":      subEnable,
+		"subUrl":         subUrl,
+		"subClashEnable": subClashEnable,
+		"subClashUrl":    subClashUrl,
+	}, nil)
 }

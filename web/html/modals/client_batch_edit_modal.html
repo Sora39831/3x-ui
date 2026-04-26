@@ -1,0 +1,209 @@
+{{define "modals/clientBatchEditModal"}}
+<a-modal id="client-batch-edit-modal" v-model="clientBatchEditModal.visible" :title="clientBatchEditModal.title"
+    @ok="clientBatchEditModal.ok" :confirm-loading="clientBatchEditModal.confirmLoading" :closable="true" :mask-closable="false"
+    :ok-text="clientBatchEditModal.okText" cancel-text='{{ i18n "close" }}' :class="themeSwitcher.currentTheme">
+    <a-alert type="warning" :message="clientBatchEditModal.selectedCount + ' {{ i18n "pages.client.batchEditAlert" }}'" :style="{ marginBottom: '16px' }" banner show-icon></a-alert>
+    <a-form :colon="false" :label-col="{ md: {span:8} }" :wrapper-col="{ md: {span:14} }">
+        <a-form-item label='{{ i18n "pages.inbounds.enable" }}'>
+            <a-radio-group v-model="clientBatchEditModal.enable" button-style="solid">
+                <a-radio-button :value="null">{{ i18n "pages.client.batchKeep" }}</a-radio-button>
+                <a-radio-button :value="true">{{ i18n "enable" }}</a-radio-button>
+                <a-radio-button :value="false">{{ i18n "disabled" }}</a-radio-button>
+            </a-radio-group>
+        </a-form-item>
+        <a-form-item v-if="inbound.protocol === Protocols.VMESS" label='{{ i18n "security" }}'>
+            <a-select v-model="clientBatchEditModal.security" :dropdown-class-name="themeSwitcher.currentTheme" allow-clear :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'>
+                <a-select-option v-for="key in USERS_SECURITY" :value="key">[[ key ]]</a-select-option>
+            </a-select>
+        </a-form-item>
+        <a-form-item label='Flow' v-if="clientBatchEditModal.inbound && clientBatchEditModal.inbound.canEnableTlsFlow()">
+            <a-select v-model="clientBatchEditModal.flow" :dropdown-class-name="themeSwitcher.currentTheme" allow-clear :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'>
+                <a-select-option value="" selected>{{ i18n "none" }}</a-select-option>
+                <a-select-option v-for="key in TLS_FLOW_CONTROL" :value="key">[[ key ]]</a-select-option>
+            </a-select>
+        </a-form-item>
+        <a-form-item v-if="app.ipLimitEnable">
+            <template slot="label">
+                <a-tooltip>
+                    <template slot="title">
+                        <span>{{ i18n "pages.inbounds.IPLimitDesc" }}</span>
+                    </template>
+                    <span>{{ i18n "pages.inbounds.IPLimit" }} </span>
+                    <a-icon type="question-circle"></a-icon>
+                </a-tooltip>
+            </template>
+            <a-input-number v-model.number="clientBatchEditModal.limitIp" :min="0" :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'></a-input-number>
+        </a-form-item>
+        <a-form-item>
+            <template slot="label">
+                <a-tooltip>
+                    <template slot="title">
+                        0 <span>{{ i18n "pages.inbounds.meansNoLimit" }}</span>
+                    </template>
+                    {{ i18n "pages.inbounds.totalFlow" }}
+                    <a-icon type="question-circle"></a-icon>
+                </a-tooltip>
+            </template>
+            <a-input-number v-model.number="clientBatchEditModal.totalGB" :min="0" :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'></a-input-number>
+        </a-form-item>
+        <a-form-item label='{{ i18n "pages.client.delayedStart" }}'>
+            <a-radio-group v-model="clientBatchEditModal.delayedStart" button-style="solid">
+                <a-radio-button :value="null">{{ i18n "pages.client.batchKeep" }}</a-radio-button>
+                <a-radio-button :value="true">{{ i18n "enable" }}</a-radio-button>
+                <a-radio-button :value="false">{{ i18n "disabled" }}</a-radio-button>
+            </a-radio-group>
+        </a-form-item>
+        <a-form-item label='{{ i18n "pages.client.expireDays" }}' v-if="clientBatchEditModal.delayedStart === true">
+            <a-input-number v-model.number="delayedExpireDays" :min="0"></a-input-number>
+        </a-form-item>
+        <a-form-item v-else-if="clientBatchEditModal.delayedStart === false">
+            <template slot="label">
+                <a-tooltip>
+                    <template slot="title">
+                        <span>{{ i18n "pages.inbounds.leaveBlankToNeverExpire" }}</span>
+                    </template>
+                    {{ i18n "pages.inbounds.expireDate" }}
+                    <a-icon type="question-circle"></a-icon>
+                </a-tooltip>
+            </template>
+            <a-date-picker v-if="datepicker == 'gregorian'" :show-time="{ format: 'HH:mm:ss' }"
+                format="YYYY-MM-DD HH:mm:ss" :dropdown-class-name="themeSwitcher.currentTheme"
+                v-model="clientBatchEditModal.expiryTime"></a-date-picker>
+            <a-persian-datepicker v-else placeholder='{{ i18n "pages.settings.datepickerPlaceholder" }}'
+                v-model="clientBatchEditModal.expiryTime">
+            </a-persian-datepicker>
+        </a-form-item>
+        <a-form-item v-if="clientBatchEditModal.expiryTime || clientBatchEditModal.delayedStart === true">
+            <template slot="label">
+                <a-tooltip>
+                    <template slot="title">
+                        <span>{{ i18n "pages.client.renewDesc" }}</span>
+                    </template>
+                    {{ i18n "pages.client.renew" }}
+                    <a-icon type="question-circle"></a-icon>
+                </a-tooltip>
+            </template>
+            <a-input-number v-model.number="clientBatchEditModal.reset" :min="0" :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'></a-input-number>
+        </a-form-item>
+        <a-form-item v-if="app.tgBotEnable">
+            <template slot="label">
+                <a-tooltip>
+                    <template slot="title">
+                        <span>{{ i18n "pages.inbounds.telegramDesc" }}</span>
+                    </template>
+                    Telegram ChatID
+                    <a-icon type="question-circle"></a-icon>
+                </a-tooltip>
+            </template>
+            <a-input-number :style="{ width: '50%' }" v-model.number="clientBatchEditModal.tgId" :min="0" :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'></a-input-number>
+        </a-form-item>
+        <a-form-item label='{{ i18n "comment" }}'>
+            <a-input v-model.trim="clientBatchEditModal.comment" :placeholder='{{ printf "%q" (i18n "pages.client.batchKeep") }}'></a-input>
+        </a-form-item>
+    </a-form>
+</a-modal>
+<script>
+    const clientBatchEditModal = {
+        visible: false,
+        confirmLoading: false,
+        title: '',
+        okText: '',
+        confirm: null,
+        dbInbound: new DBInbound(),
+        inbound: new Inbound(),
+        selectedCount: 0,
+        enable: null,
+        security: undefined,
+        flow: undefined,
+        limitIp: undefined,
+        totalGB: undefined,
+        expiryTime: undefined,
+        delayedStart: null,
+        reset: undefined,
+        tgId: undefined,
+        comment: undefined,
+        ok() {
+            const updateData = {};
+            if (clientBatchEditModal.enable !== null) updateData.enable = clientBatchEditModal.enable;
+            if (clientBatchEditModal.security !== undefined) updateData.security = clientBatchEditModal.security;
+            if (clientBatchEditModal.flow !== undefined) updateData.flow = clientBatchEditModal.flow;
+            if (clientBatchEditModal.limitIp !== undefined && clientBatchEditModal.limitIp !== null) updateData.limitIp = clientBatchEditModal.limitIp;
+            if (clientBatchEditModal.totalGB !== undefined && clientBatchEditModal.totalGB !== null) {
+                updateData.totalGB = NumberFormatter.toFixed(clientBatchEditModal.totalGB * SizeFormatter.ONE_GB, 0);
+            }
+            if (clientBatchEditModal.delayedStart === true) {
+                if (clientBatchEditModalApp.delayedExpireDays > 0) {
+                    updateData.expiryTime = -86400000 * clientBatchEditModalApp.delayedExpireDays;
+                }
+            } else if (clientBatchEditModal.delayedStart === false && clientBatchEditModal.expiryTime) {
+                updateData.expiryTime = new Date(clientBatchEditModal.expiryTime).getTime();
+            }
+            if (clientBatchEditModal.reset !== undefined && clientBatchEditModal.reset !== null) updateData.reset = clientBatchEditModal.reset;
+            if (clientBatchEditModal.tgId !== undefined && clientBatchEditModal.tgId !== null) updateData.tgId = clientBatchEditModal.tgId;
+            if (clientBatchEditModal.comment !== undefined && clientBatchEditModal.comment !== null) updateData.comment = clientBatchEditModal.comment;
+
+            if (Object.keys(updateData).length === 0) {
+                clientBatchEditModalApp.$message.warning('{{ i18n "pages.client.batchEditNoFields" }}');
+                return;
+            }
+
+            ObjectUtil.execute(clientBatchEditModal.confirm, updateData, clientBatchEditModal.dbInbound.id);
+        },
+        show({
+            title = '',
+            okText = '{{ i18n "sure" }}',
+            dbInbound = null,
+            selectedCount = 0,
+            confirm = () => { }
+        }) {
+            if (!dbInbound) {
+                return;
+            }
+            this.visible = true;
+            this.title = title;
+            this.okText = okText;
+            this.confirm = confirm;
+            this.selectedCount = selectedCount;
+            this.dbInbound = new DBInbound(dbInbound);
+            this.inbound = dbInbound.toInbound();
+            this.enable = null;
+            this.security = undefined;
+            this.flow = undefined;
+            this.limitIp = undefined;
+            this.totalGB = undefined;
+            this.expiryTime = undefined;
+            this.delayedStart = null;
+            this.reset = undefined;
+            this.tgId = undefined;
+            this.comment = undefined;
+        },
+        close() {
+            clientBatchEditModal.visible = false;
+            clientBatchEditModal.loading(false);
+        },
+        loading(loading = true) {
+            clientBatchEditModal.confirmLoading = loading;
+        },
+    };
+
+    const clientBatchEditModalApp = new Vue({
+        delimiters: ['[[', ']]'],
+        el: '#client-batch-edit-modal',
+        data: {
+            clientBatchEditModal,
+            get inbound() {
+                return this.clientBatchEditModal.inbound;
+            },
+            get delayedExpireDays() {
+                return this.clientBatchEditModal.expiryTime < 0 ? this.clientBatchEditModal.expiryTime / -86400000 : 0;
+            },
+            get datepicker() {
+                return app.datepicker;
+            },
+            set delayedExpireDays(days) {
+                this.clientBatchEditModal.expiryTime = -86400000 * days;
+            },
+        },
+    });
+</script>
+{{end}}

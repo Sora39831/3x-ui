@@ -102,6 +102,9 @@ func (s *UserService) addUserClientsToAllInbounds(tx *gorm.DB, username string, 
 			SubID:   uuid.New().String()[:8],
 			Comment: "auto-added on registration",
 		}
+		if shouldAutoFillVisionFlow(inbound.Protocol, inbound.StreamSettings) {
+			client.Flow = "xtls-rprx-vision"
+		}
 
 		clientEntry := map[string]any{
 			"email":      client.Email,
@@ -121,6 +124,9 @@ func (s *UserService) addUserClientsToAllInbounds(tx *gorm.DB, username string, 
 			clientEntry["password"] = clientID
 		default:
 			clientEntry["id"] = clientID
+		}
+		if client.Flow != "" {
+			clientEntry["flow"] = client.Flow
 		}
 
 		var settings map[string]any

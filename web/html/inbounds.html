@@ -584,8 +584,23 @@
                       </a-popover>
                     </template>
                     <template slot="expandedRowRender" slot-scope="record">
-                      <a-table :row-key="client => client.id" :columns="isMobile ? innerMobileColumns : innerColumns"
+                      <div v-if="clientSelection[record.id] && clientSelection[record.id].length > 0 && record.isMultiUser()" :style="{ marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', justifyContent: 'space-between' }">
+                        <div :style="{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }">
+                          <strong>[[ clientSelection[record.id].length ]] {{ i18n "selected" }}</strong>
+                          <a-button size="small" type="primary" @click="openBatchEditClient(record.id)">{{ i18n "pages.client.batchEdit" }}</a-button>
+                          <a-button size="small" @click="batchEnableClient(record.id, true)">{{ i18n "enable" }}</a-button>
+                          <a-button size="small" @click="batchEnableClient(record.id, false)">{{ i18n "disabled" }}</a-button>
+                          <a-button size="small" @click="batchResetClientTraffic(record.id)">{{ i18n "pages.inbounds.resetTraffic" }}</a-button>
+                          <a-popconfirm @confirm="batchDelClient(record.id)" title='{{ i18n "pages.inbounds.deleteClientContent"}}' :overlay-class-name="themeSwitcher.currentTheme" ok-text='{{ i18n "delete"}}' ok-type="danger" cancel-text='{{ i18n "cancel"}}'>
+                            <a-icon slot="icon" type="question-circle-o" :style="{ color: '#e04141' }"></a-icon>
+                            <a-button size="small" type="danger">{{ i18n "delete" }}</a-button>
+                          </a-popconfirm>
+                        </div>
+                        <a-button size="small" @click="clearClientSelection(record.id)">{{ i18n "pages.client.batchDeselect" }}</a-button>
+                      </div>
+                      <a-table :row-key="client => getClientRowKey(record.protocol, client)" :columns="isMobile ? innerMobileColumns : innerColumns"
                         :data-source="getInboundClients(record)" :pagination=pagination(getInboundClients(record))
+                        :row-selection="getClientRowSelection(record)"
                         :style="{ margin: `-10px ${isMobile ? '2px' : '22px'} -11px` }">
                         {{template "component/aClientTable"}}
                       </a-table>
@@ -617,6 +632,7 @@
 {{template "modals/inboundInfoModal"}}
 {{template "modals/clientsModal"}}
 {{template "modals/clientsBulkModal"}}
+{{template "modals/clientBatchEditModal"}}
 <script>
   const columns = [{
     title: "ID",
@@ -761,6 +777,7 @@
       currentUsername: {{ printf "%q" .current_username }},
       clientEmailOptions: [],
       loadFailed: false,
+      clientSelection: {},
     },
     methods: {
       loading(spinning = true) {
@@ -1611,6 +1628,115 @@
           await this.getDBInbounds();
           this.loadingStates.spinning = false;
         }
+      },
+      getClientRowKey(protocol, client) {
+        switch (protocol) {
+          case Protocols.TROJAN: return 'p_' + client.password;
+          case Protocols.SHADOWSOCKS: return 'e_' + client.email;
+          default: return client.id;
+        }
+      },
+      getClientRowSelection(dbInbound) {
+        if (!dbInbound || !dbInbound.isMultiUser()) return null;
+        const inboundId = dbInbound.id;
+        return {
+          selectedRowKeys: this.clientSelection[inboundId] || [],
+          onChange: (selectedRowKeys) => {
+            this.$set(this.clientSelection, inboundId, selectedRowKeys);
+          },
+          columnWidth: '32px',
+        };
+      },
+      getSelectedClients(inboundId) {
+        const dbInbound = this.dbInbounds.find(row => row.id === inboundId);
+        if (!dbInbound) return [];
+        const clients = this.getInboundClients(dbInbound);
+        if (!clients || !Array.isArray(clients)) return [];
+        const selectedKeys = this.clientSelection[inboundId] || [];
+        return clients.filter(c => selectedKeys.includes(this.getClientRowKey(dbInbound.protocol, c)));
+      },
+      clearClientSelection(inboundId) {
+        this.$set(this.clientSelection, inboundId, []);
+      },
+      openBatchEditClient(inboundId) {
+        const dbInbound = this.dbInbounds.find(row => row.id === inboundId);
+        if (!dbInbound) return;
+        const selectedClients = this.getSelectedClients(inboundId);
+        if (selectedClients.length === 0) return;
+        const clientIds = selectedClients.map(c => this.getClientId(dbInbound.protocol, c));
+        clientBatchEditModal.show({
+          title: '{{ i18n "pages.client.batchEdit" }} - ' + dbInbound.remark,
+          okText: '{{ i18n "pages.client.submitEdit" }}',
+          dbInbound: dbInbound,
+          selectedCount: selectedClients.length,
+          confirm: async (updateData, dbInboundId) => {
+            clientBatchEditModal.loading();
+            const data = {
+              inboundId: dbInboundId,
+              clientIds: clientIds,
+              updateFields: JSON.stringify(updateData),
+            };
+            await this.submit('/panel/api/inbounds/batchUpdateClients', data, clientBatchEditModal);
+            this.clearClientSelection(inboundId);
+          },
+        });
+      },
+      async batchEnableClient(inboundId, enable) {
+        const dbInbound = this.dbInbounds.find(row => row.id === inboundId);
+        if (!dbInbound) return;
+        const selectedClients = this.getSelectedClients(inboundId);
+        if (selectedClients.length === 0) return;
+        const clientIds = selectedClients.map(c => this.getClientId(dbInbound.protocol, c));
+        this.loading();
+        const data = {
+          inboundId: inboundId,
+          clientIds: clientIds,
+          updateFields: JSON.stringify({ enable: enable }),
+        };
+        await this.submit('/panel/api/inbounds/batchUpdateClients', data, null);
+        this.clearClientSelection(inboundId);
+        this.loading(false);
+      },
+      batchResetClientTraffic(inboundId) {
+        const selectedClients = this.getSelectedClients(inboundId);
+        if (selectedClients.length === 0) return;
+        this.$confirm({
+          title: '{{ i18n "pages.inbounds.resetTraffic"}} (' + selectedClients.length + ' {{ i18n "clients" }})',
+          content: '{{ i18n "pages.inbounds.resetTrafficContent"}}',
+          class: themeSwitcher.currentTheme,
+          okText: '{{ i18n "reset"}}',
+          cancelText: '{{ i18n "cancel"}}',
+          onOk: async () => {
+            this.loading();
+            for (const client of selectedClients) {
+              await HttpUtil.post('/panel/api/inbounds/' + inboundId + '/resetClientTraffic/' + client.email);
+            }
+            this.clearClientSelection(inboundId);
+            await this.getDBInbounds();
+            this.loading(false);
+          },
+        });
+      },
+      batchDelClient(inboundId) {
+        const dbInbound = this.dbInbounds.find(row => row.id === inboundId);
+        if (!dbInbound) return;
+        const selectedClients = this.getSelectedClients(inboundId);
+        if (selectedClients.length === 0) return;
+        const remainingClients = this.getInboundClients(dbInbound);
+        if (remainingClients && remainingClients.length - selectedClients.length < 1) {
+          this.$message.warning('{{ i18n "pages.client.batchDeleteLastClient" }}');
+          return;
+        }
+        this.loading();
+        const promises = selectedClients.map(async (client) => {
+          const clientId = this.getClientId(dbInbound.protocol, client);
+          return HttpUtil.post('/panel/api/inbounds/' + inboundId + '/delClient/' + clientId);
+        });
+        Promise.all(promises).then(() => {
+          this.clearClientSelection(inboundId);
+          this.getDBInbounds();
+          this.loading(false);
+        });
       },
       pagination(obj) {
         if (this.pageSize > 0 && obj.length > this.pageSize) {

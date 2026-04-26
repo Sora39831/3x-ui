@@ -213,13 +213,22 @@
             this.flow = "";
             this.dbInbound = new DBInbound(dbInbound);
             this.inbound = dbInbound.toInbound();
+            if (this.inbound.canEnableTlsFlow()) {
+                this.flow = "xtls-rprx-vision";
+            }
             this.delayedStart = false;
             this.reset = 0;
         },
         newClient(protocol) {
             switch (protocol) {
                 case Protocols.VMESS: return new Inbound.VmessSettings.VMESS();
-                case Protocols.VLESS: return new Inbound.VLESSSettings.VLESS();
+                case Protocols.VLESS: {
+                    const client = new Inbound.VLESSSettings.VLESS();
+                    if (clientsBulkModal.inbound?.canEnableTlsFlow() && !client.flow) {
+                        client.flow = "xtls-rprx-vision";
+                    }
+                    return client;
+                }
                 case Protocols.TROJAN: return new Inbound.TrojanSettings.Trojan();
                 case Protocols.SHADOWSOCKS: {
                     const method = clientsBulkModal.inbound?.settings?.method || '';

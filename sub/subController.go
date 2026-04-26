@@ -56,6 +56,7 @@ func NewSUBController(
 	clashEnabled bool,
 	subClashPath string,
 	subClashTemplate string,
+	clashServers []ClashServer,
 ) *SUBController {
 	sub := NewSubService(showInfo, rModel)
 	a := &SUBController{
@@ -76,7 +77,7 @@ func NewSUBController(
 
 		subService:      sub,
 		subJsonService:  NewSubJsonService(jsonFragment, jsonNoise, jsonMux, jsonRules, sub),
-		subClashService: NewSubClashService(subClashTemplate, sub),
+		subClashService: NewSubClashService(subClashTemplate, clashServers, sub),
 	}
 	a.initRouter(g)
 	return a

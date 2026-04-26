@@ -129,6 +129,85 @@ func GetTrafficPendingPath() string {
 	return filepath.Join(GetDBFolderPath(), "traffic-pending.json")
 }
 
+// GetClashTemplatePath returns the path to the clash_template.yaml file.
+func GetClashTemplatePath() string {
+	return filepath.Join(GetDBFolderPath(), "clash_template.yaml")
+}
+
+// GetServersPath returns the path to the servers.yaml file.
+func GetServersPath() string {
+	return filepath.Join(GetDBFolderPath(), "servers.yaml")
+}
+
+// ReadClashTemplate reads the clash template from disk.
+// Returns the default mihomo template if the file does not exist.
+func ReadClashTemplate() (string, error) {
+	data, err := os.ReadFile(GetClashTemplatePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return defaultClashTemplate, nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+// SaveClashTemplate writes the clash template to disk.
+func SaveClashTemplate(content string) error {
+	path := GetClashTemplatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// ReadServers reads the servers config from disk.
+// Returns a default empty servers config if the file does not exist.
+func ReadServers() (string, error) {
+	data, err := os.ReadFile(GetServersPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return defaultServers, nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
+// SaveServers writes the servers config to disk.
+func SaveServers(content string) error {
+	path := GetServersPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(content), 0644)
+}
+
+const defaultServers = `servers: []
+`
+
+const defaultClashTemplate = `port: 7890
+socks-port: 7891
+allow-lan: false
+mode: rule
+log-level: info
+proxies:
+proxy-groups:
+  - name: Proxy
+    type: select
+    proxies:
+      - DIRECT
+dns:
+  enable: true
+  enhanced-mode: fake-ip
+  nameserver:
+    - 8.8.8.8
+    - 1.1.1.1
+rules:
+  - GEOIP,LAN,DIRECT
+  - MATCH,Proxy
+`
+
 // GetLogFolder returns the path to the log folder based on environment variables or platform defaults.
 func GetLogFolder() string {
 	logFolderPath := os.Getenv("XUI_LOG_FOLDER")
