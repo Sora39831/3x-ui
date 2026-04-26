@@ -41,3 +41,17 @@ docker-compose.override.yml
 
 # Ignore local git worktrees
 /.worktrees/
+
+# Ignore AI assistant directories
+.claude/
+.codex/
+.codebuddy/
+
+# Ignore backup files
+*.bak
+
+# Ignore build output
+build/
+
+# Ignore docs (tracked via git add -f only)
+docs/
