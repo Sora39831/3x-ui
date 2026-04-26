@@ -47,6 +47,9 @@ docker-compose.override.yml
 .codex/
 .codebuddy/
 
+# Ignore AI agent instructions
+AGENTS.md
+
 # Ignore backup files
 *.bak
 
