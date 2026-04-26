@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"github.com/mhsanaei/3x-ui/v2/database"
 	"github.com/mhsanaei/3x-ui/v2/logger"
 )
+
+var backupFilenameRegex = regexp.MustCompile(`^(backup|pre-restore)-\d{4}-\d{2}-\d{2}-\d{6}\.tar\.gz$`)
 
 const (
 	backupDir = "/etc/x-ui/backups"
@@ -42,6 +45,15 @@ type BackupService struct {
 func ensureBackupDir() error {
 	if err := os.MkdirAll(backupDir, 0755); err != nil {
 		return fmt.Errorf("create backup directory: %w", err)
+	}
+	return nil
+}
+
+// validateBackupFilename checks that the filename matches the expected backup naming pattern
+// and does not contain path traversal sequences.
+func validateBackupFilename(filename string) error {
+	if !backupFilenameRegex.MatchString(filename) {
+		return fmt.Errorf("invalid backup filename: %s", filename)
 	}
 	return nil
 }
@@ -109,16 +121,23 @@ func (s *BackupService) ListBackups() ([]BackupEntry, error) {
 
 	var result []BackupEntry
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "backup-") || !strings.HasSuffix(entry.Name(), ".tar.gz") {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".tar.gz") {
+			continue
+		}
+		if !strings.HasPrefix(name, "backup-") && !strings.HasPrefix(name, "pre-restore-") {
 			continue
 		}
 		info, err := entry.Info()
 		if err != nil {
 			continue
 		}
-		ts := extractTimestamp(entry.Name())
+		ts := extractTimestamp(name)
 		result = append(result, BackupEntry{
-			Filename:  entry.Name(),
+			Filename:  name,
 			Timestamp: ts,
 			Size:      info.Size(),
 		})
@@ -134,6 +153,10 @@ func (s *BackupService) ListBackups() ([]BackupEntry, error) {
 // RestoreBackup restores the database from a backup file.
 func (s *BackupService) RestoreBackup(filename string) error {
 	if err := checkNodeRole(); err != nil {
+		return err
+	}
+
+	if err := validateBackupFilename(filename); err != nil {
 		return err
 	}
 
@@ -171,6 +194,9 @@ func (s *BackupService) RestoreBackup(filename string) error {
 
 // DeleteBackup deletes a backup file.
 func (s *BackupService) DeleteBackup(filename string) error {
+	if err := validateBackupFilename(filename); err != nil {
+		return err
+	}
 	filePath := filepath.Join(backupDir, filename)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		return fmt.Errorf("backup file not found: %s", filePath)
@@ -271,7 +297,8 @@ func defaultDBType(t string) string {
 
 // extractTimestamp extracts the timestamp string from backup filename.
 func extractTimestamp(filename string) string {
-	name := strings.TrimPrefix(filename, "backup-")
+	name := strings.TrimPrefix(filename, "pre-restore-")
+	name = strings.TrimPrefix(name, "backup-")
 	name = strings.TrimSuffix(name, ".tar.gz")
 	return name
 }
@@ -371,7 +398,10 @@ func createTarGz(filePath string, meta BackupMeta, dumpSQL string) error {
 	defer tw.Close()
 
 	// metadata.json
-	metaBytes, _ := json.MarshalIndent(meta, "", "  ")
+	metaBytes, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
 	if err := tw.WriteHeader(&tar.Header{
 		Name:     "metadata.json",
 		Size:     int64(len(metaBytes)),
