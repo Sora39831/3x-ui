@@ -19,6 +19,16 @@ Add backup, scheduled snapshot, export (download), and restore functionality for
 - Backup retention policy (keep last N backups)
 - Existing `getDb`/`importDB` endpoints remain unchanged for SQLite raw .db file operations
 
+## Node Role Constraint
+
+In MariaDB multi-node mode, the database is shared. Backup and restore operations are restricted to the **master node only**:
+
+- Worker nodes: backup/restore endpoints and CLI commands return an error: "Backup and restore can only be performed on the master node"
+- Panel UI on worker nodes: backup tab is hidden or disabled with the above message
+- x-ui.sh on worker nodes: `backup`/`restore`/`list-backups` commands show the restriction message
+- SQLite mode: no restriction (SQLite is always single-node)
+- Node role is read from the JSON config (`nodeRole`: `"master"` or `"worker"`)
+
 ## Architecture
 
 ### New Files
@@ -217,6 +227,7 @@ New items after existing 1-16:
 
 ## Error Handling
 
+- Worker node attempts backup/restore → reject: "Backup and restore can only be performed on the master node"
 - `mysqldump` or `sqlite3` not found on system → clear error message with install instructions
 - Disk full → reject backup, notify user
 - Backup file corrupted (invalid tar.gz or missing metadata.json) → reject restore
