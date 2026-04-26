@@ -60,6 +60,10 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.POST("/xraylogs/:count", a.getXrayLogs)
 	g.POST("/importDB", a.importDB)
 	g.POST("/getNewEchCert", a.getNewEchCert)
+
+	// Backup routes
+	backupCtrl := BackupController{}
+	backupCtrl.initRouter(g)
 }
 
 // refreshStatus updates the cached server status and collects CPU history.

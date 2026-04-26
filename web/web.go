@@ -410,6 +410,9 @@ func (s *Server) startTask() {
 	} else {
 		s.cron.Remove(entry)
 	}
+
+	// Schedule database backup job (runs every minute, checks schedule internally)
+	s.cron.AddJob("@every 1m", job.NewBackupJob())
 }
 
 func (s *Server) startNodeLoops() {
