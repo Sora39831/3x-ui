@@ -584,7 +584,7 @@
                       </a-popover>
                     </template>
                     <template slot="expandedRowRender" slot-scope="record">
-                      <div v-if="clientSelection[record.id] && clientSelection[record.id].length > 0 && record.isMultiUser()" :style="{ marginBottom: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', justifyContent: 'space-between' }">
+                      <div v-if="clientSelection[record.id] && clientSelection[record.id].length > 0 && record.isMultiUser()" :style="{ marginBottom: '15px', display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', justifyContent: 'space-between' }">
                         <div :style="{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }">
                           <strong>[[ clientSelection[record.id].length ]] {{ i18n "selected" }}</strong>
                           <a-button size="small" type="primary" @click="openBatchEditClient(record.id)">{{ i18n "pages.client.batchEdit" }}</a-button>
