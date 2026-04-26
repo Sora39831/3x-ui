@@ -110,7 +110,7 @@
                   <a-tab-pane key="7" :style="{ paddingTop: '20px' }">
                     <template #tab>
                       <a-icon type="database"></a-icon>
-                      <span>Backup</span>
+                      <span>备份</span>
                     </template>
                     {{ template "backup.html" . }}
                   </a-tab-pane>
@@ -261,10 +261,10 @@
       },
       backupList: [],
       backupColumns: [
-        { title: 'Filename', dataIndex: 'filename', key: 'filename' },
-        { title: 'Timestamp', dataIndex: 'timestamp', key: 'timestamp', scopedSlots: { customRender: 'timestamp' } },
-        { title: 'Size', dataIndex: 'size', key: 'size', scopedSlots: { customRender: 'size' } },
-        { title: 'Actions', key: 'action', scopedSlots: { customRender: 'action' } }
+        { title: '文件名', dataIndex: 'filename', key: 'filename' },
+        { title: '时间', dataIndex: 'timestamp', key: 'timestamp', scopedSlots: { customRender: 'timestamp' } },
+        { title: '大小', dataIndex: 'size', key: 'size', scopedSlots: { customRender: 'size' } },
+        { title: '操作', key: 'action', scopedSlots: { customRender: 'action' } }
       ],
       backupLoading: false,
       backupCreating: false,
@@ -472,7 +472,7 @@
           .then(msg => {
             this.backupList = msg.obj || [];
           }).catch(err => {
-            this.$message.error('Failed to load backups');
+            this.$message.error('加载备份列表失败');
           }).finally(() => {
             this.backupLoading = false;
           });
@@ -481,10 +481,10 @@
         this.backupCreating = true;
         HttpUtil.post("/panel/api/server/backup")
           .then(msg => {
-            this.$message.success('Backup created successfully');
+            this.$message.success('备份创建成功');
             this.fetchBackups();
           }).catch(err => {
-            this.$message.error('Backup failed');
+            this.$message.error('备份失败');
           }).finally(() => {
             this.backupCreating = false;
           });
@@ -492,16 +492,16 @@
       restoreBackup(filename) {
         HttpUtil.post("/panel/api/server/restore/" + filename)
           .then(msg => {
-            this.$message.success('Restore completed');
+            this.$message.success('恢复完成');
             this.fetchBackups();
           }).catch(err => {
-            this.$message.error('Restore failed');
+            this.$message.error('恢复失败');
           });
       },
       deleteBackup(filename) {
         HttpUtil.post("/panel/api/server/deleteBackup/" + filename)
           .then(msg => {
-            this.$message.success('Backup deleted');
+            this.$message.success('备份已删除');
             this.fetchBackups();
           }).catch(err => {
             this.$message.error('Delete failed');

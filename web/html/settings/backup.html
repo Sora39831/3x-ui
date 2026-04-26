@@ -1,33 +1,33 @@
 <div>
     <a-row :gutter="[16, 16]" :style="{ marginTop: '16px' }">
         <a-col :span="24">
-            <a-card :title="'Backup Configuration'" size="small">
+            <a-card :title="'备份配置'" size="small">
                 <a-form-model :label-col="{ span: 8 }" :wrapper-col="{ span: 16 }" label-align="left">
                     <a-row :gutter="[16, 16]">
                         <a-col :xs="24" :sm="12">
-                            <a-form-model-item :label="'Enable Scheduled Backup'">
+                            <a-form-model-item :label="'启用定时备份'">
                                 <a-switch v-model="allSetting.backupEnabled"></a-switch>
                             </a-form-model-item>
                         </a-col>
                         <a-col :xs="24" :sm="12">
-                            <a-form-model-item :label="'Frequency'">
+                            <a-form-model-item :label="'备份频率'">
                                 <a-select v-model="allSetting.backupFrequency" :disabled="!allSetting.backupEnabled">
-                                    <a-select-option value="hourly">Every Hour</a-select-option>
-                                    <a-select-option value="every12h">Every 12 Hours</a-select-option>
-                                    <a-select-option value="daily">Every Day</a-select-option>
-                                    <a-select-option value="weekly">Every Week</a-select-option>
+                                    <a-select-option value="hourly">每小时</a-select-option>
+                                    <a-select-option value="every12h">每12小时</a-select-option>
+                                    <a-select-option value="daily">每天</a-select-option>
+                                    <a-select-option value="weekly">每周</a-select-option>
                                 </a-select>
                             </a-form-model-item>
                         </a-col>
                         <a-col :xs="24" :sm="12"
                             v-if="allSetting.backupFrequency === 'daily' || allSetting.backupFrequency === 'weekly'">
-                            <a-form-model-item :label="'Hour (0-23)'">
+                            <a-form-model-item :label="'时间点 (0-23时)'">
                                 <a-input-number v-model="allSetting.backupHour" :min="0" :max="23"
                                     :disabled="!allSetting.backupEnabled"></a-input-number>
                             </a-form-model-item>
                         </a-col>
                         <a-col :xs="24" :sm="12">
-                            <a-form-model-item :label="'Max Backups (1-100)'">
+                            <a-form-model-item :label="'最多保留 (1-100份)'">
                                 <a-input-number v-model="allSetting.backupMaxCount" :min="1" :max="100"
                                     :disabled="!allSetting.backupEnabled"></a-input-number>
                             </a-form-model-item>
@@ -37,17 +37,17 @@
             </a-card>
         </a-col>
         <a-col :span="24">
-            <a-card :title="'Manual Operations'" size="small">
+            <a-card :title="'手动操作'" size="small">
                 <a-space>
                     <a-button type="primary" icon="plus" @click="createBackup" :loading="backupCreating">
-                        Create Backup Now
+                        立即备份
                     </a-button>
                 </a-space>
             </a-card>
         </a-col>
         <a-col :span="24">
             <a-card size="small">
-                <span slot="title">Backup List
+                <span slot="title">备份列表
                     <a-badge :count="backupList.length" :number-style="{ backgroundColor: '#52c41a' }"
                         :style="{ marginLeft: '8px' }" />
                 </span>
@@ -61,14 +61,14 @@
                     </template>
                     <template slot="action" slot-scope="text, record">
                         <a-space>
-                            <a-button size="small" icon="download" @click="downloadBackup(record.filename)">Download</a-button>
-                            <a-popconfirm :title="'Restore will stop the panel temporarily. Continue?'" ok-text="Yes"
-                                cancel-text="No" @confirm="restoreBackup(record.filename)">
-                                <a-button size="small" type="danger" icon="redo">Restore</a-button>
+                            <a-button size="small" icon="download" @click="downloadBackup(record.filename)">下载</a-button>
+                            <a-popconfirm :title="'恢复将暂时停止面板，确定继续？'" ok-text="确定"
+                                cancel-text="取消" @confirm="restoreBackup(record.filename)">
+                                <a-button size="small" type="danger" icon="redo">恢复</a-button>
                             </a-popconfirm>
-                            <a-popconfirm title="Delete this backup?" ok-text="Yes" cancel-text="No"
+                            <a-popconfirm title="删除此备份？" ok-text="确定" cancel-text="取消"
                                 @confirm="deleteBackup(record.filename)">
-                                <a-button size="small" icon="delete">Delete</a-button>
+                                <a-button size="small" icon="delete">删除</a-button>
                             </a-popconfirm>
                         </a-space>
                     </template>
