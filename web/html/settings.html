@@ -64,7 +64,7 @@
                 </a-card>
               </a-col>
               <a-col>
-                <a-tabs default-active-key="1" @change="onSettingsTabChange">
+                <a-tabs default-active-key="1">
                   <a-tab-pane key="1" :style="{ paddingTop: '20px' }">
                     <template #tab>
                       <a-icon type="setting"></a-icon>
@@ -271,9 +271,6 @@
       backupRefreshInterval: null,
     },
     methods: {
-      onSettingsTabChange(key) {
-        if (key === '7') { this.fetchBackups(); }
-      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },
@@ -471,51 +468,47 @@
       },
       fetchBackups() {
         this.backupLoading = true;
-        axios.get(this.entryHost + 'panel/api/server/listBackups', {
-          headers: this.authHeaders
-        }).then(res => {
-          this.backupList = res.data.obj || [];
-        }).catch(err => {
-          this.$message.error('Failed to load backups');
-        }).finally(() => {
-          this.backupLoading = false;
-        });
+        HttpUtil.get("/panel/api/server/listBackups")
+          .then(msg => {
+            this.backupList = msg.obj || [];
+          }).catch(err => {
+            this.$message.error('Failed to load backups');
+          }).finally(() => {
+            this.backupLoading = false;
+          });
       },
       createBackup() {
         this.backupCreating = true;
-        axios.post(this.entryHost + 'panel/api/server/backup', {}, {
-          headers: this.authHeaders
-        }).then(res => {
-          this.$message.success('Backup created successfully');
-          this.fetchBackups();
-        }).catch(err => {
-          this.$message.error('Backup failed');
-        }).finally(() => {
-          this.backupCreating = false;
-        });
+        HttpUtil.post("/panel/api/server/backup")
+          .then(msg => {
+            this.$message.success('Backup created successfully');
+            this.fetchBackups();
+          }).catch(err => {
+            this.$message.error('Backup failed');
+          }).finally(() => {
+            this.backupCreating = false;
+          });
       },
       restoreBackup(filename) {
-        axios.post(this.entryHost + 'panel/api/server/restore/' + filename, {}, {
-          headers: this.authHeaders
-        }).then(res => {
-          this.$message.success('Restore completed');
-          this.fetchBackups();
-        }).catch(err => {
-          this.$message.error('Restore failed');
-        });
+        HttpUtil.post("/panel/api/server/restore/" + filename)
+          .then(msg => {
+            this.$message.success('Restore completed');
+            this.fetchBackups();
+          }).catch(err => {
+            this.$message.error('Restore failed');
+          });
       },
       deleteBackup(filename) {
-        axios.post(this.entryHost + 'panel/api/server/deleteBackup/' + filename, {}, {
-          headers: this.authHeaders
-        }).then(res => {
-          this.$message.success('Backup deleted');
-          this.fetchBackups();
-        }).catch(err => {
-          this.$message.error('Delete failed');
-        });
+        HttpUtil.post("/panel/api/server/deleteBackup/" + filename)
+          .then(msg => {
+            this.$message.success('Backup deleted');
+            this.fetchBackups();
+          }).catch(err => {
+            this.$message.error('Delete failed');
+          });
       },
       downloadBackup(filename) {
-        window.open(this.entryHost + 'panel/api/server/downloadBackup/' + filename, '_blank');
+        window.open("/panel/api/server/downloadBackup/" + filename, '_blank');
       },
       formatFileSize(bytes) {
         if (!bytes || bytes === 0) return '0 B';
