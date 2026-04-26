@@ -55,6 +55,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/lastOnline", a.lastOnline)
 	g.POST("/updateClientTraffic/:email", a.updateClientTraffic)
 	g.POST("/:id/delClientByEmail/:email", a.delInboundClientByEmail)
+	g.POST("/batchUpdateClients", a.batchUpdateInboundClients)
 }
 
 // getInbounds retrieves the list of inbounds for the logged-in user.
@@ -465,6 +466,32 @@ func (a *InboundController) delInboundClientByEmail(c *gin.Context) {
 	}
 
 	jsonMsg(c, "Client deleted successfully", nil)
+	if needRestart {
+		a.xrayService.SetToNeedRestart()
+	}
+}
+
+// batchUpdateInboundClients updates multiple clients in an inbound with the same field changes.
+func (a *InboundController) batchUpdateInboundClients(c *gin.Context) {
+	var request struct {
+		InboundID    int      `json:"inboundId"`
+		ClientIDs    []string `json:"clientIds"`
+		UpdateFields string   `json:"updateFields"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
+		return
+	}
+
+	user := session.GetLoginUser(c)
+	needRestart, err := a.inboundService.BatchUpdateInboundClientsForUser(
+		user.Id, user.Role == "admin", request.InboundID, request.ClientIDs, request.UpdateFields,
+	)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundClientUpdateSuccess"), nil)
 	if needRestart {
 		a.xrayService.SetToNeedRestart()
 	}

@@ -577,6 +577,246 @@ func (s *InboundService) DelInboundClientByEmailForUser(userID int, isAdmin bool
 	return s.DelInboundClientByEmail(inboundID, email)
 }
 
+// BatchUpdateInboundClients updates multiple clients in a single inbound with the same field changes.
+// clientIDs is a list of protocol-specific client identifiers (UUID for VMess/VLESS, password for Trojan, email for SS).
+// updateFields is a JSON string containing only the fields to be updated (e.g. {"flow":"xtls-rprx-vision","limitIp":5}).
+// Fields that should NOT be batch-updated (email, id, subId, password) are ignored if present.
+func (s *InboundService) BatchUpdateInboundClients(inboundID int, clientIDs []string, updateFields string) (bool, error) {
+	if err := ensureSharedWriteAllowed(); err != nil {
+		return false, err
+	}
+
+	if len(clientIDs) == 0 {
+		return false, common.NewError("no clients specified for batch update")
+	}
+
+	var updates map[string]any
+	if err := json.Unmarshal([]byte(updateFields), &updates); err != nil {
+		return false, common.NewError("invalid update fields JSON:", err)
+	}
+
+	// Remove fields that must not be batch-updated
+	delete(updates, "email")
+	delete(updates, "id")
+	delete(updates, "subId")
+	delete(updates, "password")
+	delete(updates, "created_at")
+
+	if len(updates) == 0 {
+		return false, common.NewError("no valid fields to update")
+	}
+
+	oldInbound, err := s.GetInbound(inboundID)
+	if err != nil {
+		return false, err
+	}
+
+	var settings map[string]any
+	if err := json.Unmarshal([]byte(oldInbound.Settings), &settings); err != nil {
+		return false, err
+	}
+
+	interfaceClients, ok := settings["clients"].([]any)
+	if !ok {
+		return false, common.NewError("invalid clients format in inbound settings")
+	}
+
+	nowTs := time.Now().Unix() * 1000
+	updatedCount := 0
+	var oldEmails []string
+
+	for index, client := range interfaceClients {
+		c, ok := client.(map[string]any)
+		if !ok {
+			continue
+		}
+
+		clientId := ""
+		switch oldInbound.Protocol {
+		case "trojan":
+			if pw, ok := c["password"].(string); ok {
+				clientId = pw
+			}
+		case "shadowsocks":
+			if em, ok := c["email"].(string); ok {
+				clientId = em
+			}
+		default:
+			if id, ok := c["id"].(string); ok {
+				clientId = id
+			}
+		}
+
+		matched := false
+		for _, targetID := range clientIDs {
+			if clientId == targetID {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+
+		if email, ok := c["email"].(string); ok && email != "" {
+			oldEmails = append(oldEmails, email)
+		}
+
+		for key, value := range updates {
+			c[key] = value
+		}
+		c["updated_at"] = nowTs
+		interfaceClients[index] = c
+		updatedCount++
+	}
+
+	if updatedCount == 0 {
+		return false, common.NewError("no matching clients found")
+	}
+
+	settings["clients"] = interfaceClients
+	newSettings, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return false, err
+	}
+
+	oldInbound.Settings = string(newSettings)
+
+	db := database.GetDB()
+	tx := db.Begin()
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		} else {
+			tx.Commit()
+		}
+	}()
+
+	var updatesMap map[string]any
+	if err := json.Unmarshal([]byte(updateFields), &updatesMap); err != nil {
+		return false, err
+	}
+
+	if _, hasTotalGB := updatesMap["totalGB"]; hasTotalGB {
+		totalGBVal := toInt64(updatesMap["totalGB"])
+		for _, email := range oldEmails {
+			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ? AND inbound_id = ?", email, inboundID).
+				Update("total", totalGBVal).Error; err != nil {
+				return false, err
+			}
+		}
+	}
+
+	if _, hasExpiryTime := updatesMap["expiryTime"]; hasExpiryTime {
+		expiryTimeVal := toInt64(updatesMap["expiryTime"])
+		for _, email := range oldEmails {
+			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ? AND inbound_id = ?", email, inboundID).
+				Update("expiry_time", expiryTimeVal).Error; err != nil {
+				return false, err
+			}
+		}
+	}
+
+	if _, hasEnable := updatesMap["enable"]; hasEnable {
+		enableVal := updatesMap["enable"].(bool)
+		for _, email := range oldEmails {
+			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ? AND inbound_id = ?", email, inboundID).
+				Update("enable", enableVal).Error; err != nil {
+				return false, err
+			}
+		}
+	}
+
+	if _, hasReset := updatesMap["reset"]; hasReset {
+		resetVal := int(toInt64(updatesMap["reset"]))
+		for _, email := range oldEmails {
+			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ? AND inbound_id = ?", email, inboundID).
+				Update("reset", resetVal).Error; err != nil {
+				return false, err
+			}
+		}
+	}
+
+	if _, hasTgID := updatesMap["tgId"]; hasTgID {
+		tgIDVal := toInt64(updatesMap["tgId"])
+		for _, email := range oldEmails {
+			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ? AND inbound_id = ?", email, inboundID).
+				Update("tg_id", tgIDVal).Error; err != nil {
+				return false, err
+			}
+		}
+	}
+
+	err = tx.Save(oldInbound).Error
+	if err != nil {
+		return false, err
+	}
+	err = bumpSharedVersion(tx)
+	if err != nil {
+		return false, err
+	}
+
+	needRestart := false
+	if _, hasEnable := updatesMap["enable"]; hasEnable {
+		s.xrayApi.Init(p.GetAPIPort())
+		enableVal := updatesMap["enable"].(bool)
+		for _, email := range oldEmails {
+			if email == "" {
+				continue
+			}
+			client := make(map[string]any)
+			for i := range interfaceClients {
+				if c, ok := interfaceClients[i].(map[string]any); ok {
+					if c["email"] == email {
+						client = c
+						break
+					}
+				}
+			}
+			if len(client) > 0 {
+				if !enableVal {
+					if err1 := s.xrayApi.RemoveUser(oldInbound.Tag, email); err1 != nil {
+						if !strings.Contains(err1.Error(), fmt.Sprintf("User %s not found.", email)) {
+							logger.Debug("Error in batch removing client by api:", err1)
+							needRestart = true
+						}
+					}
+				} else {
+					cipher := ""
+					if oldInbound.Protocol == "shadowsocks" {
+						if m, ok := settings["method"].(string); ok {
+							cipher = m
+						}
+					}
+					err1 := s.xrayApi.AddUser(string(oldInbound.Protocol), oldInbound.Tag, map[string]any{
+						"email":    client["email"],
+						"id":       client["id"],
+						"security": client["security"],
+						"flow":     client["flow"],
+						"password": client["password"],
+						"cipher":   cipher,
+					})
+					if err1 != nil {
+						logger.Debug("Error in batch adding client by api:", err1)
+						needRestart = true
+					}
+				}
+			}
+		}
+		s.xrayApi.Close()
+	}
+
+	return needRestart, nil
+}
+
+func (s *InboundService) BatchUpdateInboundClientsForUser(userID int, isAdmin bool, inboundID int, clientIDs []string, updateFields string) (bool, error) {
+	if _, err := s.GetInboundForUser(userID, isAdmin, inboundID); err != nil {
+		return false, err
+	}
+	return s.BatchUpdateInboundClients(inboundID, clientIDs, updateFields)
+}
+
 // UpdateInbound modifies an existing inbound configuration.
 // It validates changes, updates the database, and syncs with the running Xray instance.
 // Returns the updated inbound, whether Xray needs restart, and any error.
@@ -2954,4 +3194,21 @@ func (s *InboundService) DelInboundClientByEmail(inboundId int, email string) (b
 		return false, err
 	}
 	return needRestart, nil
+}
+
+// toInt64 converts a JSON number (unmarshalled as float64) to int64.
+func toInt64(v any) int64 {
+	switch val := v.(type) {
+	case float64:
+		return int64(val)
+	case int64:
+		return val
+	case int:
+		return int64(val)
+	case json.Number:
+		n, _ := val.Int64()
+		return n
+	default:
+		return 0
+	}
 }
