@@ -49,9 +49,9 @@ func ensureBackupDir() error {
 	return nil
 }
 
-// validateBackupFilename checks that the filename matches the expected backup naming pattern
+// ValidateBackupFilename checks that the filename matches the expected backup naming pattern
 // and does not contain path traversal sequences.
-func validateBackupFilename(filename string) error {
+func ValidateBackupFilename(filename string) error {
 	if !backupFilenameRegex.MatchString(filename) {
 		return fmt.Errorf("invalid backup filename: %s", filename)
 	}
@@ -156,7 +156,7 @@ func (s *BackupService) RestoreBackup(filename string) error {
 		return err
 	}
 
-	if err := validateBackupFilename(filename); err != nil {
+	if err := ValidateBackupFilename(filename); err != nil {
 		return err
 	}
 
@@ -194,7 +194,7 @@ func (s *BackupService) RestoreBackup(filename string) error {
 
 // DeleteBackup deletes a backup file.
 func (s *BackupService) DeleteBackup(filename string) error {
-	if err := validateBackupFilename(filename); err != nil {
+	if err := ValidateBackupFilename(filename); err != nil {
 		return err
 	}
 	filePath := filepath.Join(backupDir, filename)
@@ -207,6 +207,11 @@ func (s *BackupService) DeleteBackup(filename string) error {
 // GetBackupPath returns the full path to a backup file.
 func (s *BackupService) GetBackupPath(filename string) string {
 	return filepath.Join(backupDir, filename)
+}
+
+// ValidateFilename validates a backup filename against the allowed pattern.
+func (s *BackupService) ValidateFilename(filename string) error {
+	return ValidateBackupFilename(filename)
 }
 
 // ApplyRetention applies retention policy, keeping maxCount newest backups.

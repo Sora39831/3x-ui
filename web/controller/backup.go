@@ -65,6 +65,10 @@ func (a *BackupController) listBackups(c *gin.Context) {
 // downloadBackup downloads a backup file.
 func (a *BackupController) downloadBackup(c *gin.Context) {
 	filename := c.Param("filename")
+	if err := a.backupService.ValidateFilename(filename); err != nil {
+		jsonMsg(c, "invalid filename", err)
+		return
+	}
 	filePath := a.backupService.GetBackupPath(filename)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
