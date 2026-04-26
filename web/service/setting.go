@@ -1150,10 +1150,21 @@ func (s *SettingService) SetTurnstileSecretKey(value string) error {
 	return s.setString("turnstileSecretKey", value)
 }
 
-func (s *SettingService) GetBackupEnabled() (bool, error)     { return s.getBool("backupEnabled") }
-func (s *SettingService) GetBackupFrequency() (string, error) { return s.getString("backupFrequency") }
-func (s *SettingService) GetBackupHour() (int, error)         { return s.getInt("backupHour") }
-func (s *SettingService) GetBackupMaxCount() (int, error)     { return s.getInt("backupMaxCount") }
+func (s *SettingService) GetBackupEnabled() (bool, error) {
+	return s.getBool("backupEnabled")
+}
+
+func (s *SettingService) GetBackupFrequency() (string, error) {
+	return s.getString("backupFrequency")
+}
+
+func (s *SettingService) GetBackupHour() (int, error) {
+	return s.getInt("backupHour")
+}
+
+func (s *SettingService) GetBackupMaxCount() (int, error) {
+	return s.getInt("backupMaxCount")
+}
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, presentKeys map[string]struct{}) error {
 	if err := allSetting.CheckValid(); err != nil {
