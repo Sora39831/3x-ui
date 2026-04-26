@@ -1,0 +1,79 @@
+<div>
+    <a-row :gutter="[16, 16]" :style="{ marginTop: '16px' }">
+        <a-col :span="24">
+            <a-card :title="'Backup Configuration'" size="small">
+                <a-form-model :label-col="{ span: 8 }" :wrapper-col="{ span: 16 }" label-align="left">
+                    <a-row :gutter="[16, 16]">
+                        <a-col :xs="24" :sm="12">
+                            <a-form-model-item :label="'Enable Scheduled Backup'">
+                                <a-switch v-model="allSetting.backupEnabled"></a-switch>
+                            </a-form-model-item>
+                        </a-col>
+                        <a-col :xs="24" :sm="12">
+                            <a-form-model-item :label="'Frequency'">
+                                <a-select v-model="allSetting.backupFrequency" :disabled="!allSetting.backupEnabled">
+                                    <a-select-option value="hourly">Every Hour</a-select-option>
+                                    <a-select-option value="every12h">Every 12 Hours</a-select-option>
+                                    <a-select-option value="daily">Every Day</a-select-option>
+                                    <a-select-option value="weekly">Every Week</a-select-option>
+                                </a-select>
+                            </a-form-model-item>
+                        </a-col>
+                        <a-col :xs="24" :sm="12"
+                            v-if="allSetting.backupFrequency === 'daily' || allSetting.backupFrequency === 'weekly'">
+                            <a-form-model-item :label="'Hour (0-23)'">
+                                <a-input-number v-model="allSetting.backupHour" :min="0" :max="23"
+                                    :disabled="!allSetting.backupEnabled"></a-input-number>
+                            </a-form-model-item>
+                        </a-col>
+                        <a-col :xs="24" :sm="12">
+                            <a-form-model-item :label="'Max Backups (1-100)'">
+                                <a-input-number v-model="allSetting.backupMaxCount" :min="1" :max="100"
+                                    :disabled="!allSetting.backupEnabled"></a-input-number>
+                            </a-form-model-item>
+                        </a-col>
+                    </a-row>
+                </a-form-model>
+            </a-card>
+        </a-col>
+        <a-col :span="24">
+            <a-card :title="'Manual Operations'" size="small">
+                <a-space>
+                    <a-button type="primary" icon="plus" @click="createBackup" :loading="backupCreating">
+                        Create Backup Now
+                    </a-button>
+                </a-space>
+            </a-card>
+        </a-col>
+        <a-col :span="24">
+            <a-card size="small">
+                <span slot="title">Backup List
+                    <a-badge :count="backupList.length" :number-style="{ backgroundColor: '#52c41a' }"
+                        :style="{ marginLeft: '8px' }" />
+                </span>
+                <a-table :columns="backupColumns" :data-source="backupList" :pagination="false" :loading="backupLoading"
+                    size="small" row-key="filename">
+                    <template slot="size" slot-scope="text">
+                        [[ formatFileSize(text) ]]
+                    </template>
+                    <template slot="timestamp" slot-scope="text">
+                        [[ formatBackupTime(text) ]]
+                    </template>
+                    <template slot="action" slot-scope="text, record">
+                        <a-space>
+                            <a-button size="small" icon="download" @click="downloadBackup(record.filename)">Download</a-button>
+                            <a-popconfirm :title="'Restore will stop the panel temporarily. Continue?'" ok-text="Yes"
+                                cancel-text="No" @confirm="restoreBackup(record.filename)">
+                                <a-button size="small" type="danger" icon="redo">Restore</a-button>
+                            </a-popconfirm>
+                            <a-popconfirm title="Delete this backup?" ok-text="Yes" cancel-text="No"
+                                @confirm="deleteBackup(record.filename)">
+                                <a-button size="small" icon="delete">Delete</a-button>
+                            </a-popconfirm>
+                        </a-space>
+                    </template>
+                </a-table>
+            </a-card>
+        </a-col>
+    </a-row>
+</div>

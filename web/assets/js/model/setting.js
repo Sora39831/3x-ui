@@ -81,6 +81,11 @@ class AllSetting {
         this.ldapDefaultExpiryDays = 0;
         this.ldapDefaultLimitIP = 0;
 
+        this.backupEnabled = false;
+        this.backupFrequency = "daily";
+        this.backupHour = 3;
+        this.backupMaxCount = 10;
+
         this.dbType = "sqlite";
         this.dbHost = "127.0.0.1";
         this.dbPort = "3306";

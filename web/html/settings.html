@@ -107,6 +107,13 @@
                     </template>
                     {{ template "settings/panel/subscription/clash" . }}
                   </a-tab-pane>
+                  <a-tab-pane key="7" :style="{ paddingTop: '20px' }">
+                    <template #tab>
+                      <a-icon type="database"></a-icon>
+                      <span>Backup</span>
+                    </template>
+                    {{ template "settings/backup" . }}
+                  </a-tab-pane>
                 </a-tabs>
               </a-col>
             </a-row>
@@ -251,10 +258,21 @@
         const sample = [];
         this.remarkModel.forEach(r => sample.push(this.remarkModels[r]));
         this.remarkSample = sample.length == 0 ? '' : sample.join(this.remarkSeparator);
-      }
+      },
+      backupList: [],
+      backupColumns: [
+        { title: 'Filename', dataIndex: 'filename', key: 'filename' },
+        { title: 'Timestamp', dataIndex: 'timestamp', key: 'timestamp', scopedSlots: { customRender: 'timestamp' } },
+        { title: 'Size', dataIndex: 'size', key: 'size', scopedSlots: { customRender: 'size' } },
+        { title: 'Actions', key: 'action', scopedSlots: { customRender: 'action' } }
+      ],
+      backupLoading: false,
+      backupCreating: false,
+      backupRefreshInterval: null,
     },
     methods: {
       onSettingsTabChange(key) {
+        if (key === '7') { this.fetchBackups(); }
       },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
@@ -450,6 +468,65 @@
         const updatedNoises = [...this.noisesArray];
         updatedNoises[index] = { ...updatedNoises[index], applyTo: value };
         this.noisesArray = updatedNoises;
+      },
+      fetchBackups() {
+        this.backupLoading = true;
+        axios.get(this.entryHost + 'panel/api/server/listBackups', {
+          headers: this.authHeaders
+        }).then(res => {
+          this.backupList = res.data.obj || [];
+        }).catch(err => {
+          this.$message.error('Failed to load backups');
+        }).finally(() => {
+          this.backupLoading = false;
+        });
+      },
+      createBackup() {
+        this.backupCreating = true;
+        axios.post(this.entryHost + 'panel/api/server/backup', {}, {
+          headers: this.authHeaders
+        }).then(res => {
+          this.$message.success('Backup created successfully');
+          this.fetchBackups();
+        }).catch(err => {
+          this.$message.error('Backup failed');
+        }).finally(() => {
+          this.backupCreating = false;
+        });
+      },
+      restoreBackup(filename) {
+        axios.post(this.entryHost + 'panel/api/server/restore/' + filename, {}, {
+          headers: this.authHeaders
+        }).then(res => {
+          this.$message.success('Restore completed');
+          this.fetchBackups();
+        }).catch(err => {
+          this.$message.error('Restore failed');
+        });
+      },
+      deleteBackup(filename) {
+        axios.post(this.entryHost + 'panel/api/server/deleteBackup/' + filename, {}, {
+          headers: this.authHeaders
+        }).then(res => {
+          this.$message.success('Backup deleted');
+          this.fetchBackups();
+        }).catch(err => {
+          this.$message.error('Delete failed');
+        });
+      },
+      downloadBackup(filename) {
+        window.open(this.entryHost + 'panel/api/server/downloadBackup/' + filename, '_blank');
+      },
+      formatFileSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+      },
+      formatBackupTime(ts) {
+        if (!ts) return '';
+        return ts.replace(/(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})/, '$1-$2-$3 $4:$5:$6');
       },
     },
     computed: {
@@ -655,6 +732,7 @@
       } finally {
         this.loadingStates.fetched = true;
       }
+      this.backupRefreshInterval = setInterval(() => { this.fetchBackups(); }, 30000);
       if (!settingsLoaded) {
         return;
       }
@@ -666,6 +744,9 @@
           console.error('Settings change detection error:', e);
         }
       }
+    },
+    beforeDestroy() {
+      if (this.backupRefreshInterval) { clearInterval(this.backupRefreshInterval); }
     }
   });
 </script>
