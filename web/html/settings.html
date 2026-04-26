@@ -64,7 +64,7 @@
                 </a-card>
               </a-col>
               <a-col>
-                <a-tabs default-active-key="1" @change="onSettingsTabChange">
+                <a-tabs default-active-key="1">
                   <a-tab-pane key="1" :style="{ paddingTop: '20px' }">
                     <template #tab>
                       <a-icon type="setting"></a-icon>
@@ -110,9 +110,9 @@
                   <a-tab-pane key="7" :style="{ paddingTop: '20px' }">
                     <template #tab>
                       <a-icon type="database"></a-icon>
-                      <span>Backup</span>
+                      <span>备份</span>
                     </template>
-                    {{ template "settings/backup" . }}
+                    {{ template "backup.html" . }}
                   </a-tab-pane>
                 </a-tabs>
               </a-col>
@@ -261,19 +261,16 @@
       },
       backupList: [],
       backupColumns: [
-        { title: 'Filename', dataIndex: 'filename', key: 'filename' },
-        { title: 'Timestamp', dataIndex: 'timestamp', key: 'timestamp', scopedSlots: { customRender: 'timestamp' } },
-        { title: 'Size', dataIndex: 'size', key: 'size', scopedSlots: { customRender: 'size' } },
-        { title: 'Actions', key: 'action', scopedSlots: { customRender: 'action' } }
+        { title: '文件名', dataIndex: 'filename', key: 'filename' },
+        { title: '时间', dataIndex: 'timestamp', key: 'timestamp', scopedSlots: { customRender: 'timestamp' } },
+        { title: '大小', dataIndex: 'size', key: 'size', scopedSlots: { customRender: 'size' } },
+        { title: '操作', key: 'action', scopedSlots: { customRender: 'action' } }
       ],
       backupLoading: false,
       backupCreating: false,
       backupRefreshInterval: null,
     },
     methods: {
-      onSettingsTabChange(key) {
-        if (key === '7') { this.fetchBackups(); }
-      },
       loading(spinning = true) {
         this.loadingStates.spinning = spinning;
       },
@@ -471,51 +468,47 @@
       },
       fetchBackups() {
         this.backupLoading = true;
-        axios.get(this.entryHost + 'panel/api/server/listBackups', {
-          headers: this.authHeaders
-        }).then(res => {
-          this.backupList = res.data.obj || [];
-        }).catch(err => {
-          this.$message.error('Failed to load backups');
-        }).finally(() => {
-          this.backupLoading = false;
-        });
+        HttpUtil.get("/panel/api/server/listBackups")
+          .then(msg => {
+            this.backupList = msg.obj || [];
+          }).catch(err => {
+            this.$message.error('加载备份列表失败');
+          }).finally(() => {
+            this.backupLoading = false;
+          });
       },
       createBackup() {
         this.backupCreating = true;
-        axios.post(this.entryHost + 'panel/api/server/backup', {}, {
-          headers: this.authHeaders
-        }).then(res => {
-          this.$message.success('Backup created successfully');
-          this.fetchBackups();
-        }).catch(err => {
-          this.$message.error('Backup failed');
-        }).finally(() => {
-          this.backupCreating = false;
-        });
+        HttpUtil.post("/panel/api/server/backup")
+          .then(msg => {
+            this.$message.success('备份创建成功');
+            this.fetchBackups();
+          }).catch(err => {
+            this.$message.error('备份失败');
+          }).finally(() => {
+            this.backupCreating = false;
+          });
       },
       restoreBackup(filename) {
-        axios.post(this.entryHost + 'panel/api/server/restore/' + filename, {}, {
-          headers: this.authHeaders
-        }).then(res => {
-          this.$message.success('Restore completed');
-          this.fetchBackups();
-        }).catch(err => {
-          this.$message.error('Restore failed');
-        });
+        HttpUtil.post("/panel/api/server/restore/" + filename)
+          .then(msg => {
+            this.$message.success('恢复完成');
+            this.fetchBackups();
+          }).catch(err => {
+            this.$message.error('恢复失败');
+          });
       },
       deleteBackup(filename) {
-        axios.post(this.entryHost + 'panel/api/server/deleteBackup/' + filename, {}, {
-          headers: this.authHeaders
-        }).then(res => {
-          this.$message.success('Backup deleted');
-          this.fetchBackups();
-        }).catch(err => {
-          this.$message.error('Delete failed');
-        });
+        HttpUtil.post("/panel/api/server/deleteBackup/" + filename)
+          .then(msg => {
+            this.$message.success('备份已删除');
+            this.fetchBackups();
+          }).catch(err => {
+            this.$message.error('Delete failed');
+          });
       },
       downloadBackup(filename) {
-        window.open(this.entryHost + 'panel/api/server/downloadBackup/' + filename, '_blank');
+        window.open("/panel/api/server/downloadBackup/" + filename, '_blank');
       },
       formatFileSize(bytes) {
         if (!bytes || bytes === 0) return '0 B';
