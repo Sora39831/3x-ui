@@ -479,7 +479,7 @@ func (a *InboundController) batchUpdateInboundClients(c *gin.Context) {
 		UpdateFields string   `json:"updateFields" form:"updateFields"`
 	}
 	if err := c.ShouldBind(&request); err != nil {
-		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
+		jsonMsg(c, I18nWeb(c, "pages.login.toasts.invalidFormData"), err)
 		return
 	}
 

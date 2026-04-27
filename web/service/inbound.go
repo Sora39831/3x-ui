@@ -719,7 +719,11 @@ func (s *InboundService) BatchUpdateInboundClients(inboundID int, clientIDs []st
 	}
 
 	if _, hasEnable := updatesMap["enable"]; hasEnable {
-		enableVal := updatesMap["enable"].(bool)
+		enableVal, ok := updatesMap["enable"].(bool)
+		if !ok {
+			tx.Rollback()
+			return false, common.NewError("enable must be a boolean value")
+		}
 		for _, email := range oldEmails {
 			if err := tx.Model(&xray.ClientTraffic{}).Where("email = ? AND inbound_id = ?", email, inboundID).
 				Update("enable", enableVal).Error; err != nil {
@@ -759,8 +763,11 @@ func (s *InboundService) BatchUpdateInboundClients(inboundID int, clientIDs []st
 
 	needRestart := false
 	if _, hasEnable := updatesMap["enable"]; hasEnable {
+		enableVal, ok := updatesMap["enable"].(bool)
+		if !ok {
+			return false, common.NewError("enable must be a boolean value")
+		}
 		s.xrayApi.Init(p.GetAPIPort())
-		enableVal := updatesMap["enable"].(bool)
 		for _, email := range oldEmails {
 			if email == "" {
 				continue
