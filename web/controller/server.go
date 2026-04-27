@@ -52,6 +52,7 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.GET("/getNewmldsa65", a.getNewmldsa65)
 	g.GET("/getNewmlkem768", a.getNewmlkem768)
 	g.GET("/getNewVlessEnc", a.getNewVlessEnc)
+	g.GET("/getGeofileVersions", a.getGeofileVersions)
 
 	g.POST("/stopXrayService", a.stopXrayService)
 	g.POST("/restartXrayService", a.restartXrayService)
@@ -175,6 +176,12 @@ func (a *ServerController) syncUpdateGeofile(c *gin.Context) {
 	}
 
 	jsonMsg(c, I18nWeb(c, "pages.index.geofileUpdatePopover"), nil)
+}
+
+// getGeofileVersions returns version metadata for all geofiles.
+func (a *ServerController) getGeofileVersions(c *gin.Context) {
+	versions := a.serverService.GetGeofileVersions()
+	jsonObj(c, versions, nil)
 }
 
 // stopXrayService stops the Xray service.

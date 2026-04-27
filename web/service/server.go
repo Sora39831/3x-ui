@@ -1080,11 +1080,11 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 		}
 	}
 
-	downloadFile := func(url, destPath string) error {
+	downloadFile := func(url, destPath string) (version string, err error) {
 		var req *http.Request
-		req, err := http.NewRequest("GET", url, nil)
+		req, err = http.NewRequest("GET", url, nil)
 		if err != nil {
-			return common.NewErrorf("Failed to create HTTP request for %s: %v", url, err)
+			return "", common.NewErrorf("Failed to create HTTP request for %s: %v", url, err)
 		}
 
 		var localFileModTime time.Time
@@ -1095,10 +1095,26 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 			}
 		}
 
-		client := &http.Client{}
+		var capturedVersion string
+		client := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				if len(via) > 5 {
+					return common.NewErrorf("too many redirects for %s", url)
+				}
+				path := req.URL.Path
+				if idx := strings.Index(path, "/releases/download/"); idx != -1 {
+					rest := path[idx+len("/releases/download/"):]
+					slash := strings.Index(rest, "/")
+					if slash > 0 {
+						capturedVersion = rest[:slash]
+					}
+				}
+				return nil
+			},
+		}
 		resp, err := client.Do(req)
 		if err != nil {
-			return common.NewErrorf("Failed to download Geofile from %s: %v", url, err)
+			return "", common.NewErrorf("Failed to download Geofile from %s: %v", url, err)
 		}
 		defer resp.Body.Close()
 
@@ -1126,44 +1142,55 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 		// Handle 304 Not Modified
 		if resp.StatusCode == http.StatusNotModified {
 			updateFileModTime()
-			return nil
+			return capturedVersion, nil
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			return common.NewErrorf("Failed to download Geofile from %s: received status code %d", url, resp.StatusCode)
+			return "", common.NewErrorf("Failed to download Geofile from %s: received status code %d", url, resp.StatusCode)
 		}
 
 		file, err := os.Create(destPath)
 		if err != nil {
-			return common.NewErrorf("Failed to create Geofile %s: %v", destPath, err)
+			return "", common.NewErrorf("Failed to create Geofile %s: %v", destPath, err)
 		}
 		defer file.Close()
 
 		_, err = io.Copy(file, resp.Body)
 		if err != nil {
-			return common.NewErrorf("Failed to save Geofile %s: %v", destPath, err)
+			return "", common.NewErrorf("Failed to save Geofile %s: %v", destPath, err)
 		}
 
 		updateFileModTime()
-		return nil
+		return capturedVersion, nil
 	}
 
 	var errorMessages []string
+	versions := loadGeofileVersions(config.GetBinFolderPath())
 
 	if fileName == "" {
 		// Download all geofiles
 		for _, entry := range geofileAllowlist {
 			destPath := filepath.Join(config.GetBinFolderPath(), entry.FileName)
-			if err := downloadFile(entry.URL, destPath); err != nil {
+			ver, err := downloadFile(entry.URL, destPath)
+			if err != nil {
 				errorMessages = append(errorMessages, fmt.Sprintf("Error downloading Geofile '%s': %v", entry.FileName, err))
+			} else {
+				versions.Update(entry.FileName, ver)
 			}
 		}
 	} else {
 		entry := geofileAllowlist[fileName]
 		destPath := filepath.Join(config.GetBinFolderPath(), entry.FileName)
-		if err := downloadFile(entry.URL, destPath); err != nil {
+		ver, err := downloadFile(entry.URL, destPath)
+		if err != nil {
 			errorMessages = append(errorMessages, fmt.Sprintf("Error downloading Geofile '%s': %v", entry.FileName, err))
+		} else {
+			versions.Update(entry.FileName, ver)
 		}
+	}
+
+	if err := saveGeofileVersions(config.GetBinFolderPath(), versions); err != nil {
+		logger.Warningf("Failed to save geofile versions: %v", err)
 	}
 
 	err := s.RestartXrayService()
@@ -1176,6 +1203,52 @@ func (s *ServerService) UpdateGeofile(fileName string) error {
 	}
 
 	return nil
+}
+
+// GeofileVersion holds version metadata for a single geofile.
+type GeofileVersion struct {
+	Version   string `json:"version"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// GeofileVersions is a map of filename -> version metadata.
+type GeofileVersions map[string]GeofileVersion
+
+// Update sets or updates the version entry for a geofile.
+func (v GeofileVersions) Update(fileName, version string) {
+	entry := v[fileName]
+	if version != "" {
+		entry.Version = version
+	}
+	entry.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	v[fileName] = entry
+}
+
+func geofileVersionsPath(binFolder string) string {
+	return filepath.Join(binFolder, "geofile_versions.json")
+}
+
+func loadGeofileVersions(binFolder string) GeofileVersions {
+	versions := make(GeofileVersions)
+	data, err := os.ReadFile(geofileVersionsPath(binFolder))
+	if err != nil {
+		return versions
+	}
+	_ = json.Unmarshal(data, &versions)
+	return versions
+}
+
+func saveGeofileVersions(binFolder string, versions GeofileVersions) error {
+	data, err := json.MarshalIndent(versions, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(geofileVersionsPath(binFolder), data, 0644)
+}
+
+// GetGeofileVersions returns the current geofile version metadata.
+func (s *ServerService) GetGeofileVersions() GeofileVersions {
+	return loadGeofileVersions(config.GetBinFolderPath())
 }
 
 func (s *ServerService) GetNewX25519Cert() (any, error) {

@@ -332,6 +332,9 @@
           <a-list-item class="ant-version-list-item"
             v-for="file, index in ['geosite.dat', 'geoip.dat']">
             <a-tag :color="index % 2 == 0 ? 'purple' : 'green'">[[ file ]]</a-tag>
+            <span class="geofile-version-text" v-if="geofileVersions[file]">
+              [[ geofileVersions[file].version || '-' ]]
+            </span>
             <a-icon type="reload" @click="updateGeofile(file)" class="mr-8" />
           </a-list-item>
         </a-list>
@@ -827,6 +830,16 @@
   table td, table th {
     padding: 2px 15px;
   }
+
+  .geofile-version-text {
+    font-size: 11px;
+    color: #999;
+    margin-left: 8px;
+  }
+
+  .dark .geofile-version-text {
+    color: #666;
+  }
 </style>
 
 <table>
@@ -902,6 +915,7 @@
       logModal,
       xraylogModal,
       backupModal,
+      geofileVersions: {},
       loadingTip: '{{ i18n "loading"}}',
       showAlert: false,
       showIp: false,
@@ -974,6 +988,7 @@
           return;
         }
         versionModal.show(msg.obj);
+        this.loadGeofileVersions();
       },
       switchV2rayVersion(version) {
         this.$confirm({
@@ -1025,6 +1040,16 @@
             this.loading(false);
           },
         });
+      },
+      async loadGeofileVersions() {
+        try {
+          const msg = await HttpUtil.get('/panel/api/server/getGeofileVersions');
+          if (msg.success && msg.obj) {
+            this.geofileVersions = msg.obj;
+          }
+        } catch (e) {
+          console.error("Failed to load geofile versions:", e);
+        }
       },
       async stopXrayService() {
         this.loading(true);
