@@ -9,9 +9,6 @@ func TestIsValidGeofileName_Valid(t *testing.T) {
 	valid := []string{
 		"geoip.dat",
 		"geosite.dat",
-		"geoip_IR.dat",
-		"geoip_RU.dat",
-		"geosite_IR.dat",
 		"custom-file_v2.dat",
 	}
 	for _, name := range valid {

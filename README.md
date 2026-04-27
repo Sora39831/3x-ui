@@ -55,9 +55,6 @@ Production builds embed files from `web/public/assets` and `web/public/assets-ma
 
 ## Acknowledgment
 
-- [Iran v2ray rules](https://github.com/chocolate4u/Iran-v2ray-rules) (License: **GPL-3.0**): _Enhanced v2ray/xray and v2ray/xray-clients routing rules with built-in Iranian domains and a focus on security and adblocking._
-- [Russia v2ray rules](https://github.com/runetfreedom/russia-v2ray-rules-dat) (License: **GPL-3.0**): _This repository contains automatically updated V2Ray routing rules based on data on blocked domains and addresses in Russia._
-
 ## Support project
 
 **If this project is helpful to you, you may wish to give it a**:star2:

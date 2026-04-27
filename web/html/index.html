@@ -330,7 +330,7 @@
       <a-collapse-panel key="2" header='Geofiles'>
         <a-list class="ant-version-list w-100" bordered>
           <a-list-item class="ant-version-list-item"
-            v-for="file, index in ['geosite.dat', 'geoip.dat', 'geosite_IR.dat', 'geoip_IR.dat', 'geosite_RU.dat', 'geoip_RU.dat']">
+            v-for="file, index in ['geosite.dat', 'geoip.dat']">
             <a-tag :color="index % 2 == 0 ? 'purple' : 'green'">[[ file ]]</a-tag>
             <a-icon type="reload" @click="updateGeofile(file)" class="mr-8" />
           </a-list-item>

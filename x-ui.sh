@@ -1078,15 +1078,11 @@ delete_ports() {
 
 update_all_geofiles() {
     update_geofiles "main"
-    update_geofiles "IR"
-    update_geofiles "RU"
 }
 
 update_geofiles() {
     case "${1}" in
       "main") dat_files=(geoip geosite); dat_source="Loyalsoldier/v2ray-rules-dat";;
-        "IR") dat_files=(geoip_IR geosite_IR); dat_source="chocolate4u/Iran-v2ray-rules" ;;
-        "RU") dat_files=(geoip_RU geosite_RU); dat_source="runetfreedom/russia-v2ray-rules-dat";;
     esac
     for dat in "${dat_files[@]}"; do
         # 移除后缀获取远程文件名（例如 geoip_IR -> geoip）
@@ -1098,9 +1094,6 @@ update_geofiles() {
 
 update_geo() {
     echo -e "${green}\t1.${plain} Loyalsoldier (geoip.dat, geosite.dat)"
-    echo -e "${green}\t2.${plain} chocolate4u (geoip_IR.dat, geosite_IR.dat)"
-    echo -e "${green}\t3.${plain} runetfreedom (geoip_RU.dat, geosite_RU.dat)"
-    echo -e "${green}\t4.${plain} 全部更新"
     echo -e "${green}\t0.${plain} 返回主菜单"
     read -rp "请选择：" choice
 
@@ -1111,21 +1104,6 @@ update_geo() {
     1)
         update_geofiles "main"
         echo -e "${green}Loyalsoldier 数据集更新成功！${plain}"
-        restart
-        ;;
-    2)
-        update_geofiles "IR"
-        echo -e "${green}chocolate4u 数据集更新成功！${plain}"
-        restart
-        ;;
-    3)
-        update_geofiles "RU"
-        echo -e "${green}runetfreedom 数据集更新成功！${plain}"
-        restart
-        ;;
-    4)
-        update_all_geofiles
-        echo -e "${green}所有 geo 文件更新成功！${plain}"
         restart
         ;;
     *)
