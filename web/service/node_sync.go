@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
@@ -19,6 +20,11 @@ type NodeSyncService struct {
 	loadVersion     func() (int64, error)
 	loadSnapshot    func() (*SharedAccountsSnapshot, error)
 	applySnapshot   func(*SharedAccountsSnapshot) error
+
+	geoMu          sync.Mutex
+	lastGeoVersion int64
+	loadGeoVersion func() (int64, error)
+	updateGeofiles func() error
 }
 
 func NewNodeSyncService() *NodeSyncService {
@@ -36,6 +42,13 @@ func NewNodeSyncService() *NodeSyncService {
 		return &SharedAccountsSnapshot{Inbounds: inbounds}, nil
 	}
 	svc.applySnapshot = svc.xrayService.ApplySharedSnapshot
+	svc.loadGeoVersion = func() (int64, error) {
+		return database.GetSharedGeoVersion(database.GetDB())
+	}
+	svc.updateGeofiles = func() error {
+		s := &ServerService{}
+		return s.UpdateGeofile("")
+	}
 	return svc
 }
 
@@ -149,6 +162,30 @@ func (s *NodeSyncService) SyncOnce() (bool, error) {
 	return true, nil
 }
 
+func (s *NodeSyncService) syncGeoIfNeeded() {
+	current, err := s.loadGeoVersion()
+	if err != nil {
+		return
+	}
+	s.geoMu.Lock()
+	if current <= s.lastGeoVersion {
+		s.geoMu.Unlock()
+		return
+	}
+	s.geoMu.Unlock()
+
+	log.Printf("[NodeSync] geo version changed from %d to %d, updating geofiles...", s.lastGeoVersion, current)
+
+	if err := s.updateGeofiles(); err != nil {
+		log.Printf("[NodeSync] failed to update geofiles: %v", err)
+		return
+	}
+
+	s.geoMu.Lock()
+	s.lastGeoVersion = current
+	s.geoMu.Unlock()
+}
+
 func (s *NodeSyncService) Run(ctx context.Context, interval time.Duration) {
 	_ = s.BootstrapFromCache()
 	_, _ = s.SyncOnce()
@@ -162,6 +199,7 @@ func (s *NodeSyncService) Run(ctx context.Context, interval time.Duration) {
 			return
 		case <-ticker.C:
 			_, _ = s.SyncOnce()
+			s.syncGeoIfNeeded()
 		}
 	}
 }

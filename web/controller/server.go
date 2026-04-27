@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/mhsanaei/3x-ui/v2/database"
+	"github.com/mhsanaei/3x-ui/v2/logger"
 	"github.com/mhsanaei/3x-ui/v2/web/global"
 	"github.com/mhsanaei/3x-ui/v2/web/service"
 	"github.com/mhsanaei/3x-ui/v2/web/websocket"
@@ -56,6 +58,7 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 	g.POST("/installXray/:version", a.installXray)
 	g.POST("/updateGeofile", a.updateGeofile)
 	g.POST("/updateGeofile/:fileName", a.updateGeofile)
+	g.POST("/syncUpdateGeofile", a.syncUpdateGeofile)
 	g.POST("/logs/:count", a.getLogs)
 	g.POST("/xraylogs/:count", a.getXrayLogs)
 	g.POST("/importDB", a.importDB)
@@ -155,6 +158,23 @@ func (a *ServerController) updateGeofile(c *gin.Context) {
 
 	err := a.serverService.UpdateGeofile(fileName)
 	jsonMsg(c, I18nWeb(c, "pages.index.geofileUpdatePopover"), err)
+}
+
+// syncUpdateGeofile updates local Geofiles and notifies worker nodes to do the same.
+func (a *ServerController) syncUpdateGeofile(c *gin.Context) {
+	err := a.serverService.UpdateGeofile("")
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.index.geofileUpdatePopover"), err)
+		return
+	}
+
+	if service.IsSharedModeEnabled() {
+		if bumpErr := database.BumpSharedGeoVersion(database.GetDB()); bumpErr != nil {
+			logger.Warning("syncUpdateGeofile: local update succeeded but failed to notify workers:", bumpErr)
+		}
+	}
+
+	jsonMsg(c, I18nWeb(c, "pages.index.geofileUpdatePopover"), nil)
 }
 
 // stopXrayService stops the Xray service.

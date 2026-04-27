@@ -335,8 +335,10 @@
             <a-icon type="reload" @click="updateGeofile(file)" class="mr-8" />
           </a-list-item>
         </a-list>
-        <div class="mt-5 d-flex justify-end"><a-button @click="updateGeofile('')">{{ i18n
-            "pages.index.geofilesUpdateAll" }}</a-button></div>
+        <div class="mt-5 d-flex justify-end">
+          <a-button @click="syncUpdateGeofile" style="margin-right: 8px;">{{ i18n "pages.index.geofileSyncUpdate" }}</a-button>
+          <a-button @click="updateGeofile('')">{{ i18n "pages.index.geofilesUpdateAll" }}</a-button>
+        </div>
       </a-collapse-panel>
     </a-collapse>
   </a-modal>
@@ -1005,6 +1007,21 @@
               ? `/panel/api/server/updateGeofile/${fileName}`
               : `/panel/api/server/updateGeofile`;
             await HttpUtil.post(url);
+            this.loading(false);
+          },
+        });
+      },
+      syncUpdateGeofile() {
+        this.$confirm({
+          title: '{{ i18n "pages.index.geofileSyncUpdateDialog" }}',
+          content: '{{ i18n "pages.index.geofileSyncUpdateDialogDesc" }}',
+          okText: '{{ i18n "confirm"}}',
+          class: themeSwitcher.currentTheme,
+          cancelText: '{{ i18n "cancel"}}',
+          onOk: async () => {
+            versionModal.hide();
+            this.loading(true, '{{ i18n "pages.index.dontRefresh"}}');
+            await HttpUtil.post('/panel/api/server/syncUpdateGeofile');
             this.loading(false);
           },
         });
