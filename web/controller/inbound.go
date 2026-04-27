@@ -478,7 +478,7 @@ func (a *InboundController) batchUpdateInboundClients(c *gin.Context) {
 		ClientIDs    []string `json:"clientIds"`
 		UpdateFields string   `json:"updateFields"`
 	}
-	if err := c.ShouldBindJSON(&request); err != nil {
+	if err := c.ShouldBind(&request); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
 		return
 	}
