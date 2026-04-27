@@ -235,7 +235,7 @@
           this.$message.warning('{{ i18n "pages.user.noSubscription" }}');
           return;
         }
-        window.location.href = 'clash-verge://install-config?name=' + encodeURIComponent(this.username || 'Subscription') + '&url=' + encodeURIComponent(url);
+        window.location.href = 'clash://install-config?url=' + encodeURIComponent(url);
       },
       formatExpiryTime(timestamp) {
         if (timestamp <= 0) return '{{ i18n "unlimited" }}';
