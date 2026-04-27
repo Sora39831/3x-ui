@@ -474,9 +474,9 @@ func (a *InboundController) delInboundClientByEmail(c *gin.Context) {
 // batchUpdateInboundClients updates multiple clients in an inbound with the same field changes.
 func (a *InboundController) batchUpdateInboundClients(c *gin.Context) {
 	var request struct {
-		InboundID    int      `json:"inboundId"`
-		ClientIDs    []string `json:"clientIds"`
-		UpdateFields string   `json:"updateFields"`
+		InboundID    int      `json:"inboundId" form:"inboundId"`
+		ClientIDs    []string `json:"clientIds" form:"clientIds"`
+		UpdateFields string   `json:"updateFields" form:"updateFields"`
 	}
 	if err := c.ShouldBind(&request); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.inboundUpdateSuccess"), err)
