@@ -342,6 +342,30 @@
           <a-button @click="syncUpdateGeofile" style="margin-right: 8px;">{{ i18n "pages.index.geofileSyncUpdate" }}</a-button>
           <a-button @click="updateGeofile('')">{{ i18n "pages.index.geofilesUpdateAll" }}</a-button>
         </div>
+        <div class="mt-10">
+          <h4 class="mb-5">{{ i18n "pages.index.geofileScheduleTitle" }}</h4>
+          <a-form layout="inline">
+            <a-form-item :label='{{ i18n "pages.index.geofileScheduleEnable" }}'>
+              <a-switch v-model="geofileUpdateEnabled" @change="saveGeofileSchedule" />
+            </a-form-item>
+            <a-form-item :label='{{ i18n "pages.index.geofileScheduleFrequency" }}'>
+              <a-select v-model="geofileUpdateFrequency" style="width: 160px" @change="saveGeofileSchedule"
+                :dropdown-class-name="themeSwitcher.currentTheme">
+                <a-select-option value="hourly">{{ i18n "pages.index.geofileScheduleHourly" }}</a-select-option>
+                <a-select-option value="every12h">{{ i18n "pages.index.geofileScheduleEvery12h" }}</a-select-option>
+                <a-select-option value="daily">{{ i18n "pages.index.geofileScheduleDaily" }}</a-select-option>
+                <a-select-option value="weekly">{{ i18n "pages.index.geofileScheduleWeekly" }}</a-select-option>
+              </a-select>
+            </a-form-item>
+            <a-form-item v-if="geofileUpdateFrequency === 'daily' || geofileUpdateFrequency === 'weekly'"
+              :label='{{ i18n "pages.index.geofileScheduleHour" }}'>
+              <a-select v-model="geofileUpdateHour" style="width: 80px" @change="saveGeofileSchedule"
+                :dropdown-class-name="themeSwitcher.currentTheme">
+                <a-select-option v-for="h in 24" :key="h-1" :value="h-1">[[ h-1 ]]</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-form>
+        </div>
       </a-collapse-panel>
     </a-collapse>
   </a-modal>
@@ -920,6 +944,9 @@
       showAlert: false,
       showIp: false,
       ipLimitEnable: false,
+      geofileUpdateEnabled: false,
+      geofileUpdateFrequency: 'daily',
+      geofileUpdateHour: 4,
     },
     methods: {
       loading(spinning, tip = '{{ i18n "loading"}}') {
@@ -1040,6 +1067,17 @@
             this.loading(false);
           },
         });
+      },
+      async saveGeofileSchedule() {
+        try {
+          await HttpUtil.post('/panel/setting/update', {
+            geofileUpdateEnabled: this.geofileUpdateEnabled,
+            geofileUpdateFrequency: this.geofileUpdateFrequency,
+            geofileUpdateHour: this.geofileUpdateHour,
+          });
+        } catch (e) {
+          console.error("Failed to save geofile schedule:", e);
+        }
       },
       async loadGeofileVersions() {
         try {
@@ -1182,6 +1220,9 @@
       const msg = await HttpUtil.post('/panel/setting/defaultSettings');
       if (msg.success) {
         this.ipLimitEnable = msg.obj.ipLimitEnable;
+        this.geofileUpdateEnabled = msg.obj.geofileUpdateEnabled;
+        this.geofileUpdateFrequency = msg.obj.geofileUpdateFrequency;
+        this.geofileUpdateHour = msg.obj.geofileUpdateHour;
       }
 
       // Initial status fetch
