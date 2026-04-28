@@ -413,6 +413,7 @@ func (s *Server) startTask() {
 
 	// Schedule database backup job (runs every minute, checks schedule internally)
 	s.cron.AddJob("@every 1m", job.NewBackupJob())
+	s.cron.AddJob("@every 1m", job.NewGeofileUpdateJob())
 }
 
 func (s *Server) startNodeLoops() {

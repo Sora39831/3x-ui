@@ -158,14 +158,6 @@ jobs:
             https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat &
           curl -fL -sS --retry 3 -o geosite.dat \
             https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat &
-          curl -fL -sS --retry 3 -o geoip_IR.dat \
-            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat &
-          curl -fL -sS --retry 3 -o geosite_IR.dat \
-            https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat &
-          curl -fL -sS --retry 3 -o geoip_RU.dat \
-            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat &
-          curl -fL -sS --retry 3 -o geosite_RU.dat \
-            https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat &
           FAILED=0
           for job in $(jobs -p); do wait "$job" || FAILED=1; done
           if [ "$FAILED" -eq 1 ]; then
@@ -336,10 +328,6 @@ jobs:
   #         Remove-Item geoip.dat, geosite.dat -ErrorAction SilentlyContinue
   #         Invoke-WebRequest -Uri "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat" -OutFile "geoip.dat"
   #         Invoke-WebRequest -Uri "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -OutFile "geosite.dat"
-  #         Invoke-WebRequest -Uri "https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geoip.dat" -OutFile "geoip_IR.dat"
-  #         Invoke-WebRequest -Uri "https://github.com/chocolate4u/Iran-v2ray-rules/releases/latest/download/geosite.dat" -OutFile "geosite_IR.dat"
-  #         Invoke-WebRequest -Uri "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geoip.dat" -OutFile "geoip_RU.dat"
-  #         Invoke-WebRequest -Uri "https://github.com/runetfreedom/russia-v2ray-rules-dat/releases/latest/download/geosite.dat" -OutFile "geosite_RU.dat"
   #         Rename-Item xray.exe xray-windows-amd64.exe
   #         cd ..
   #         Copy-Item -Path ..\windows_files\* -Destination . -Recurse

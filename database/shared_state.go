@@ -9,6 +9,8 @@ import (
 
 const SharedAccountsVersionKey = "shared_accounts_version"
 
+const SharedGeoVersionKey = "shared_geo_version"
+
 func txOrDB(tx *gorm.DB) *gorm.DB {
 	if tx != nil {
 		return tx
@@ -41,6 +43,40 @@ func GetSharedAccountsVersion(tx *gorm.DB) (int64, error) {
 func BumpSharedAccountsVersion(tx *gorm.DB) error {
 	return txOrDB(tx).Model(&model.SharedState{}).
 		Where(&model.SharedState{Key: SharedAccountsVersionKey}).
+		Updates(map[string]any{
+			"version":    gorm.Expr("version + 1"),
+			"updated_at": time.Now().Unix(),
+		}).Error
+}
+
+func seedSharedGeoVersion(tx *gorm.DB) error {
+	state := &model.SharedState{
+		Key: SharedGeoVersionKey,
+	}
+	return txOrDB(tx).
+		Attrs(&model.SharedState{
+			Version:   0,
+			UpdatedAt: time.Now().Unix(),
+		}).
+		FirstOrCreate(state).Error
+}
+
+func GetSharedGeoVersion(tx *gorm.DB) (int64, error) {
+	state := &model.SharedState{
+		Key: SharedGeoVersionKey,
+	}
+	if err := txOrDB(tx).First(state).Error; err != nil {
+		return 0, err
+	}
+	return state.Version, nil
+}
+
+func BumpSharedGeoVersion(tx *gorm.DB) error {
+	if err := seedSharedGeoVersion(tx); err != nil {
+		return err
+	}
+	return txOrDB(tx).Model(&model.SharedState{}).
+		Where(&model.SharedState{Key: SharedGeoVersionKey}).
 		Updates(map[string]any{
 			"version":    gorm.Expr("version + 1"),
 			"updated_at": time.Now().Unix(),

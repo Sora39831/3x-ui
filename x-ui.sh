@@ -1078,15 +1078,100 @@ delete_ports() {
 
 update_all_geofiles() {
     update_geofiles "main"
-    update_geofiles "IR"
-    update_geofiles "RU"
+}
+
+# Config file path (must match config.GetSettingPath())
+SETTING_FILE="/etc/x-ui/x-ui.json"
+
+# Helper: read a value from x-ui.json using python3 or jq
+read_geofile_setting() {
+    local key="$1"
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import json, sys
+try:
+    with open('$SETTING_FILE') as f:
+        data = json.load(f)
+    print(data.get('geofileUpdate', {}).get('$key', ''))
+except: pass
+" 2>/dev/null
+    elif command -v jq &>/dev/null; then
+        jq -r ".geofileUpdate.$key // empty" "$SETTING_FILE" 2>/dev/null
+    fi
+}
+
+# Helper: write geofileUpdate section to x-ui.json
+write_geofile_setting() {
+    local enabled="$1"
+    local frequency="$2"
+    local hour="$3"
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import json
+try:
+    with open('$SETTING_FILE') as f:
+        data = json.load(f)
+except:
+    data = {}
+data['geofileUpdate'] = {'enabled': $enabled, 'frequency': '$frequency', 'hour': $hour}
+with open('$SETTING_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+print('ok')
+" 2>/dev/null
+    else
+        tmp=$(mktemp)
+        jq ".geofileUpdate = {\"enabled\": $enabled, \"frequency\": \"$frequency\", \"hour\": $hour}" "$SETTING_FILE" > "$tmp" && mv "$tmp" "$SETTING_FILE"
+    fi
+}
+
+geofile_cron_status() {
+    if [ ! -f "$SETTING_FILE" ]; then
+        echo -e "${red}x-ui.json not found at $SETTING_FILE${plain}"
+        return 1
+    fi
+    local enabled=$(read_geofile_setting "enabled")
+    local frequency=$(read_geofile_setting "frequency")
+    local hour=$(read_geofile_setting "hour")
+    echo -e "${green}Geofile Scheduled Update:${plain}"
+    echo -e "  Enabled:   ${green}${enabled:-false}${plain}"
+    echo -e "  Frequency: ${green}${frequency:-daily}${plain}"
+    echo -e "  Hour:      ${green}${hour:-4}${plain}"
+}
+
+geofile_cron_enable() {
+    local frequency="daily"
+    local hour="4"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --frequency) frequency="$2"; shift 2;;
+            --hour) hour="$2"; shift 2;;
+            *) shift;;
+        esac
+    done
+    case "$frequency" in
+        hourly|every12h|daily|weekly) ;;
+        *) echo -e "${red}Invalid frequency: $frequency (must be hourly, every12h, daily, or weekly)${plain}"; return 1;;
+    esac
+    if ! [ "$hour" -ge 0 ] 2>/dev/null || ! [ "$hour" -le 23 ] 2>/dev/null; then
+        echo -e "${red}Invalid hour: $hour (must be 0-23)${plain}"
+        return 1
+    fi
+    write_geofile_setting "true" "$frequency" "$hour"
+    echo -e "${green}Geofile scheduled update enabled (frequency=$frequency, hour=$hour)${plain}"
+    echo -e "${yellow}Restarting x-ui to apply changes...${plain}"
+    systemctl restart x-ui
+}
+
+geofile_cron_disable() {
+    write_geofile_setting "false" "daily" "4"
+    echo -e "${green}Geofile scheduled update disabled${plain}"
+    echo -e "${yellow}Restarting x-ui to apply changes...${plain}"
+    systemctl restart x-ui
 }
 
 update_geofiles() {
     case "${1}" in
       "main") dat_files=(geoip geosite); dat_source="Loyalsoldier/v2ray-rules-dat";;
-        "IR") dat_files=(geoip_IR geosite_IR); dat_source="chocolate4u/Iran-v2ray-rules" ;;
-        "RU") dat_files=(geoip_RU geosite_RU); dat_source="runetfreedom/russia-v2ray-rules-dat";;
     esac
     for dat in "${dat_files[@]}"; do
         # 移除后缀获取远程文件名（例如 geoip_IR -> geoip）
@@ -1098,9 +1183,6 @@ update_geofiles() {
 
 update_geo() {
     echo -e "${green}\t1.${plain} Loyalsoldier (geoip.dat, geosite.dat)"
-    echo -e "${green}\t2.${plain} chocolate4u (geoip_IR.dat, geosite_IR.dat)"
-    echo -e "${green}\t3.${plain} runetfreedom (geoip_RU.dat, geosite_RU.dat)"
-    echo -e "${green}\t4.${plain} 全部更新"
     echo -e "${green}\t0.${plain} 返回主菜单"
     read -rp "请选择：" choice
 
@@ -1111,21 +1193,6 @@ update_geo() {
     1)
         update_geofiles "main"
         echo -e "${green}Loyalsoldier 数据集更新成功！${plain}"
-        restart
-        ;;
-    2)
-        update_geofiles "IR"
-        echo -e "${green}chocolate4u 数据集更新成功！${plain}"
-        restart
-        ;;
-    3)
-        update_geofiles "RU"
-        echo -e "${green}runetfreedom 数据集更新成功！${plain}"
-        restart
-        ;;
-    4)
-        update_all_geofiles
-        echo -e "${green}所有 geo 文件更新成功！${plain}"
         restart
         ;;
     *)
@@ -2329,6 +2396,9 @@ show_usage() {
 │  ${blue}x-ui banlog${plain}                - 查看 Fail2ban 封禁日志        │
 │  ${blue}x-ui update${plain}                - 更新                          │
 │  ${blue}x-ui update-all-geofiles${plain}   - 更新所有 geo 文件            │
+│  ${blue}x-ui geofile-cron --enable${plain} - 启用 Geofile 定时更新        │
+│  ${blue}x-ui geofile-cron --disable${plain} - 禁用 Geofile 定时更新       │
+│  ${blue}x-ui geofile-cron --status${plain}  - 查看 Geofile 定时更新状态   │
 │  ${blue}x-ui legacy${plain}                - 安装旧版本                    │
 │  ${blue}x-ui install${plain}               - 安装                          │
 │  ${blue}x-ui uninstall${plain}             - 卸载                          │
@@ -3942,6 +4012,15 @@ if [[ $# > 0 ]]; then
         ;;
     "update-all-geofiles")
         check_install 0 && update_all_geofiles 0 && restart 0
+        ;;
+    "geofile-cron")
+        shift
+        case "${1}" in
+            "--enable") geofile_cron_enable "${@}";;
+            "--disable") geofile_cron_disable;;
+            "--status") geofile_cron_status;;
+            *) echo -e "${red}Usage: x-ui geofile-cron [--enable --frequency daily --hour 4 | --disable | --status]${plain}";;
+        esac
         ;;
     "backup")
         check_install 0 && backup_db

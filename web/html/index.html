@@ -330,13 +330,42 @@
       <a-collapse-panel key="2" header='Geofiles'>
         <a-list class="ant-version-list w-100" bordered>
           <a-list-item class="ant-version-list-item"
-            v-for="file, index in ['geosite.dat', 'geoip.dat', 'geosite_IR.dat', 'geoip_IR.dat', 'geosite_RU.dat', 'geoip_RU.dat']">
+            v-for="file, index in ['geosite.dat', 'geoip.dat']">
             <a-tag :color="index % 2 == 0 ? 'purple' : 'green'">[[ file ]]</a-tag>
+            <span class="geofile-version-text" v-if="geofileVersions[file]">
+              [[ geofileVersions[file].version || '-' ]]
+            </span>
             <a-icon type="reload" @click="updateGeofile(file)" class="mr-8" />
           </a-list-item>
         </a-list>
-        <div class="mt-5 d-flex justify-end"><a-button @click="updateGeofile('')">{{ i18n
-            "pages.index.geofilesUpdateAll" }}</a-button></div>
+        <div class="mt-5 d-flex justify-end">
+          <a-button @click="syncUpdateGeofile" style="margin-right: 8px;">{{ i18n "pages.index.geofileSyncUpdate" }}</a-button>
+          <a-button @click="updateGeofile('')">{{ i18n "pages.index.geofilesUpdateAll" }}</a-button>
+        </div>
+        <div class="mt-10">
+          <h4 class="mb-5">{{ i18n "pages.index.geofileScheduleTitle" }}</h4>
+          <a-form layout="inline">
+            <a-form-item :label='{{ i18n "pages.index.geofileScheduleEnable" }}'>
+              <a-switch v-model="geofileUpdateEnabled" @change="saveGeofileSchedule" />
+            </a-form-item>
+            <a-form-item :label='{{ i18n "pages.index.geofileScheduleFrequency" }}'>
+              <a-select v-model="geofileUpdateFrequency" style="width: 160px" @change="saveGeofileSchedule"
+                :dropdown-class-name="themeSwitcher.currentTheme">
+                <a-select-option value="hourly">{{ i18n "pages.index.geofileScheduleHourly" }}</a-select-option>
+                <a-select-option value="every12h">{{ i18n "pages.index.geofileScheduleEvery12h" }}</a-select-option>
+                <a-select-option value="daily">{{ i18n "pages.index.geofileScheduleDaily" }}</a-select-option>
+                <a-select-option value="weekly">{{ i18n "pages.index.geofileScheduleWeekly" }}</a-select-option>
+              </a-select>
+            </a-form-item>
+            <a-form-item v-if="geofileUpdateFrequency === 'daily' || geofileUpdateFrequency === 'weekly'"
+              :label='{{ i18n "pages.index.geofileScheduleHour" }}'>
+              <a-select v-model="geofileUpdateHour" style="width: 80px" @change="saveGeofileSchedule"
+                :dropdown-class-name="themeSwitcher.currentTheme">
+                <a-select-option v-for="h in 24" :key="h-1" :value="h-1">[[ h-1 ]]</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-form>
+        </div>
       </a-collapse-panel>
     </a-collapse>
   </a-modal>
@@ -825,6 +854,16 @@
   table td, table th {
     padding: 2px 15px;
   }
+
+  .geofile-version-text {
+    font-size: 11px;
+    color: #999;
+    margin-left: 8px;
+  }
+
+  .dark .geofile-version-text {
+    color: #666;
+  }
 </style>
 
 <table>
@@ -900,10 +939,14 @@
       logModal,
       xraylogModal,
       backupModal,
+      geofileVersions: {},
       loadingTip: '{{ i18n "loading"}}',
       showAlert: false,
       showIp: false,
       ipLimitEnable: false,
+      geofileUpdateEnabled: false,
+      geofileUpdateFrequency: 'daily',
+      geofileUpdateHour: 4,
     },
     methods: {
       loading(spinning, tip = '{{ i18n "loading"}}') {
@@ -972,6 +1015,7 @@
           return;
         }
         versionModal.show(msg.obj);
+        this.loadGeofileVersions();
       },
       switchV2rayVersion(version) {
         this.$confirm({
@@ -1008,6 +1052,42 @@
             this.loading(false);
           },
         });
+      },
+      syncUpdateGeofile() {
+        this.$confirm({
+          title: '{{ i18n "pages.index.geofileSyncUpdateDialog" }}',
+          content: '{{ i18n "pages.index.geofileSyncUpdateDialogDesc" }}',
+          okText: '{{ i18n "confirm"}}',
+          class: themeSwitcher.currentTheme,
+          cancelText: '{{ i18n "cancel"}}',
+          onOk: async () => {
+            versionModal.hide();
+            this.loading(true, '{{ i18n "pages.index.dontRefresh"}}');
+            await HttpUtil.post('/panel/api/server/syncUpdateGeofile');
+            this.loading(false);
+          },
+        });
+      },
+      async saveGeofileSchedule() {
+        try {
+          await HttpUtil.post('/panel/setting/update', {
+            geofileUpdateEnabled: this.geofileUpdateEnabled,
+            geofileUpdateFrequency: this.geofileUpdateFrequency,
+            geofileUpdateHour: this.geofileUpdateHour,
+          });
+        } catch (e) {
+          console.error("Failed to save geofile schedule:", e);
+        }
+      },
+      async loadGeofileVersions() {
+        try {
+          const msg = await HttpUtil.get('/panel/api/server/getGeofileVersions');
+          if (msg.success && msg.obj) {
+            this.geofileVersions = msg.obj;
+          }
+        } catch (e) {
+          console.error("Failed to load geofile versions:", e);
+        }
       },
       async stopXrayService() {
         this.loading(true);
@@ -1140,6 +1220,9 @@
       const msg = await HttpUtil.post('/panel/setting/defaultSettings');
       if (msg.success) {
         this.ipLimitEnable = msg.obj.ipLimitEnable;
+        this.geofileUpdateEnabled = msg.obj.geofileUpdateEnabled;
+        this.geofileUpdateFrequency = msg.obj.geofileUpdateFrequency;
+        this.geofileUpdateHour = msg.obj.geofileUpdateHour;
       }
 
       // Initial status fetch
