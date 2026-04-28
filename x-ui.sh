@@ -1080,6 +1080,95 @@ update_all_geofiles() {
     update_geofiles "main"
 }
 
+# Config file path (must match config.GetSettingPath())
+SETTING_FILE="/etc/x-ui/x-ui.json"
+
+# Helper: read a value from x-ui.json using python3 or jq
+read_geofile_setting() {
+    local key="$1"
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import json, sys
+try:
+    with open('$SETTING_FILE') as f:
+        data = json.load(f)
+    print(data.get('geofileUpdate', {}).get('$key', ''))
+except: pass
+" 2>/dev/null
+    elif command -v jq &>/dev/null; then
+        jq -r ".geofileUpdate.$key // empty" "$SETTING_FILE" 2>/dev/null
+    fi
+}
+
+# Helper: write geofileUpdate section to x-ui.json
+write_geofile_setting() {
+    local enabled="$1"
+    local frequency="$2"
+    local hour="$3"
+    if command -v python3 &>/dev/null; then
+        python3 -c "
+import json
+try:
+    with open('$SETTING_FILE') as f:
+        data = json.load(f)
+except:
+    data = {}
+data['geofileUpdate'] = {'enabled': $enabled, 'frequency': '$frequency', 'hour': $hour}
+with open('$SETTING_FILE', 'w') as f:
+    json.dump(data, f, indent=2)
+print('ok')
+" 2>/dev/null
+    else
+        tmp=$(mktemp)
+        jq ".geofileUpdate = {\"enabled\": $enabled, \"frequency\": \"$frequency\", \"hour\": $hour}" "$SETTING_FILE" > "$tmp" && mv "$tmp" "$SETTING_FILE"
+    fi
+}
+
+geofile_cron_status() {
+    if [ ! -f "$SETTING_FILE" ]; then
+        echo -e "${red}x-ui.json not found at $SETTING_FILE${plain}"
+        return 1
+    fi
+    local enabled=$(read_geofile_setting "enabled")
+    local frequency=$(read_geofile_setting "frequency")
+    local hour=$(read_geofile_setting "hour")
+    echo -e "${green}Geofile Scheduled Update:${plain}"
+    echo -e "  Enabled:   ${green}${enabled:-false}${plain}"
+    echo -e "  Frequency: ${green}${frequency:-daily}${plain}"
+    echo -e "  Hour:      ${green}${hour:-4}${plain}"
+}
+
+geofile_cron_enable() {
+    local frequency="daily"
+    local hour="4"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --frequency) frequency="$2"; shift 2;;
+            --hour) hour="$2"; shift 2;;
+            *) shift;;
+        esac
+    done
+    case "$frequency" in
+        hourly|every12h|daily|weekly) ;;
+        *) echo -e "${red}Invalid frequency: $frequency (must be hourly, every12h, daily, or weekly)${plain}"; return 1;;
+    esac
+    if ! [ "$hour" -ge 0 ] 2>/dev/null || ! [ "$hour" -le 23 ] 2>/dev/null; then
+        echo -e "${red}Invalid hour: $hour (must be 0-23)${plain}"
+        return 1
+    fi
+    write_geofile_setting "true" "$frequency" "$hour"
+    echo -e "${green}Geofile scheduled update enabled (frequency=$frequency, hour=$hour)${plain}"
+    echo -e "${yellow}Restarting x-ui to apply changes...${plain}"
+    systemctl restart x-ui
+}
+
+geofile_cron_disable() {
+    write_geofile_setting "false" "daily" "4"
+    echo -e "${green}Geofile scheduled update disabled${plain}"
+    echo -e "${yellow}Restarting x-ui to apply changes...${plain}"
+    systemctl restart x-ui
+}
+
 update_geofiles() {
     case "${1}" in
       "main") dat_files=(geoip geosite); dat_source="Loyalsoldier/v2ray-rules-dat";;
@@ -2307,6 +2396,9 @@ show_usage() {
 │  ${blue}x-ui banlog${plain}                - 查看 Fail2ban 封禁日志        │
 │  ${blue}x-ui update${plain}                - 更新                          │
 │  ${blue}x-ui update-all-geofiles${plain}   - 更新所有 geo 文件            │
+│  ${blue}x-ui geofile-cron --enable${plain} - 启用 Geofile 定时更新        │
+│  ${blue}x-ui geofile-cron --disable${plain} - 禁用 Geofile 定时更新       │
+│  ${blue}x-ui geofile-cron --status${plain}  - 查看 Geofile 定时更新状态   │
 │  ${blue}x-ui legacy${plain}                - 安装旧版本                    │
 │  ${blue}x-ui install${plain}               - 安装                          │
 │  ${blue}x-ui uninstall${plain}             - 卸载                          │
@@ -3920,6 +4012,15 @@ if [[ $# > 0 ]]; then
         ;;
     "update-all-geofiles")
         check_install 0 && update_all_geofiles 0 && restart 0
+        ;;
+    "geofile-cron")
+        shift
+        case "${1}" in
+            "--enable") geofile_cron_enable "${@}";;
+            "--disable") geofile_cron_disable;;
+            "--status") geofile_cron_status;;
+            *) echo -e "${red}Usage: x-ui geofile-cron [--enable --frequency daily --hour 4 | --disable | --status]${plain}";;
+        esac
         ;;
     "backup")
         check_install 0 && backup_db
