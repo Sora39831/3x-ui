@@ -127,6 +127,11 @@ type AllSetting struct {
 	BackupFrequency string `json:"backupFrequency" form:"backupFrequency"`
 	BackupHour      int    `json:"backupHour" form:"backupHour"`
 	BackupMaxCount  int    `json:"backupMaxCount" form:"backupMaxCount"`
+
+	// Geofile update schedule settings
+	GeofileUpdateEnabled   bool   `json:"geofileUpdateEnabled" form:"geofileUpdateEnabled"`
+	GeofileUpdateFrequency string `json:"geofileUpdateFrequency" form:"geofileUpdateFrequency"`
+	GeofileUpdateHour      int    `json:"geofileUpdateHour" form:"geofileUpdateHour"`
 }
 
 // CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.

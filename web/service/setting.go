@@ -133,6 +133,11 @@ var defaultValueMap = map[string]string{
 	"backupFrequency": "daily",
 	"backupHour":      "3",
 	"backupMaxCount":  "10",
+
+	// Geofile update schedule settings
+	"geofileUpdateEnabled":   "false",
+	"geofileUpdateFrequency": "daily",
+	"geofileUpdateHour":      "4",
 }
 
 // settingGroups defines the nested JSON structure for on-disk settings.
@@ -258,6 +263,11 @@ var settingGroups = map[string]map[string]string{
 		"frequency": "backupFrequency",
 		"hour":      "backupHour",
 		"maxCount":  "backupMaxCount",
+	},
+	"geofileUpdate": {
+		"enabled":   "geofileUpdateEnabled",
+		"frequency": "geofileUpdateFrequency",
+		"hour":      "geofileUpdateHour",
 	},
 }
 
@@ -1166,6 +1176,18 @@ func (s *SettingService) GetBackupMaxCount() (int, error) {
 	return s.getInt("backupMaxCount")
 }
 
+func (s *SettingService) GetGeofileUpdateEnabled() (bool, error) {
+	return s.getBool("geofileUpdateEnabled")
+}
+
+func (s *SettingService) GetGeofileUpdateFrequency() (string, error) {
+	return s.getString("geofileUpdateFrequency")
+}
+
+func (s *SettingService) GetGeofileUpdateHour() (int, error) {
+	return s.getInt("geofileUpdateHour")
+}
+
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, presentKeys map[string]struct{}) error {
 	if err := allSetting.CheckValid(); err != nil {
 		return err
@@ -1233,22 +1255,25 @@ func extractHostname(host string) string {
 func (s *SettingService) GetDefaultSettings(host string) (any, error) {
 	type settingFunc func() (any, error)
 	settings := map[string]settingFunc{
-		"expireDiff":     func() (any, error) { return s.GetExpireDiff() },
-		"trafficDiff":    func() (any, error) { return s.GetTrafficDiff() },
-		"pageSize":       func() (any, error) { return s.GetPageSize() },
-		"defaultCert":    func() (any, error) { return s.GetCertFile() },
-		"defaultKey":     func() (any, error) { return s.GetKeyFile() },
-		"tgBotEnable":    func() (any, error) { return s.GetTgbotEnabled() },
-		"subEnable":      func() (any, error) { return s.GetSubEnable() },
-		"subJsonEnable":  func() (any, error) { return s.GetSubJsonEnable() },
-		"subClashEnable": func() (any, error) { return s.GetSubClashEnable() },
-		"subTitle":       func() (any, error) { return s.GetSubTitle() },
-		"subURI":         func() (any, error) { return s.GetSubURI() },
-		"subJsonURI":     func() (any, error) { return s.GetSubJsonURI() },
-		"subClashURI":    func() (any, error) { return s.GetSubClashURI() },
-		"remarkModel":    func() (any, error) { return s.GetRemarkModel() },
-		"datepicker":     func() (any, error) { return s.GetDatepicker() },
-		"ipLimitEnable":  func() (any, error) { return s.GetIpLimitEnable() },
+		"expireDiff":             func() (any, error) { return s.GetExpireDiff() },
+		"trafficDiff":            func() (any, error) { return s.GetTrafficDiff() },
+		"pageSize":               func() (any, error) { return s.GetPageSize() },
+		"defaultCert":            func() (any, error) { return s.GetCertFile() },
+		"defaultKey":             func() (any, error) { return s.GetKeyFile() },
+		"tgBotEnable":            func() (any, error) { return s.GetTgbotEnabled() },
+		"subEnable":              func() (any, error) { return s.GetSubEnable() },
+		"subJsonEnable":          func() (any, error) { return s.GetSubJsonEnable() },
+		"subClashEnable":         func() (any, error) { return s.GetSubClashEnable() },
+		"subTitle":               func() (any, error) { return s.GetSubTitle() },
+		"subURI":                 func() (any, error) { return s.GetSubURI() },
+		"subJsonURI":             func() (any, error) { return s.GetSubJsonURI() },
+		"subClashURI":            func() (any, error) { return s.GetSubClashURI() },
+		"remarkModel":            func() (any, error) { return s.GetRemarkModel() },
+		"datepicker":             func() (any, error) { return s.GetDatepicker() },
+		"ipLimitEnable":          func() (any, error) { return s.GetIpLimitEnable() },
+		"geofileUpdateEnabled":   func() (any, error) { return s.GetGeofileUpdateEnabled() },
+		"geofileUpdateFrequency": func() (any, error) { return s.GetGeofileUpdateFrequency() },
+		"geofileUpdateHour":      func() (any, error) { return s.GetGeofileUpdateHour() },
 	}
 
 	result := make(map[string]any)
