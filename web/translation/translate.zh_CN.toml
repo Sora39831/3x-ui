@@ -354,6 +354,7 @@
 "status" = "状态"
 "clashUrl" = "Clash 链接"
 "quickImport" = "一键添加"
+"subscriptionLink" = "订阅链接"
 "android" = "安卓"
 "ios" = "iOS"
 "desktop" = "桌面端"

@@ -65,7 +65,7 @@
                   <template v-if="traffic">
                     <template v-if="traffic.total > 0">
                       [[ SizeFormatter.sizeFormat(traffic.up + traffic.down) ]] / [[ SizeFormatter.sizeFormat(traffic.total) ]]
-                      <a-progress :percent="traffic.total > 0 ? NumberFormatter.toFixed((traffic.up + traffic.down) / traffic.total * 100, 1) : 0" size="small" :status="((traffic.up + traffic.down) / traffic.total * 100) >= 90 ? 'exception' : 'normal'" />
+                      <a-progress :percent="traffic.total > 0 ? NumberFormatter.toFixed((traffic.up + traffic.down) / traffic.total * 100, 1) : 0" size="small" :status="((traffic.up + traffic.down) / traffic.total * 100) >= 90 ? 'exception' : 'normal'" :show-info="false" />
                     </template>
                     <template v-else>
                       {{ i18n "unlimited" }}
@@ -108,41 +108,35 @@
               </a-descriptions>
             </a-card>
 
-            <!-- Clash Link Card -->
-            <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
-              <template #title>
-                <a-icon type="link" style="margin-right: 8px;" />{{ i18n "pages.user.clashUrl" }}
-              </template>
-              <template v-if="subClashEnable && subClashUrl">
-                <div class="clash-link-box" @click="copy(subClashUrl)">
-                  <code>[[ subClashUrl ]]</code>
-                </div>
-                <div class="mt-12 text-center">
-                  <a-button type="primary" icon="copy" size="small" @click="copy(subClashUrl)">
-                    {{ i18n "copy" }}
-                  </a-button>
-                </div>
-              </template>
-              <template v-else>
-                <a-empty :description='{{ i18n "pages.user.noSubscription" }}' />
-              </template>
-            </a-card>
-
-            <!-- Quick Import Actions -->
+            <!-- Quick Import & Subscription Card -->
             <a-card :class="themeSwitcher.currentTheme" class="user-card mb-16">
               <div class="quick-import-section">
-                <div class="quick-import-title">{{ i18n "pages.user.quickImport" }}</div>
-                <a-space direction="vertical" size="small" class="quick-import-actions">
-                  <a-button type="primary" block @click="quickImportAndroid">
+                <div class="section-label">{{ i18n "pages.user.quickImport" }}</div>
+                <div class="quick-import-buttons">
+                  <a-button type="primary" size="small" @click="quickImportAndroid">
                     {{ i18n "pages.user.android" }}
                   </a-button>
-                  <a-button type="primary" block @click="quickImportIOS">
+                  <a-button type="primary" size="small" @click="quickImportIOS">
                     {{ i18n "pages.user.ios" }}
                   </a-button>
-                  <a-button type="primary" block @click="quickImportDesktop">
+                  <a-button type="primary" size="small" @click="quickImportDesktop">
                     {{ i18n "pages.user.desktop" }}
                   </a-button>
-                </a-space>
+                </div>
+                <template v-if="subClashEnable && subClashUrl">
+                  <div class="section-label">{{ i18n "pages.user.subscriptionLink" }}</div>
+                  <div class="clash-link-box" @click="copy(subClashUrl)">
+                    <code>[[ subClashUrl ]]</code>
+                  </div>
+                  <div class="mt-12 text-center">
+                    <a-button type="primary" icon="copy" size="small" @click="copy(subClashUrl)">
+                      {{ i18n "copy" }}
+                    </a-button>
+                  </div>
+                </template>
+                <template v-else>
+                  <a-empty :description='{{ i18n "pages.user.noSubscription" }}' />
+                </template>
               </div>
             </a-card>
 
@@ -294,19 +288,22 @@
     padding: 16px;
   }
   .quick-import-section {
-    text-align: left;
+    text-align: center;
   }
-  .quick-import-title {
+  .section-label {
     margin-bottom: 12px;
     font-size: 14px;
     font-weight: 600;
+    color: rgba(0, 0, 0, 0.65);
   }
-  .quick-import-actions {
+  .dark .section-label {
+    color: rgba(255, 255, 255, 0.65);
+  }
+  .quick-import-buttons {
     display: flex;
-    width: 100%;
-  }
-  .quick-import-actions .ant-space-item {
-    width: 100%;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
   }
 </style>
 {{ template "page/body_end" .}}
