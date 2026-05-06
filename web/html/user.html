@@ -64,7 +64,7 @@
                 <a-descriptions-item label='{{ i18n "pages.user.totalTraffic" }}'>
                   <template v-if="traffic">
                     <template v-if="traffic.total > 0">
-                      [[ SizeFormatter.sizeFormat(traffic.up + traffic.down) ]] / [[ SizeFormatter.sizeFormat(traffic.total) ]]
+                      <div>[[ SizeFormatter.sizeFormat(traffic.up + traffic.down) ]] / [[ SizeFormatter.sizeFormat(traffic.total) ]]</div>
                       <a-progress :percent="traffic.total > 0 ? NumberFormatter.toFixed((traffic.up + traffic.down) / traffic.total * 100, 1) : 0" size="small" :status="((traffic.up + traffic.down) / traffic.total * 100) >= 90 ? 'exception' : 'normal'" :show-info="false" />
                     </template>
                     <template v-else>
@@ -97,7 +97,7 @@
                 </a-descriptions-item>
                 <a-descriptions-item label='{{ i18n "pages.user.lastOnline" }}'>
                   <template v-if="traffic && traffic.lastOnline > 0">
-                    [[ new Date(traffic.lastOnline * 1000).toLocaleString() ]]
+                    [[ new Date(traffic.lastOnline).toLocaleString() ]]
                   </template>
                   <template v-else>-</template>
                 </a-descriptions-item>
