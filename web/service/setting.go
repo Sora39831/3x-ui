@@ -1189,7 +1189,7 @@ func (s *SettingService) GetGeofileUpdateHour() (int, error) {
 }
 
 func (s *SettingService) UpdateAllSetting(allSetting *entity.AllSetting, presentKeys map[string]struct{}) error {
-	if err := allSetting.CheckValid(); err != nil {
+	if err := allSetting.CheckValid(presentKeys); err != nil {
 		return err
 	}
 

@@ -134,98 +134,123 @@ type AllSetting struct {
 	GeofileUpdateHour      int    `json:"geofileUpdateHour" form:"geofileUpdateHour"`
 }
 
-// CheckValid validates all settings in the AllSetting struct, checking IP addresses, ports, SSL certificates, and other configuration values.
-func (s *AllSetting) CheckValid() error {
-	if s.WebListen != "" {
+// CheckValid validates the fields in the AllSetting struct that are present in the update request.
+// If presentKeys is nil, all fields are validated.
+func (s *AllSetting) CheckValid(presentKeys map[string]struct{}) error {
+	isPresent := func(key string) bool {
+		if presentKeys == nil {
+			return true
+		}
+		_, ok := presentKeys[key]
+		return ok
+	}
+
+	if isPresent("webListen") && s.WebListen != "" {
 		ip := net.ParseIP(s.WebListen)
 		if ip == nil {
 			return common.NewError("web listen is not valid ip:", s.WebListen)
 		}
 	}
 
-	if s.SubListen != "" {
+	if isPresent("subListen") && s.SubListen != "" {
 		ip := net.ParseIP(s.SubListen)
 		if ip == nil {
 			return common.NewError("Sub listen is not valid ip:", s.SubListen)
 		}
 	}
 
-	if s.WebPort <= 0 || s.WebPort > math.MaxUint16 {
+	if isPresent("webPort") && (s.WebPort <= 0 || s.WebPort > math.MaxUint16) {
 		return common.NewError("web port is not a valid port:", s.WebPort)
 	}
 
-	if s.SubPort <= 0 || s.SubPort > math.MaxUint16 {
+	if isPresent("subPort") && (s.SubPort <= 0 || s.SubPort > math.MaxUint16) {
 		return common.NewError("Sub port is not a valid port:", s.SubPort)
 	}
 
-	if (s.SubPort == s.WebPort) && (s.WebListen == s.SubListen) {
+	if (isPresent("webPort") || isPresent("subPort") || isPresent("webListen") || isPresent("subListen")) &&
+		(s.SubPort == s.WebPort) && (s.WebListen == s.SubListen) {
 		return common.NewError("Sub and Web could not use same ip:port, ", s.SubListen, ":", s.SubPort, " & ", s.WebListen, ":", s.WebPort)
 	}
 
-	if s.WebCertFile != "" || s.WebKeyFile != "" {
-		_, err := tls.LoadX509KeyPair(s.WebCertFile, s.WebKeyFile)
-		if err != nil {
-			return common.NewErrorf("cert file <%v> or key file <%v> invalid: %v", s.WebCertFile, s.WebKeyFile, err)
+	if isPresent("webCertFile") || isPresent("webKeyFile") {
+		if s.WebCertFile != "" || s.WebKeyFile != "" {
+			_, err := tls.LoadX509KeyPair(s.WebCertFile, s.WebKeyFile)
+			if err != nil {
+				return common.NewErrorf("cert file <%v> or key file <%v> invalid: %v", s.WebCertFile, s.WebKeyFile, err)
+			}
 		}
 	}
 
-	if s.SubCertFile != "" || s.SubKeyFile != "" {
-		_, err := tls.LoadX509KeyPair(s.SubCertFile, s.SubKeyFile)
-		if err != nil {
-			return common.NewErrorf("cert file <%v> or key file <%v> invalid: %v", s.SubCertFile, s.SubKeyFile, err)
+	if isPresent("subCertFile") || isPresent("subKeyFile") {
+		if s.SubCertFile != "" || s.SubKeyFile != "" {
+			_, err := tls.LoadX509KeyPair(s.SubCertFile, s.SubKeyFile)
+			if err != nil {
+				return common.NewErrorf("cert file <%v> or key file <%v> invalid: %v", s.SubCertFile, s.SubKeyFile, err)
+			}
 		}
 	}
 
-	if !strings.HasPrefix(s.WebBasePath, "/") {
-		s.WebBasePath = "/" + s.WebBasePath
+	if isPresent("webBasePath") {
+		if !strings.HasPrefix(s.WebBasePath, "/") {
+			s.WebBasePath = "/" + s.WebBasePath
+		}
+		if !strings.HasSuffix(s.WebBasePath, "/") {
+			s.WebBasePath += "/"
+		}
 	}
-	if !strings.HasSuffix(s.WebBasePath, "/") {
-		s.WebBasePath += "/"
-	}
-	if !strings.HasPrefix(s.SubPath, "/") {
-		s.SubPath = "/" + s.SubPath
-	}
-	if !strings.HasSuffix(s.SubPath, "/") {
-		s.SubPath += "/"
-	}
-
-	if !strings.HasPrefix(s.SubJsonPath, "/") {
-		s.SubJsonPath = "/" + s.SubJsonPath
-	}
-	if !strings.HasSuffix(s.SubJsonPath, "/") {
-		s.SubJsonPath += "/"
+	if isPresent("subPath") {
+		if !strings.HasPrefix(s.SubPath, "/") {
+			s.SubPath = "/" + s.SubPath
+		}
+		if !strings.HasSuffix(s.SubPath, "/") {
+			s.SubPath += "/"
+		}
 	}
 
-	if !strings.HasPrefix(s.SubClashPath, "/") {
-		s.SubClashPath = "/" + s.SubClashPath
-	}
-	if !strings.HasSuffix(s.SubClashPath, "/") {
-		s.SubClashPath += "/"
-	}
-
-	_, err := time.LoadLocation(s.TimeLocation)
-	if err != nil {
-		return common.NewError("time location not exist:", s.TimeLocation)
+	if isPresent("subJsonPath") {
+		if !strings.HasPrefix(s.SubJsonPath, "/") {
+			s.SubJsonPath = "/" + s.SubJsonPath
+		}
+		if !strings.HasSuffix(s.SubJsonPath, "/") {
+			s.SubJsonPath += "/"
+		}
 	}
 
-	// Validate database settings
-	if s.DBType != "" && s.DBType != "sqlite" && s.DBType != "mariadb" {
+	if isPresent("subClashPath") {
+		if !strings.HasPrefix(s.SubClashPath, "/") {
+			s.SubClashPath = "/" + s.SubClashPath
+		}
+		if !strings.HasSuffix(s.SubClashPath, "/") {
+			s.SubClashPath += "/"
+		}
+	}
+
+	if isPresent("timeLocation") {
+		_, err := time.LoadLocation(s.TimeLocation)
+		if err != nil {
+			return common.NewError("time location not exist:", s.TimeLocation)
+		}
+	}
+
+	if isPresent("dbType") && s.DBType != "" && s.DBType != "sqlite" && s.DBType != "mariadb" {
 		return common.NewError("db type must be sqlite or mariadb, got:", s.DBType)
 	}
-	if s.DBType == "mariadb" {
-		if s.DBHost == "" {
-			return common.NewError("db host is required for MariaDB")
-		}
-		if s.DBPort != "" {
-			port := 0
-			for _, c := range s.DBPort {
-				if c < '0' || c > '9' {
-					return common.NewError("db port is not a valid number:", s.DBPort)
-				}
-				port = port*10 + int(c-'0')
+	if isPresent("dbType") || isPresent("dbHost") || isPresent("dbPort") {
+		if s.DBType == "mariadb" {
+			if s.DBHost == "" {
+				return common.NewError("db host is required for MariaDB")
 			}
-			if port <= 0 || port > math.MaxUint16 {
-				return common.NewError("db port is not a valid port:", s.DBPort)
+			if s.DBPort != "" {
+				port := 0
+				for _, c := range s.DBPort {
+					if c < '0' || c > '9' {
+						return common.NewError("db port is not a valid number:", s.DBPort)
+					}
+					port = port*10 + int(c-'0')
+				}
+				if port <= 0 || port > math.MaxUint16 {
+					return common.NewError("db port is not a valid port:", s.DBPort)
+				}
 			}
 		}
 	}
