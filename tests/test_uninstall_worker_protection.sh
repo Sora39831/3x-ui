@@ -43,6 +43,20 @@ is_node_role_configured() {
         local found
         found=$(jq -r 'if .node.nodeRole then "yes" elif .other.nodeRole then "yes" elif .nodeRole then "yes" else "no" end' "$json_path" 2>/dev/null)
         [[ "$found" == "yes" ]] && return 0 || return 1
+    elif command -v python3 >/dev/null 2>&1; then
+        local found
+        found=$(python3 -c "
+import json
+try:
+    with open('$json_path') as f:
+        data = json.load(f)
+    if data.get('node', {}).get('nodeRole') or data.get('other', {}).get('nodeRole') or data.get('nodeRole'):
+        print('yes')
+    else:
+        print('no')
+except: print('no')
+" 2>/dev/null)
+        [[ "$found" == "yes" ]] && return 0 || return 1
     else
         grep -q '"nodeRole"' "$json_path" 2>/dev/null && return 0 || return 1
     fi

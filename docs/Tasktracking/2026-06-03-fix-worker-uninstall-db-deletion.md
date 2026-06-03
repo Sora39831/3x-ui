@@ -17,12 +17,13 @@ User reported: uninstalling the 3x-ui panel on a worker node server with the "de
 
 ### x-ui.sh
 
-- **fix `get_node_setting`**: Added `.node.*` as the first fallback in jq expressions and grep fallbacks, aligning with Go's `settingGroupAliases` order (`"node"` → `"other"`)
-- **add `is_node_role_configured()`**: New helper function that checks whether `nodeRole` exists in config file (vs. being a default value), checking all three locations: `.node.nodeRole`, `.other.nodeRole`, `.nodeRole`
+- **fix `get_node_setting`**: Added `.node.*` as the first fallback in jq expressions, aligning with Go's `settingGroupAliases` order (`"node"` → `"other"`). Added python3 fallback for proper JSON parsing when jq is unavailable. Fixed grep fallback from `tail -1` (always picks `"other"` group's default due to alphabetical key ordering) to `head -1` (picks `"node"` group).
+- **add `is_node_role_configured()`**: New helper function that checks whether `nodeRole` exists in config file (vs. being a default value), checking all three locations: `.node.nodeRole`, `.other.nodeRole`, `.nodeRole`. Supports jq, python3, and grep fallbacks.
 - **fix `uninstall()` — worker node guard**: Worker nodes now skip database deletion entirely with a clear message, without even prompting the user. This is the primary fix.
 - **fix `uninstall()` — remote host guard**: Remote MariaDB (non-localhost `db_host`) is detected before localhost check and skipped without prompting
 - **fix `uninstall()` — unconfigured nodeRole warning**: When `nodeRole` was never explicitly set and `db_host` is localhost, an extra warning is shown before the deletion prompt
 - **fix `uninstall()` — secondary confirmation**: When deleting a localhost MariaDB database, a secondary confirmation now shows the exact database name, username, and target address before proceeding
+- **cleanup `show_node_status()`**: Removed unnecessary double-quote escaping in default values (was a workaround for old broken grep fallback)
 
 ### install.sh
 

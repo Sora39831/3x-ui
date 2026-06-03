@@ -190,6 +190,20 @@ is_node_role_configured() {
         local found
         found=$(jq -r 'if .node.nodeRole then "yes" elif .other.nodeRole then "yes" elif .nodeRole then "yes" else "no" end' "$json_path" 2>/dev/null)
         [[ "$found" == "yes" ]] && return 0 || return 1
+    elif command -v python3 >/dev/null 2>&1; then
+        local found
+        found=$(python3 -c "
+import json
+try:
+    with open('$json_path') as f:
+        data = json.load(f)
+    if data.get('node', {}).get('nodeRole') or data.get('other', {}).get('nodeRole') or data.get('nodeRole'):
+        print('yes')
+    else:
+        print('no')
+except: print('no')
+" 2>/dev/null)
+        [[ "$found" == "yes" ]] && return 0 || return 1
     else
         grep -q '"nodeRole"' "$json_path" 2>/dev/null && return 0 || return 1
     fi
@@ -2575,18 +2589,73 @@ get_node_setting() {
         return
     fi
 
+    # jq not available — try python3 for proper JSON parsing, then fall back to grep
+    if command -v python3 >/dev/null 2>&1; then
+        case "$key" in
+        ".nodeRole")
+            python3 -c "
+import json, sys
+try:
+    with open('$json_path') as f:
+        data = json.load(f)
+    v = data.get('node', {}).get('nodeRole') or data.get('other', {}).get('nodeRole') or data.get('nodeRole') or '$default_value'
+    print(v)
+except: print('$default_value')
+" 2>/dev/null
+            ;;
+        ".nodeId")
+            python3 -c "
+import json, sys
+try:
+    with open('$json_path') as f:
+        data = json.load(f)
+    v = data.get('node', {}).get('nodeId') or data.get('other', {}).get('nodeId') or data.get('nodeId') or '$default_value'
+    print(v)
+except: print('$default_value')
+" 2>/dev/null
+            ;;
+        ".syncInterval")
+            python3 -c "
+import json, sys
+try:
+    with open('$json_path') as f:
+        data = json.load(f)
+    v = data.get('node', {}).get('syncInterval') or data.get('other', {}).get('syncInterval') or data.get('syncInterval') or '$default_value'
+    print(v)
+except: print('$default_value')
+" 2>/dev/null
+            ;;
+        ".trafficFlushInterval")
+            python3 -c "
+import json, sys
+try:
+    with open('$json_path') as f:
+        data = json.load(f)
+    v = data.get('node', {}).get('trafficFlushInterval') or data.get('other', {}).get('trafficFlushInterval') or data.get('trafficFlushInterval') or '$default_value'
+    print(v)
+except: print('$default_value')
+" 2>/dev/null
+            ;;
+        *)
+            echo "$default_value"
+            ;;
+        esac
+        return
+    fi
+
+    # Last resort: grep (best-effort, prefers first match since Go sorts keys alphabetically)
     case "$key" in
     ".nodeRole")
-        (grep -o '"nodeRole"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null || true) | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' | grep -v '^$' || echo "$default_value"
+        (grep -o '"nodeRole"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null || true) | head -1 | sed 's/.*"\([^"]*\)"$/\1/' | grep -v '^$' || echo "$default_value"
         ;;
     ".nodeId")
-        (grep -o '"nodeId"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null || true) | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' | grep -v '^$' || echo "$default_value"
+        (grep -o '"nodeId"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null || true) | head -1 | sed 's/.*"\([^"]*\)"$/\1/' | grep -v '^$' || echo "$default_value"
         ;;
     ".syncInterval")
-        (grep -o '"syncInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null || true) | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' | grep -v '^$' || echo "$default_value"
+        (grep -o '"syncInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null || true) | head -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' | grep -v '^$' || echo "$default_value"
         ;;
     ".trafficFlushInterval")
-        (grep -o '"trafficFlushInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null || true) | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' | grep -v '^$' || echo "$default_value"
+        (grep -o '"trafficFlushInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null || true) | head -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' | grep -v '^$' || echo "$default_value"
         ;;
     *)
         echo "$default_value"
@@ -2600,10 +2669,10 @@ show_node_status() {
     local sync_interval
     local flush_interval
 
-    node_role=$(get_node_setting '.nodeRole' '"master"' | tr -d '"')
-    node_id=$(get_node_setting '.nodeId' '""' | tr -d '"')
-    sync_interval=$(get_node_setting '.syncInterval' '30' | tr -d '"')
-    flush_interval=$(get_node_setting '.trafficFlushInterval' '10' | tr -d '"')
+    node_role=$(get_node_setting '.nodeRole' 'master')
+    node_id=$(get_node_setting '.nodeId' '')
+    sync_interval=$(get_node_setting '.syncInterval' '30')
+    flush_interval=$(get_node_setting '.trafficFlushInterval' '10')
 
     echo -e "${green}节点角色: ${node_role:-master}${plain}"
     echo -e "${green}节点 ID: ${node_id:-<empty>}${plain}"
