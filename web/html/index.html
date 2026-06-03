@@ -345,10 +345,10 @@
         <div class="mt-10">
           <h4 class="mb-5">{{ i18n "pages.index.geofileScheduleTitle" }}</h4>
           <a-form layout="inline">
-            <a-form-item :label='{{ i18n "pages.index.geofileScheduleEnable" }}'>
+            <a-form-item :label="'{{ i18n "pages.index.geofileScheduleEnable" }}'">
               <a-switch v-model="geofileUpdateEnabled" @change="saveGeofileSchedule" />
             </a-form-item>
-            <a-form-item :label='{{ i18n "pages.index.geofileScheduleFrequency" }}'>
+            <a-form-item :label="'{{ i18n "pages.index.geofileScheduleFrequency" }}'">
               <a-select v-model="geofileUpdateFrequency" style="width: 160px" @change="saveGeofileSchedule"
                 :dropdown-class-name="themeSwitcher.currentTheme">
                 <a-select-option value="hourly">{{ i18n "pages.index.geofileScheduleHourly" }}</a-select-option>
@@ -358,7 +358,7 @@
               </a-select>
             </a-form-item>
             <a-form-item v-if="geofileUpdateFrequency === 'daily' || geofileUpdateFrequency === 'weekly'"
-              :label='{{ i18n "pages.index.geofileScheduleHour" }}'>
+              :label="'{{ i18n "pages.index.geofileScheduleHour" }}'">
               <a-select v-model="geofileUpdateHour" style="width: 80px" @change="saveGeofileSchedule"
                 :dropdown-class-name="themeSwitcher.currentTheme">
                 <a-select-option v-for="h in 24" :key="h-1" :value="h-1">[[ h-1 ]]</a-select-option>
