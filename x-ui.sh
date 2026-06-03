@@ -179,6 +179,22 @@ delete_script() {
     exit 1
 }
 
+# Check whether nodeRole is explicitly configured in x-ui.json (not just defaulted).
+# Returns 0 if nodeRole exists in the config file, 1 otherwise.
+is_node_role_configured() {
+    local json_path="/etc/x-ui/x-ui.json"
+    if [ ! -f "$json_path" ]; then
+        return 1
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        local found
+        found=$(jq -r 'if .node.nodeRole then "yes" elif .other.nodeRole then "yes" elif .nodeRole then "yes" else "no" end' "$json_path" 2>/dev/null)
+        [[ "$found" == "yes" ]] && return 0 || return 1
+    else
+        grep -q '"nodeRole"' "$json_path" 2>/dev/null && return 0 || return 1
+    fi
+}
+
 uninstall() {
     confirm "确定要卸载面板吗？xray 也会被卸载！" "n"
     if [[ $? != 0 ]]; then
@@ -209,7 +225,16 @@ uninstall() {
     local db_port=""
     local db_name=""
     local db_user=""
+    local node_role=""
+    local node_role_configured=false
     local delete_db_confirmed=1
+
+    # Read node role to prevent worker nodes from deleting the shared database.
+    node_role=$(get_node_setting '.nodeRole' 'master')
+    if is_node_role_configured; then
+        node_role_configured=true
+    fi
+
     current_db_type=$(read_json_dbtype)
     if [[ "$current_db_type" == "mariadb" ]]; then
         local json_path="/etc/x-ui/x-ui.json"
@@ -228,16 +253,39 @@ uninstall() {
         db_port="${db_port:-3306}"
         db_name="${db_name:-3xui}"
 
-        echo -e "${yellow}检测到当前数据库类型为 MariaDB (${db_host}:${db_port}/${db_name})${plain}"
-        confirm "是否删除数据库并卸载本机 MariaDB？" "n"
-        delete_db_confirmed=$?
+        # Worker nodes share the master's database. Never allow deletion on a worker.
+        if [[ "$node_role" == "worker" ]]; then
+            echo -e "${yellow}当前节点已配置为 Worker 节点，使用共享数据库 (${db_host}:${db_port}/${db_name})${plain}"
+            echo -e "${yellow}Worker 节点卸载不会删除数据库，以保护主节点数据安全。${plain}"
+        elif [[ "$db_host" != "127.0.0.1" && "$db_host" != "localhost" && "$db_host" != "::1" ]]; then
+            # Remote MariaDB — always safe, skip deletion without asking
+            echo -e "${yellow}当前 MariaDB 为远程地址 (${db_host}:${db_port}/${db_name})，跳过数据库删除与本机 MariaDB 卸载${plain}"
+        else
+            # Localhost MariaDB on a master (or unconfigured) node
+            echo -e "${yellow}检测到当前数据库类型为 MariaDB (${db_host}:${db_port}/${db_name})${plain}"
 
-        if [[ $delete_db_confirmed == 0 ]]; then
-            if [[ "$db_host" == "127.0.0.1" || "$db_host" == "localhost" || "$db_host" == "::1" ]]; then
-                remove_local_mariadb_data "$db_port" "$db_name" "$db_user"
-                uninstall_local_mariadb_packages
-            else
-                echo -e "${yellow}当前 MariaDB 为远程地址 (${db_host})，跳过数据库删除与本机 MariaDB 卸载${plain}"
+            # Warn if nodeRole was never explicitly set — the user may have
+            # forgotten to configure this as a worker node.
+            if [[ "$node_role_configured" != "true" ]]; then
+                echo -e "${yellow}⚠ 注意：当前未显式配置节点角色（默认 master）${plain}"
+                echo -e "${yellow}如果此节点实际为 Worker 节点且共享主节点数据库，删除将影响主节点！${plain}"
+            fi
+
+            confirm "是否删除数据库并卸载本机 MariaDB？" "n"
+            delete_db_confirmed=$?
+
+            if [[ $delete_db_confirmed == 0 ]]; then
+                # Secondary confirmation with explicit database details
+                echo -e "${red}⚠ 警告：即将删除 MariaDB 中的数据库 '${db_name}' 及业务用户 '${db_user}'${plain}"
+                echo -e "${red}   目标地址：${db_host}:${db_port}${plain}"
+                echo -e "${red}   此操作不可逆！请确认这是正确的数据库实例！${plain}"
+                confirm "确认删除？" "n"
+                if [[ $? == 0 ]]; then
+                    remove_local_mariadb_data "$db_port" "$db_name" "$db_user"
+                    uninstall_local_mariadb_packages
+                else
+                    echo -e "${yellow}已取消数据库删除。${plain}"
+                fi
             fi
         fi
     fi
@@ -2508,16 +2556,16 @@ get_node_setting() {
     if command -v jq >/dev/null 2>&1; then
         case "$key" in
         ".nodeRole")
-            jq_expr='.other.nodeRole // .nodeRole // "master"'
+            jq_expr='.node.nodeRole // .other.nodeRole // .nodeRole // "master"'
             ;;
         ".nodeId")
-            jq_expr='.other.nodeId // .nodeId // ""'
+            jq_expr='.node.nodeId // .other.nodeId // .nodeId // ""'
             ;;
         ".syncInterval")
-            jq_expr='.other.syncInterval // .syncInterval // "30"'
+            jq_expr='.node.syncInterval // .other.syncInterval // .syncInterval // "30"'
             ;;
         ".trafficFlushInterval")
-            jq_expr='.other.trafficFlushInterval // .trafficFlushInterval // "10"'
+            jq_expr='.node.trafficFlushInterval // .other.trafficFlushInterval // .trafficFlushInterval // "10"'
             ;;
         *)
             jq_expr="$key // $default_value"
@@ -2529,16 +2577,16 @@ get_node_setting() {
 
     case "$key" in
     ".nodeRole")
-        grep -o '"nodeRole"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        (grep -o '"nodeRole"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null || true) | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' | grep -v '^$' || echo "$default_value"
         ;;
     ".nodeId")
-        grep -o '"nodeId"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "$default_value"
+        (grep -o '"nodeId"[[:space:]]*:[[:space:]]*"[^"]*"' "$json_path" 2>/dev/null || true) | tail -1 | sed 's/.*"\([^"]*\)"$/\1/' | grep -v '^$' || echo "$default_value"
         ;;
     ".syncInterval")
-        grep -o '"syncInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' || echo "$default_value"
+        (grep -o '"syncInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null || true) | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' | grep -v '^$' || echo "$default_value"
         ;;
     ".trafficFlushInterval")
-        grep -o '"trafficFlushInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' || echo "$default_value"
+        (grep -o '"trafficFlushInterval"[[:space:]]*:[[:space:]]*[^,}]*' "$json_path" 2>/dev/null || true) | tail -1 | awk -F': ' '{print $2}' | tr -d '[:space:]' | grep -v '^$' || echo "$default_value"
         ;;
     *)
         echo "$default_value"

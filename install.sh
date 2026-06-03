@@ -1380,14 +1380,19 @@ config_after_install() {
             esac
 
             if [[ "${mariadb_mode}" == "remote" ]]; then
-                read -rp "远程 MariaDB host [127.0.0.1]: " db_host
+                while [[ -z "$db_host" ]]; do
+                    read -rp "远程 MariaDB host（必填，例如 192.168.1.100）: " db_host
+                    db_host="${db_host// /}"
+                    if [[ -z "$db_host" ]]; then
+                        echo -e "${red}远程 MariaDB 地址不能为空${plain}"
+                    fi
+                done
                 read -rp "远程 MariaDB port [3306]: " db_port
                 read -rp "业务数据库名 [3xui]: " db_name
                 read -rp "业务用户名: " db_user
                 read -rsp "业务密码: " db_pass
                 echo
 
-                db_host="${db_host:-127.0.0.1}"
                 db_port="${db_port:-3306}"
                 db_name="${db_name:-3xui}"
                 while ! [[ "${db_port}" =~ ^[0-9]+$ ]] || ((db_port < 1 || db_port > 65535)); do
