@@ -504,26 +504,6 @@
           this.oldXrayOverride = this.xrayOverride;
         }
       },
-      initOverrideEditor() {
-        if (this.cmOverride) {
-          this.cmOverride.toTextArea();
-          this.cmOverride = null;
-        }
-        const textAreaObj = document.getElementById('xrayOverride');
-        if (!textAreaObj) return;
-        textAreaObj.value = this.xrayOverride;
-        this.cmOverride = CodeMirror.fromTextArea(textAreaObj, {
-          ...this.cmOptions,
-          mode: "application/json",
-          lint: true,
-        });
-        this.cmOverride.on('change', editor => {
-          const value = editor.getValue();
-          if (this.isJsonString(value)) {
-            this.xrayOverride = value;
-          }
-        });
-      },
       changeOverrideCode() {
         if (this.cmOverride) {
           this.cmOverride.toTextArea();
