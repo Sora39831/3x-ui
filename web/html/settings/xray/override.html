@@ -1,8 +1,11 @@
 {{define "settings/xray/override"}}
 <a-space direction="vertical" size="small" :style="{ marginTop: '20px' }">
-    <a-alert type="info" show-icon
-        message='{{ i18n "pages.xray.overrideDesc" }}'
-        :style="{ marginBottom: '16px' }" />
+    <a-list-item-meta title='{{ i18n "pages.xray.overrideTitle"}}'
+        description='{{ i18n "pages.xray.overrideDesc" }}'></a-list-item-meta>
+    <a-radio-group v-model="advOverrideSettings" button-style="solid" :style="{ margin: '10px 0' }"
+        :size="isMobile ? 'small' : ''">
+        <a-radio-button value="xrayOverride">{{ i18n "pages.xray.overrideTemplate"}}</a-radio-button>
+    </a-radio-group>
     <textarea :style="{ position: 'absolute', left: '-800px' }" id="xrayOverride"></textarea>
 </a-space>
 {{end}}

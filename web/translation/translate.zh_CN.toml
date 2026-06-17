@@ -587,6 +587,8 @@
 "statsOutboundDownlinkDesc" = "启用所有出站代理的下行流量统计收集。"
 "override" = "本地覆写"
 "overrideDesc" = "此配置仅在本节点生效，不参与同步。填入后将在每次同步配置时覆盖对应的模板配置项。留空即不使用覆写。"
+"overrideTitle" = "本地 Xray 配置覆写"
+"overrideTemplate" = "覆写"
 
 [pages.xray.rules]
 "first" = "置顶"

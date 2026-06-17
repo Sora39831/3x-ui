@@ -288,6 +288,7 @@
       oldServers: '',
       xrayOverride: '',
       oldXrayOverride: '',
+      advOverrideSettings: 'xrayOverride',
       currentTab: 'tpl-basic',
       cm: null,
       cmOptions: {
@@ -547,7 +548,7 @@
         this.currentTab = pageKey;
         if (pageKey == 'tpl-advanced') this.changeCode();
         if (pageKey == 'tpl-balancer') this.changeObsCode();
-        if (pageKey == 'tpl-override') this.$nextTick(() => this.initOverrideEditor());
+        if (pageKey == 'tpl-override') this.initOverrideEditor();
       },
       syncRulesWithOutbound(tag, setting) {
         const newTemplateSettings = this.templateSettings;
