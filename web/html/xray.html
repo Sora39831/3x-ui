@@ -426,7 +426,13 @@
       async updateXraySetting() {
         this.loading(true);
         if (this.currentTab === 'tpl-override') {
-          await this.saveXrayOverride();
+          if (this.advOverrideSettings === 'clashTemplate') {
+            await this.saveClashTemplate();
+          } else if (this.advOverrideSettings === 'servers') {
+            await this.saveServers();
+          } else {
+            await this.saveXrayOverride();
+          }
           this.loading(false);
           return;
         }
@@ -518,6 +524,27 @@
           }
         });
       },
+      changeOverrideCode() {
+        if (this.cmOverride) {
+          this.cmOverride.toTextArea();
+          this.cmOverride = null;
+        }
+        const textAreaObj = document.getElementById('xrayOverride');
+        if (!textAreaObj) return;
+        textAreaObj.value = this[this.advOverrideSettings];
+        const isYaml = this.advOverrideSettings === 'clashTemplate' || this.advOverrideSettings === 'servers';
+        const options = Object.assign({}, this.cmOptions, {
+          mode: isYaml ? "text/x-yaml" : "application/json",
+          lint: !isYaml,
+        });
+        this.cmOverride = CodeMirror.fromTextArea(textAreaObj, options);
+        this.cmOverride.on('change', editor => {
+          const value = editor.getValue();
+          if (isYaml || this.isJsonString(value)) {
+            this[this.advOverrideSettings] = value;
+          }
+        });
+      },
       async restartXray() {
         this.loading(true);
         const msg = await HttpUtil.post("/panel/api/server/restartXrayService");
@@ -548,7 +575,7 @@
         this.currentTab = pageKey;
         if (pageKey == 'tpl-advanced') this.changeCode();
         if (pageKey == 'tpl-balancer') this.changeObsCode();
-        if (pageKey == 'tpl-override') this.initOverrideEditor();
+        if (pageKey == 'tpl-override') this.changeOverrideCode();
       },
       syncRulesWithOutbound(tag, setting) {
         const newTemplateSettings = this.templateSettings;
@@ -1265,6 +1292,43 @@
           const newTemplateSettings = this.templateSettings;
           newTemplateSettings.routing.rules = JSON.parse(newValue);
           this.templateSettings = newTemplateSettings;
+        },
+      },
+      templateOverrideSettings: {
+        get: function () {
+          return this.xrayOverride ? JSON.parse(this.xrayOverride) : null;
+        },
+        set: function (newValue) {
+          if (newValue) {
+            this.xrayOverride = JSON.stringify(newValue, null, 2);
+          }
+        },
+      },
+      overrideInboundSettings: {
+        get: function () { return this.templateOverrideSettings ? JSON.stringify(this.templateOverrideSettings.inbounds, null, 2) : null; },
+        set: function (newValue) {
+          const newTemplateOverride = this.templateOverrideSettings;
+          newTemplateOverride.inbounds = JSON.parse(newValue);
+          this.templateOverrideSettings = newTemplateOverride;
+        },
+      },
+      overrideOutboundSettings: {
+        get: function () { return this.templateOverrideSettings ? JSON.stringify(this.templateOverrideSettings.outbounds, null, 2) : null; },
+        set: function (newValue) {
+          const newTemplateOverride = this.templateOverrideSettings;
+          newTemplateOverride.outbounds = JSON.parse(newValue);
+          this.templateOverrideSettings = newTemplateOverride;
+        },
+      },
+      overrideRoutingRuleSettings: {
+        get: function () { return this.templateOverrideSettings && this.templateOverrideSettings.routing ? JSON.stringify(this.templateOverrideSettings.routing.rules, null, 2) : null; },
+        set: function (newValue) {
+          const newTemplateOverride = this.templateOverrideSettings;
+          if (!newTemplateOverride.routing) {
+            newTemplateOverride.routing = {};
+          }
+          newTemplateOverride.routing.rules = JSON.parse(newValue);
+          this.templateOverrideSettings = newTemplateOverride;
         },
       },
       routingRuleData: {
