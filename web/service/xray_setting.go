@@ -21,6 +21,19 @@ func (s *XraySettingService) SaveXraySetting(newXraySettings string) error {
 	return saveXrayTemplateConfigToDB(newXraySettings)
 }
 
+func (s *XraySettingService) SaveXrayOverride(override string) error {
+	if override != "" {
+		if err := s.CheckXrayConfig(override); err != nil {
+			return err
+		}
+	}
+	return saveXrayTemplateOverrideToFile(override)
+}
+
+func (s *XraySettingService) GetXrayOverride() (string, error) {
+	return getXrayTemplateOverrideFromFile()
+}
+
 func (s *XraySettingService) CheckXrayConfig(XrayTemplateConfig string) error {
 	xrayConfig := &xray.Config{}
 	err := json.Unmarshal([]byte(XrayTemplateConfig), xrayConfig)

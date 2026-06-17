@@ -178,11 +178,38 @@ func normalizeInboundForXray(inbound *model.Inbound) error {
 	return nil
 }
 
+// mergeXrayConfig merges an override JSON into a base JSON by replacing top-level keys.
+// Keys present in the override replace the corresponding keys in the base.
+func mergeXrayConfig(baseJSON, overrideJSON string) (string, error) {
+	base := map[string]json.RawMessage{}
+	if err := json.Unmarshal([]byte(baseJSON), &base); err != nil {
+		return "", err
+	}
+	override := map[string]json.RawMessage{}
+	if err := json.Unmarshal([]byte(overrideJSON), &override); err != nil {
+		return "", err
+	}
+	for k, v := range override {
+		base[k] = v
+	}
+	result, err := json.Marshal(base)
+	return string(result), err
+}
+
 // BuildConfigFromInbounds builds Xray config from an explicit inbound list.
 func (s *XrayService) BuildConfigFromInbounds(inbounds []*model.Inbound) (*xray.Config, error) {
 	templateConfig, err := s.settingService.GetXrayConfigTemplate()
 	if err != nil {
 		return nil, err
+	}
+
+	override, overrideErr := getXrayTemplateOverrideFromFile()
+	if overrideErr == nil && override != "" {
+		merged, mergeErr := mergeXrayConfig(templateConfig, override)
+		if mergeErr != nil {
+			return nil, mergeErr
+		}
+		templateConfig = merged
 	}
 
 	xrayConfig := &xray.Config{}

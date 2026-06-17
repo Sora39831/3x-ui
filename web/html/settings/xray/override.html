@@ -1,0 +1,8 @@
+{{define "settings/xray/override"}}
+<a-space direction="vertical" size="small" :style="{ marginTop: '20px' }">
+    <a-alert type="info" show-icon
+        message='{{ i18n "pages.xray.overrideDesc" }}'
+        :style="{ marginBottom: '16px' }" />
+    <textarea :style="{ position: 'absolute', left: '-800px' }" id="xrayOverride"></textarea>
+</a-space>
+{{end}}

@@ -139,6 +139,11 @@ func GetServersPath() string {
 	return filepath.Join(GetDBFolderPath(), "servers.yaml")
 }
 
+// GetXrayOverridePath returns the path to the xray-override.json file.
+func GetXrayOverridePath() string {
+	return filepath.Join(GetDBFolderPath(), "xray-override.json")
+}
+
 // ReadClashTemplate reads the clash template from disk.
 // Returns the default mihomo template if the file does not exist.
 func ReadClashTemplate() (string, error) {

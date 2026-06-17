@@ -132,6 +132,14 @@
                   </template>
                   {{ template "settings/xray/dns" . }}
                 </a-tab-pane>
+                <a-tab-pane key="tpl-override" :style="{ paddingTop: '20px' }"
+                  force-render="true">
+                  <template #tab>
+                    <a-icon type="edit"></a-icon>
+                    <span>{{ i18n "pages.xray.override"}}</span>
+                  </template>
+                  {{ template "settings/xray/override" . }}
+                </a-tab-pane>
                 <a-tab-pane key="tpl-advanced" force-render="true">
                   <template #tab>
                     <a-icon type="code"></a-icon>
@@ -278,6 +286,9 @@
       oldClashTemplate: '',
       servers: '',
       oldServers: '',
+      xrayOverride: '',
+      oldXrayOverride: '',
+      currentTab: 'tpl-basic',
       cm: null,
       cmOptions: {
         lineNumbers: true,
@@ -413,6 +424,11 @@
       },
       async updateXraySetting() {
         this.loading(true);
+        if (this.currentTab === 'tpl-override') {
+          await this.saveXrayOverride();
+          this.loading(false);
+          return;
+        }
         if (this.advSettings === 'clashTemplate') {
           await this.saveClashTemplate();
         } else if (this.advSettings === 'servers') {
@@ -464,6 +480,43 @@
           this.oldServers = this.servers;
         }
       },
+      async getXrayOverride() {
+        const msg = await HttpUtil.get("/panel/xray/override");
+        if (msg.success) {
+          this.xrayOverride = msg.obj || '';
+          this.oldXrayOverride = this.xrayOverride;
+        }
+      },
+      async saveXrayOverride() {
+        this.loading(true);
+        const msg = await HttpUtil.post("/panel/xray/override", {
+          override: this.xrayOverride
+        });
+        this.loading(false);
+        if (msg.success) {
+          this.oldXrayOverride = this.xrayOverride;
+        }
+      },
+      initOverrideEditor() {
+        if (this.cmOverride) {
+          this.cmOverride.toTextArea();
+          this.cmOverride = null;
+        }
+        const textAreaObj = document.getElementById('xrayOverride');
+        if (!textAreaObj) return;
+        textAreaObj.value = this.xrayOverride;
+        this.cmOverride = CodeMirror.fromTextArea(textAreaObj, {
+          ...this.cmOptions,
+          mode: "application/json",
+          lint: true,
+        });
+        this.cmOverride.on('change', editor => {
+          const value = editor.getValue();
+          if (this.isJsonString(value)) {
+            this.xrayOverride = value;
+          }
+        });
+      },
       async restartXray() {
         this.loading(true);
         const msg = await HttpUtil.post("/panel/api/server/restartXrayService");
@@ -491,8 +544,10 @@
         }
       },
       changePage(pageKey) {
+        this.currentTab = pageKey;
         if (pageKey == 'tpl-advanced') this.changeCode();
         if (pageKey == 'tpl-balancer') this.changeObsCode();
+        if (pageKey == 'tpl-override') this.$nextTick(() => this.initOverrideEditor());
       },
       syncRulesWithOutbound(tag, setting) {
         const newTemplateSettings = this.templateSettings;
@@ -1121,6 +1176,7 @@
         await this.getOutboundsTraffic();
         await this.getClashTemplate();
         await this.getServers();
+        await this.getXrayOverride();
       } finally {
         this.loadingStates.fetched = true;
       }
@@ -1141,7 +1197,8 @@
       while (true) {
         await PromiseUtil.sleep(800);
         this.saveBtnDisable = this.oldXraySetting === this.xraySetting && this.oldOutboundTestUrl === this.outboundTestUrl
-          && this.oldClashTemplate === this.clashTemplate && this.oldServers === this.servers;
+          && this.oldClashTemplate === this.clashTemplate && this.oldServers === this.servers
+          && this.oldXrayOverride === this.xrayOverride;
       }
     },
     computed: {

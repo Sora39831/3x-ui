@@ -551,6 +551,24 @@ func saveXrayTemplateConfigToDB(value string) error {
 	}).Error
 }
 
+// saveXrayTemplateOverrideToFile writes the Xray template override to a local JSON file.
+func saveXrayTemplateOverrideToFile(data string) error {
+	return os.WriteFile(config.GetXrayOverridePath(), []byte(data), 0644)
+}
+
+// getXrayTemplateOverrideFromFile reads the Xray template override from the local JSON file.
+// Returns an empty string with no error if the file does not exist.
+func getXrayTemplateOverrideFromFile() (string, error) {
+	data, err := os.ReadFile(config.GetXrayOverridePath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return string(data), nil
+}
+
 // SettingService provides business logic for application settings management.
 // It handles configuration storage, retrieval, and validation for all system settings.
 type SettingService struct{}

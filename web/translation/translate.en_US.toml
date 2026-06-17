@@ -585,6 +585,8 @@
 "statsOutboundUplinkDesc" = "Enables the statistics collection for upstream traffic of all outbound proxies."
 "statsOutboundDownlink" = "Outbound Download Statistics"
 "statsOutboundDownlinkDesc" = "Enables the statistics collection for downstream traffic of all outbound proxies."
+"override" = "Local Override"
+"overrideDesc" = "This configuration applies only to this node and does not sync. Filled sections will override the corresponding template config after each sync. Leave empty to disable."
 
 [pages.xray.rules]
 "first" = "First"
