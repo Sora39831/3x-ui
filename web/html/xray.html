@@ -520,7 +520,7 @@
         this.cmOverride = CodeMirror.fromTextArea(textAreaObj, options);
         this.cmOverride.on('change', editor => {
           const value = editor.getValue();
-          if (isYaml || this.isJsonString(value)) {
+          if (value === '' || isYaml || this.isJsonString(value)) {
             this[this.advOverrideSettings] = value;
           }
         });
@@ -1291,7 +1291,11 @@
         get: function () { return this.templateOverrideSettings.inbounds ? JSON.stringify(this.templateOverrideSettings.inbounds, null, 2) : ''; },
         set: function (newValue) {
           const newTemplateOverride = this.templateOverrideSettings;
-          newTemplateOverride.inbounds = JSON.parse(newValue);
+          if (!newValue || !newValue.trim()) {
+            delete newTemplateOverride.inbounds;
+          } else {
+            newTemplateOverride.inbounds = JSON.parse(newValue);
+          }
           this.templateOverrideSettings = newTemplateOverride;
         },
       },
@@ -1299,7 +1303,11 @@
         get: function () { return this.templateOverrideSettings.outbounds ? JSON.stringify(this.templateOverrideSettings.outbounds, null, 2) : ''; },
         set: function (newValue) {
           const newTemplateOverride = this.templateOverrideSettings;
-          newTemplateOverride.outbounds = JSON.parse(newValue);
+          if (!newValue || !newValue.trim()) {
+            delete newTemplateOverride.outbounds;
+          } else {
+            newTemplateOverride.outbounds = JSON.parse(newValue);
+          }
           this.templateOverrideSettings = newTemplateOverride;
         },
       },
@@ -1307,10 +1315,19 @@
         get: function () { return this.templateOverrideSettings.routing && this.templateOverrideSettings.routing.rules ? JSON.stringify(this.templateOverrideSettings.routing.rules, null, 2) : ''; },
         set: function (newValue) {
           const newTemplateOverride = this.templateOverrideSettings;
-          if (!newTemplateOverride.routing) {
-            newTemplateOverride.routing = {};
+          if (!newValue || !newValue.trim()) {
+            if (newTemplateOverride.routing) {
+              delete newTemplateOverride.routing.rules;
+              if (Object.keys(newTemplateOverride.routing).length === 0) {
+                delete newTemplateOverride.routing;
+              }
+            }
+          } else {
+            if (!newTemplateOverride.routing) {
+              newTemplateOverride.routing = {};
+            }
+            newTemplateOverride.routing.rules = JSON.parse(newValue);
           }
-          newTemplateOverride.routing.rules = JSON.parse(newValue);
           this.templateOverrideSettings = newTemplateOverride;
         },
       },

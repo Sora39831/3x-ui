@@ -2,7 +2,7 @@
 
 Date: 2026-06-17
 Related Module: web/service, web/controller, web/html, config, xray
-Change Type: Add
+Change Type: Add, Fix
 
 ## Background
 Worker nodes sync ALL xray template configuration from master node via shared DB. There was no mechanism for a worker to maintain independent local configuration items (e.g., custom routing rules, DNS settings, log levels) that survive master syncs. Users needed per-worker configuration overrides that stay local.
@@ -14,8 +14,9 @@ Worker nodes sync ALL xray template configuration from master node via shared DB
 - **web/service/xray.go**: Added `mergeXrayConfig()` (top-level key replacement merge). Modified `BuildConfigFromInbounds()` to load local override and merge before building xray.Config
 - **web/controller/xray_setting.go**: Added `GET /panel/xray/override` and `POST /panel/xray/override` routes with handlers
 - **web/html/settings/xray/override.html**: New template with hidden textarea for CodeMirror binding (new template file)
-- **web/html/xray.html**: Added "Local Override" tab (`tpl-override`) with `force-render`, `currentTab` tracking, `xrayOverride`/`oldXrayOverride` data properties, `changePage` extension, `updateXraySetting` override branch, dirty-check extension, and `initOverrideEditor()`/`getXrayOverride()`/`saveXrayOverride()` methods
+- **web/html/xray.html**: Added "Local Override" tab (`tpl-override`) with `force-render`, `currentTab` tracking, `xrayOverride`/`oldXrayOverride` data properties, `changePage` extension, `updateXraySetting` override branch, dirty-check extension, and `changeOverrideCode()`/`getXrayOverride()`/`saveXrayOverride()` methods
 - **web/translation/*.toml**: Added `pages.xray.override` and `pages.xray.overrideDesc` in English and Chinese
+- **Bug fix (same day)**: Fixed CodeMirror override editor unable to clear content and trigger save. Root cause: (1) `change` handler rejected empty string via `isJsonString("")` check, so `xrayOverride` was never updated on clear; (2) sub-property setters (`overrideInboundSettings`/`overrideOutboundSettings`/`overrideRoutingRuleSettings`) crashed on `JSON.parse("")`. Fix: allow empty string in change handler; sub-property setters now `delete` the key when value is empty (cleaning up parent object for routing).
 
 ## Impact
 - **No sync impact**: Override save writes only local file, never bumps `shared_accounts_version` — other nodes unaffected
