@@ -1296,16 +1296,19 @@
       },
       templateOverrideSettings: {
         get: function () {
-          return this.xrayOverride ? JSON.parse(this.xrayOverride) : null;
+          if (!this.xrayOverride) return {};
+          try { return JSON.parse(this.xrayOverride); } catch (e) { return {}; }
         },
         set: function (newValue) {
-          if (newValue) {
+          if (newValue && Object.keys(newValue).length > 0) {
             this.xrayOverride = JSON.stringify(newValue, null, 2);
+          } else {
+            this.xrayOverride = '';
           }
         },
       },
       overrideInboundSettings: {
-        get: function () { return this.templateOverrideSettings ? JSON.stringify(this.templateOverrideSettings.inbounds, null, 2) : null; },
+        get: function () { return this.templateOverrideSettings.inbounds ? JSON.stringify(this.templateOverrideSettings.inbounds, null, 2) : ''; },
         set: function (newValue) {
           const newTemplateOverride = this.templateOverrideSettings;
           newTemplateOverride.inbounds = JSON.parse(newValue);
@@ -1313,7 +1316,7 @@
         },
       },
       overrideOutboundSettings: {
-        get: function () { return this.templateOverrideSettings ? JSON.stringify(this.templateOverrideSettings.outbounds, null, 2) : null; },
+        get: function () { return this.templateOverrideSettings.outbounds ? JSON.stringify(this.templateOverrideSettings.outbounds, null, 2) : ''; },
         set: function (newValue) {
           const newTemplateOverride = this.templateOverrideSettings;
           newTemplateOverride.outbounds = JSON.parse(newValue);
@@ -1321,7 +1324,7 @@
         },
       },
       overrideRoutingRuleSettings: {
-        get: function () { return this.templateOverrideSettings && this.templateOverrideSettings.routing ? JSON.stringify(this.templateOverrideSettings.routing.rules, null, 2) : null; },
+        get: function () { return this.templateOverrideSettings.routing && this.templateOverrideSettings.routing.rules ? JSON.stringify(this.templateOverrideSettings.routing.rules, null, 2) : ''; },
         set: function (newValue) {
           const newTemplateOverride = this.templateOverrideSettings;
           if (!newTemplateOverride.routing) {
