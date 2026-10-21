@@ -289,10 +289,12 @@ func (t *Tgbot) createRobustFastHTTPClient(proxyUrl string) *fasthttp.Client {
 		MaxConnWaitTimeout:            10 * time.Second,
 		DisableHeaderNamesNormalizing: false,
 		DisablePathNormalizing:        false,
-		// Retry on connection errors
-		RetryIf: func(request *fasthttp.Request) bool {
-			// Retry on connection errors for GET requests
-			return string(request.Header.Method()) == "GET" || string(request.Header.Method()) == "POST"
+		// Retry on connection errors for GET/POST requests. RetryIf is deprecated
+		// in fasthttp v1.69; RetryIfErr exposes the same decision plus a timeout
+		// reset flag.
+		RetryIfErr: func(request *fasthttp.Request, attempts int, err error) (bool, bool) {
+			method := string(request.Header.Method())
+			return false, method == "GET" || method == "POST"
 		},
 	}
 
