@@ -485,6 +485,9 @@ func (s *SubService) genVlessLink(inbound *model.Inbound, email string) string {
 					params["pqv"] = pqv
 				}
 			}
+			// Xray-core v26.9.8+ rejects REALITY handshakes that do not offer an
+			// X25519MLKEM768 key share; mihomo understands this URI hint on import.
+			params["support-x25519mlkem768"] = "true"
 			params["spx"] = "/" + random.Seq(15)
 		}
 
@@ -677,6 +680,9 @@ func (s *SubService) genTrojanLink(inbound *model.Inbound, email string) string 
 					params["pqv"] = pqv
 				}
 			}
+			// Xray-core v26.9.8+ rejects REALITY handshakes that do not offer an
+			// X25519MLKEM768 key share; mihomo understands this URI hint on import.
+			params["support-x25519mlkem768"] = "true"
 			params["spx"] = "/" + random.Seq(15)
 		}
 

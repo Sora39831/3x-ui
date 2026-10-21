@@ -306,6 +306,10 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 				if shortIds, ok := realitySetting["shortIds"].([]any); ok && len(shortIds) > 0 {
 					realityOpts += fmt.Sprintf("\n      short-id: %q", fmt.Sprintf("%v", shortIds[0]))
 				}
+				// Xray-core v26.9.8+ rejects REALITY ClientHello without an X25519MLKEM768
+				// key share, so mihomo/Clash must be told to send one. Without this the
+				// handshake is accepted at TCP level and the node silently times out.
+				realityOpts += "\n      support-x25519mlkem768: true"
 				parts = append(parts, realityOpts)
 			}
 			// Reality server names → servername
@@ -313,9 +317,12 @@ func (s *SubClashService) buildProxyEntry(inbound *model.Inbound, client model.C
 			if len(serverNames) > 0 {
 				parts = append(parts, fmt.Sprintf("servername: %q", fmt.Sprintf("%v", serverNames[0])))
 			}
-			// Fingerprint from reality settings inner
+			// Fingerprint from reality settings inner; ML-KEM key shares are only
+			// offered by recent uTLS fingerprints, so default to chrome when unset.
 			if fp, ok := realityInner["fingerprint"].(string); ok && fp != "" {
 				parts = append(parts, fmt.Sprintf("client-fingerprint: %q", fp))
+			} else {
+				parts = append(parts, "client-fingerprint: \"chrome\"")
 			}
 		} else {
 			// TLS settings

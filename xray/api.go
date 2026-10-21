@@ -142,21 +142,11 @@ func (x *XrayAPI) AddUser(Protocol string, inboundTag string, user map[string]an
 			Password: user["password"].(string),
 		})
 	case "shadowsocks":
-		var ssCipherType shadowsocks.CipherType
-		switch user["cipher"].(string) {
-		case "aes-128-gcm":
-			ssCipherType = shadowsocks.CipherType_AES_128_GCM
-		case "aes-256-gcm":
-			ssCipherType = shadowsocks.CipherType_AES_256_GCM
-		case "chacha20-poly1305", "chacha20-ietf-poly1305":
-			ssCipherType = shadowsocks.CipherType_CHACHA20_POLY1305
-		case "xchacha20-poly1305", "xchacha20-ietf-poly1305":
-			ssCipherType = shadowsocks.CipherType_XCHACHA20_POLY1305
-		default:
-			ssCipherType = shadowsocks.CipherType_NONE
-		}
-
-		if ssCipherType != shadowsocks.CipherType_NONE {
+		// xray-core v26.10 removed the CipherType_NONE sentinel; resolve the
+		// classic AEAD methods with an explicit ok flag and fall back to the
+		// Shadowsocks-2022 account for "none" / 2022-* methods.
+		ssCipherType, isClassicSS := shadowsocksCipherType(user["cipher"].(string))
+		if isClassicSS {
 			account = serial.ToTypedMessage(&shadowsocks.Account{
 				Password:   user["password"].(string),
 				CipherType: ssCipherType,
@@ -291,4 +281,21 @@ func mapToSlice[T any](m map[string]*T) []*T {
 		result = append(result, v)
 	}
 	return result
+}
+
+// shadowsocksCipherType maps a panel cipher name to the classic Shadowsocks
+// AEAD enum. ok is false for "none" and Shadowsocks-2022 methods, which are
+// represented by shadowsocks_2022.ServerConfig instead.
+func shadowsocksCipherType(cipher string) (shadowsocks.CipherType, bool) {
+	switch cipher {
+	case "aes-128-gcm":
+		return shadowsocks.CipherType_AES_128_GCM, true
+	case "aes-256-gcm":
+		return shadowsocks.CipherType_AES_256_GCM, true
+	case "chacha20-poly1305", "chacha20-ietf-poly1305":
+		return shadowsocks.CipherType_CHACHA20_POLY1305, true
+	case "xchacha20-poly1305", "xchacha20-ietf-poly1305":
+		return shadowsocks.CipherType_XCHACHA20_POLY1305, true
+	}
+	return shadowsocks.CipherType_AES_128_GCM, false
 }
