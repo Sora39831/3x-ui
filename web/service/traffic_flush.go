@@ -182,14 +182,12 @@ func (s *TrafficFlushService) flushToDatabase(deltas []TrafficDelta) error {
 			}
 		}
 
-		if IsMaster() {
-			needRestart, err := s.reconcileFn(tx)
-			if err != nil {
-				return err
-			}
-			if needRestart && s.markRestart != nil {
-				s.markRestart()
-			}
+		needRestart, err := s.reconcileFn(tx)
+		if err != nil {
+			return err
+		}
+		if needRestart && s.markRestart != nil {
+			s.markRestart()
 		}
 		return nil
 	})

@@ -40,6 +40,9 @@ func (a *XraySettingController) initRouter(g *gin.RouterGroup) {
 	g.POST("/resetOutboundsTraffic", a.resetOutboundsTraffic)
 	g.POST("/testOutbound", a.testOutbound)
 
+	g.GET("/override", a.getXrayOverride)
+	g.POST("/override", a.saveXrayOverride)
+
 	g.GET("/clashTemplate", a.getClashTemplate)
 	g.POST("/clashTemplate", a.saveClashTemplate)
 	g.GET("/servers", a.getServers)
@@ -207,6 +210,26 @@ func (a *XraySettingController) getServers(c *gin.Context) {
 func (a *XraySettingController) saveServers(c *gin.Context) {
 	content := c.PostForm("content")
 	if err := config.SaveServers(content); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), nil)
+}
+
+// getXrayOverride retrieves the local Xray template override content.
+func (a *XraySettingController) getXrayOverride(c *gin.Context) {
+	override, err := a.XraySettingService.GetXrayOverride()
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.getSettings"), err)
+		return
+	}
+	jsonObj(c, override, nil)
+}
+
+// saveXrayOverride saves the local Xray template override without triggering sync.
+func (a *XraySettingController) saveXrayOverride(c *gin.Context) {
+	override := c.PostForm("override")
+	if err := a.XraySettingService.SaveXrayOverride(override); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return
 	}

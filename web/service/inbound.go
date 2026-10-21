@@ -1545,6 +1545,9 @@ func (s *InboundService) ReconcileSharedTrafficState(tx *gorm.DB) (bool, error) 
 		logger.Warning("Error in renew clients:", err)
 	} else if count > 0 {
 		logger.Debugf("%v clients renewed", count)
+		if berr := bumpSharedVersion(tx); berr != nil {
+			logger.Warning("Error bumping shared version after renew clients:", berr)
+		}
 	}
 
 	needRestart1, count, err := s.disableInvalidClients(tx)
@@ -1552,6 +1555,9 @@ func (s *InboundService) ReconcileSharedTrafficState(tx *gorm.DB) (bool, error) 
 		logger.Warning("Error in disabling invalid clients:", err)
 	} else if count > 0 {
 		logger.Debugf("%v clients disabled", count)
+		if berr := bumpSharedVersion(tx); berr != nil {
+			logger.Warning("Error bumping shared version after disable clients:", berr)
+		}
 	}
 
 	needRestart2, count, err := s.disableInvalidInbounds(tx)
@@ -1559,6 +1565,9 @@ func (s *InboundService) ReconcileSharedTrafficState(tx *gorm.DB) (bool, error) 
 		logger.Warning("Error in disabling invalid inbounds:", err)
 	} else if count > 0 {
 		logger.Debugf("%v inbounds disabled", count)
+		if berr := bumpSharedVersion(tx); berr != nil {
+			logger.Warning("Error bumping shared version after disable inbounds:", berr)
+		}
 	}
 	return needRestart0 || needRestart1 || needRestart2, nil
 }
@@ -1704,6 +1713,13 @@ func (s *InboundService) adjustTraffics(tx *gorm.DB, dbClientTraffics []*xray.Cl
 }
 
 func (s *InboundService) autoRenewClients(tx *gorm.DB) (bool, int64, error) {
+	// Only the master node handles auto-renewal to prevent race conditions
+	// when multiple nodes try to extend expiry_time and reset traffic counters
+	// on the same clients concurrently.
+	if !IsMaster() {
+		return false, 0, nil
+	}
+
 	// check for time expired
 	var traffics []*xray.ClientTraffic
 	now := time.Now().Unix() * 1000
