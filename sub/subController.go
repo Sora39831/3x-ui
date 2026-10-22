@@ -206,6 +206,12 @@ func (a *SUBController) clashSubs(c *gin.Context) {
 	subId := c.Param("subid")
 	scheme, host, hostWithPort, _ := a.subService.ResolveRequest(c)
 	if IsShadowrocketRequest(c) {
+		// Prefer the Clash server list so Shadowrocket sees the same nodes as
+		// Clash clients; fall back to the plain link list when it is unset.
+		if srJson, header, srErr := a.subClashService.BuildShadowrocketConfig(subId); srErr == nil && srJson != "" {
+			a.writeShadowrocket(c, scheme, hostWithPort, srJson, header)
+			return
+		}
 		if subs, _, traffic, srErr := a.subService.GetSubs(subId, host); srErr == nil && len(subs) > 0 {
 			if a.respondShadowrocket(c, scheme, hostWithPort, subs, traffic) {
 				return
@@ -242,6 +248,12 @@ func (a *SUBController) respondShadowrocket(c *gin.Context, scheme, hostWithPort
 		return false
 	}
 	header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
+	return a.writeShadowrocket(c, scheme, hostWithPort, srJson, header)
+}
+
+// writeShadowrocket writes a JSON subscription with the common subscription
+// headers and reports whether it was written.
+func (a *SUBController) writeShadowrocket(c *gin.Context, scheme, hostWithPort, srJson, header string) bool {
 	profileUrl := a.subProfileUrl
 	if profileUrl == "" {
 		profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
