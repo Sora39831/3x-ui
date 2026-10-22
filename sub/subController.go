@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mhsanaei/3x-ui/v2/config"
+	"github.com/mhsanaei/3x-ui/v2/xray"
 
 	"github.com/gin-gonic/gin"
 )
@@ -106,21 +107,8 @@ func (a *SUBController) subs(c *gin.Context) {
 	if err != nil || len(subs) == 0 {
 		c.String(400, "Error!")
 	} else {
-		// Shadowrocket imports a JSON subscription ({"servers": [...]}) and needs
-		// the REALITY / ML-KEM parameters that a plain base64 link list cannot
-		// reliably carry, so answer its user-agent with JSON instead.
-		if IsShadowrocketRequest(c) {
-			if srJson, srErr := a.subService.BuildShadowrocketConfig(subs); srErr == nil {
-				header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
-				profileUrl := a.subProfileUrl
-				if profileUrl == "" {
-					profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
-				}
-				a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
-				c.Header("Content-Type", "application/json; charset=utf-8")
-				c.String(200, srJson)
-				return
-			}
+		if a.respondShadowrocket(c, scheme, hostWithPort, subs, traffic) {
+			return
 		}
 		result := ""
 		for _, sub := range subs {
@@ -216,7 +204,14 @@ func (a *SUBController) subJsons(c *gin.Context) {
 // clashSubs handles HTTP requests for Clash YAML subscription configurations.
 func (a *SUBController) clashSubs(c *gin.Context) {
 	subId := c.Param("subid")
-	scheme, _, hostWithPort, _ := a.subService.ResolveRequest(c)
+	scheme, host, hostWithPort, _ := a.subService.ResolveRequest(c)
+	if IsShadowrocketRequest(c) {
+		if subs, _, traffic, srErr := a.subService.GetSubs(subId, host); srErr == nil && len(subs) > 0 {
+			if a.respondShadowrocket(c, scheme, hostWithPort, subs, traffic) {
+				return
+			}
+		}
+	}
 	clashYaml, header, err := a.subClashService.GetClash(subId)
 	if err != nil || len(clashYaml) == 0 {
 		c.String(400, "Error!")
@@ -231,6 +226,30 @@ func (a *SUBController) clashSubs(c *gin.Context) {
 		c.Header("Content-Type", "text/yaml; charset=utf-8")
 		c.String(200, clashYaml)
 	}
+}
+
+// respondShadowrocket answers the request with a Shadowrocket JSON subscription
+// when the client identifies itself as Shadowrocket (or asked for it via
+// ?format=sr / ?sr=1). Shadowrocket cannot reliably import REALITY / ML-KEM
+// parameters from a plain base64 link list, so the links are translated into
+// its native JSON schema instead. It returns true when a response was written.
+func (a *SUBController) respondShadowrocket(c *gin.Context, scheme, hostWithPort string, subs []string, traffic xray.ClientTraffic) bool {
+	if !IsShadowrocketRequest(c) || len(subs) == 0 {
+		return false
+	}
+	srJson, err := a.subService.BuildShadowrocketConfig(subs)
+	if err != nil {
+		return false
+	}
+	header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
+	profileUrl := a.subProfileUrl
+	if profileUrl == "" {
+		profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
+	}
+	a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+	c.Header("Content-Type", "application/json; charset=utf-8")
+	c.String(200, srJson)
+	return true
 }
 
 // ApplyCommonHeaders sets common HTTP headers for subscription responses including user info, update interval, and profile title.
