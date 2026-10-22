@@ -106,6 +106,22 @@ func (a *SUBController) subs(c *gin.Context) {
 	if err != nil || len(subs) == 0 {
 		c.String(400, "Error!")
 	} else {
+		// Shadowrocket imports a JSON subscription ({"servers": [...]}) and needs
+		// the REALITY / ML-KEM parameters that a plain base64 link list cannot
+		// reliably carry, so answer its user-agent with JSON instead.
+		if IsShadowrocketRequest(c) {
+			if srJson, srErr := a.subService.BuildShadowrocketConfig(subs); srErr == nil {
+				header := fmt.Sprintf("upload=%d; download=%d; total=%d; expire=%d", traffic.Up, traffic.Down, traffic.Total, traffic.ExpiryTime/1000)
+				profileUrl := a.subProfileUrl
+				if profileUrl == "" {
+					profileUrl = fmt.Sprintf("%s://%s%s", scheme, hostWithPort, c.Request.RequestURI)
+				}
+				a.ApplyCommonHeaders(c, header, a.updateInterval, a.subTitle, a.subSupportUrl, profileUrl, a.subAnnounce, a.subEnableRouting, a.subRoutingRules)
+				c.Header("Content-Type", "application/json; charset=utf-8")
+				c.String(200, srJson)
+				return
+			}
+		}
 		result := ""
 		for _, sub := range subs {
 			result += sub + "\n"
